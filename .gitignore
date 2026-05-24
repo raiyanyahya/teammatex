@@ -1,0 +1,37 @@
+# Environment
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+*secret*
+
+# Large data
+*.db
+*.sqlite
+loki_data/

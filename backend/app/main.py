@@ -1,0 +1,60 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from structlog import get_logger
+
+from app.api.router import api_router
+from app.config import settings
+
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings.validate_secret_key()
+    try:
+        from app.db.neo4j import get_neo4j_manager
+        await get_neo4j_manager().verify_connectivity()
+        logger.info("neo4j_connected")
+    except Exception as e:
+        logger.warning("neo4j_unavailable", error=str(e))
+    yield
+    try:
+        from app.db.neo4j import get_neo4j_manager
+        await get_neo4j_manager().close()
+    except Exception as e:
+        logger.debug("neo4j_close_error", error=str(e))
+    try:
+        from app.services.integrations.base import IntegrationRegistry
+        for attr in ("_scm", "_pm", "_chat"):
+            provider = getattr(IntegrationRegistry, attr, None)
+            if provider and hasattr(provider, "close"):
+                await provider.close()
+    except Exception as e:
+        logger.debug("provider_close_error", error=str(e))
+
+
+app = FastAPI(
+    title="TeammateX",
+    description="AI teammate that learns your codebase and works alongside your team",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://localhost"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api")
+
+if settings.prometheus_enabled:
+    try:
+        from prometheus_fastapi_instrumentator import Instrumentator
+        Instrumentator().instrument(app).expose(app)
+    except ImportError:
+        pass

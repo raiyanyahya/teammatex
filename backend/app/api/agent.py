@@ -1,0 +1,121 @@
+import json
+from typing import AsyncIterator
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_db
+from app.services.agent.runtime import agent_runtime
+
+router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=10000)
+    repo_id: str | None = None
+    conversation_id: str | None = None
+
+
+class PlanRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=5000)
+    repo_id: str | None = None
+
+
+class CodeGenRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=5000)
+    language: str = Field(..., min_length=1, max_length=50)
+    repo_id: str | None = None
+    context_files: dict[str, str] | None = None
+
+
+class ValidateRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50000)
+    file_path: str = "generated.py"
+
+
+class ToolExecuteRequest(BaseModel):
+    tool_name: str = Field(..., min_length=1, max_length=100)
+    arguments: dict
+    repo_id: str | None = None
+
+
+class ReviewRequest(BaseModel):
+    summary: str = Field(..., min_length=1, max_length=5000)
+    files: list[str] = Field(default_factory=list, max_length=100)
+    diff: str = Field(..., max_length=50000)
+
+
+# ─── Chat (Streaming) ────────────────────────────────────
+
+@router.post("/chat")
+async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
+    async def stream():
+        async for event in agent_runtime.chat(db, payload.message, payload.repo_id):
+            yield event
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ─── Plan ────────────────────────────────────────────────
+
+@router.post("/plan")
+async def plan_task(payload: PlanRequest, db: AsyncSession = Depends(get_db)):
+    plan = await agent_runtime.plan_task(payload.task, payload.repo_id, db)
+    return {"task": payload.task, "plan": plan}
+
+
+# ─── Code Generation ─────────────────────────────────────
+
+@router.post("/generate-code")
+async def generate_code(payload: CodeGenRequest):
+    code = await agent_runtime.generate_code(
+        payload.task, payload.language, payload.context_files,
+    )
+    return {"language": payload.language, "code": code}
+
+
+# ─── Validate Code ───────────────────────────────────────
+
+@router.post("/validate")
+async def validate_code(payload: ValidateRequest):
+    passed, message = await agent_runtime.validate_code(payload.code, payload.file_path)
+    return {"passed": passed, "message": message}
+
+
+# ─── Self Review ─────────────────────────────────────────
+
+@router.post("/review")
+async def self_review(payload: ReviewRequest):
+    result = await agent_runtime.self_review(
+        payload.summary, payload.files, payload.diff,
+    )
+    return {"review": result}
+
+
+# ─── Execute Tool ────────────────────────────────────────
+
+@router.post("/tool")
+async def execute_tool(payload: ToolExecuteRequest, db: AsyncSession = Depends(get_db)):
+    from app.services.agent.runtime import AgentContext
+    ctx = AgentContext(repo_id=payload.repo_id, db=db)
+    result = await agent_runtime.execute_tool(ctx, payload.tool_name, payload.arguments)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ─── List Tools ──────────────────────────────────────────
+
+@router.get("/tools")
+async def list_tools():
+    tools = agent_runtime.tools.get_all()
+    return {
+        "tools": [
+            {"name": name, "description": t.description, "category": t.category,
+             "requires_confirmation": t.requires_confirmation}
+            for name, t in tools.items()
+        ]
+    }

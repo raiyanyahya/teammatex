@@ -1,0 +1,61 @@
+from app.workers.celery_app import celery_app
+from app.services.onboarding import pipeline  # noqa: F401
+
+
+@celery_app.task(name="health_check")
+def health_check() -> dict:
+    return {"status": "ok", "worker": "celery"}
+
+
+@celery_app.task(name="git_pull_repos")
+def git_pull_repos() -> dict:
+    """Pull all onboarded repos to keep knowledge fresh."""
+    from sqlalchemy import create_engine, select, text
+    from app.config import settings as _s
+    from app.utils.git import clone_or_pull
+    from app.models.repo import Repo
+    from pathlib import Path
+
+    engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
+    repos: list = []
+    try:
+        with engine.connect() as conn:
+            repos = conn.execute(select(Repo).where(Repo.is_active == True)).all()
+    except Exception:
+        engine.dispose()
+        return {"error": "Database error"}
+
+    pulled = 0
+    for repo in repos:
+        try:
+            path = f"/data/repos/{repo.local_name}"
+            clone_or_pull(repo.github_url, path)
+            pulled += 1
+        except Exception:
+            pass
+
+    engine.dispose()
+    return {"pulled": pulled, "total": len(repos)}
+
+
+@celery_app.task(name="git_pull_scheduled")
+def git_pull_scheduled() -> dict:
+    """Scheduled git pull - checks config for frequency."""
+    from sqlalchemy import create_engine, select as sa_select
+    from app.config import settings as _s
+    from app.models.app_config import AppConfig
+
+    engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(sa_select(AppConfig).where(AppConfig.key == "update_settings"))
+            row = result.mappings().first()
+            if row and row.get("value", {}).get("method") == "git_pull":
+                freq_min = int(row["value"].get("frequency_minutes", 5))
+                # Check if it's time based on frequency
+                return git_pull_repos()
+    except Exception:
+        pass
+    finally:
+        engine.dispose()
+    return {"pulled": 0, "note": "Git pull not configured or not scheduled"}

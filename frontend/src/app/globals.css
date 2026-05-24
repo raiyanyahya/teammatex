@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+@layer base {
+  * {
+    @apply border-[#2a2a2e];
+  }
+  body {
+    @apply bg-[#1e1e24] text-[#cccccc] antialiased;
+  }
+  ::selection {
+    @apply bg-[#264f78]/60 text-white;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-[#3e3e44] rounded-sm hover:bg-[#4e4e54]; }
+}
+
+@layer components {
+  .panel {
+    @apply bg-[#25252b] border border-[#2a2a2e] rounded-md;
+  }
+  .input {
+    @apply w-full rounded-md border border-[#2a2a2e] bg-[#1e1e24] px-3 py-2 text-sm text-[#cccccc] outline-none placeholder:text-[#5a5a5e]
+    focus:border-[#264f78] focus:ring-1 focus:ring-[#264f78]/30;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-[#264f78] text-white hover:bg-[#2d5a88] active:bg-[#1f4468];
+  }
+  .btn-secondary {
+    @apply btn bg-[#33333a] text-[#cccccc] hover:bg-[#3a3a42] active:bg-[#2a2a30];
+  }
+  .btn-ghost {
+    @apply btn text-[#8a8a8e] hover:text-[#cccccc] hover:bg-[#2a2a30];
+  }
+  .badge {
+    @apply inline-flex items-center rounded-md border border-[#2a2a2e] bg-[#2a2a30] px-2 py-0.5 text-xs text-[#8a8a8e];
+  }
+}

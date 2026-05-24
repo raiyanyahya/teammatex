@@ -1,0 +1,206 @@
+x-common: &common
+  restart: unless-stopped
+  env_file: .env
+  networks:
+    - teammatex
+
+services:
+  # ─── Reverse Proxy ──────────────────────────────────────
+  caddy:
+    <<: *common
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2019:2019"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # ─── Backend ────────────────────────────────────────────
+  api:
+    <<: *common
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - cloned_repos:/data/repos
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    <<: *common
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.worker
+    environment:
+      GIT_PYTHON_REFRESH: quiet
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - cloned_repos:/data/repos
+    deploy:
+      replicas: 2
+
+  worker-beat:
+    <<: *common
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.worker
+    command: celery -A app.workers.celery_app beat -l info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Frontend ────────────────────────────────────────────
+  frontend:
+    <<: *common
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000',r=>process.exit(r.statusCode===200?0:1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─── Data Services ──────────────────────────────────────
+  postgres:
+    <<: *common
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teammatex}
+      POSTGRES_USER: ${POSTGRES_USER:-teammatex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teammatex}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teammatex}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    <<: *common
+    image: neo4j:5.22-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j}
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 4G
+      NEO4J_server_memory_pagecache_size: 1G
+      NEO4J_server_config_strict__validation_enabled: "false"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER:-neo4j}", "-p", "${NEO4J_PASSWORD:-neo4j}", "RETURN 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    <<: *common
+    image: redis:7.4-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Observability (--profile monitoring) ─────────────────
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v2.54.1
+    profiles: ["monitoring"]
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    <<: *common
+    image: grafana/grafana:11.1.0
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # ─── Optional (--profile monitoring) ──────────────────
+  loki:
+    <<: *common
+    image: grafana/loki:3.1
+    profiles: ["monitoring"]
+    volumes:
+      - loki_data:/loki
+
+  promtail:
+    <<: *common
+    image: grafana/promtail:3.1
+    profiles: ["monitoring"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/promtail.yml:/etc/promtail/config.yml:ro
+
+  flower:
+    <<: *common
+    image: mher/flower:2.0
+    profiles: ["monitoring"]
+    environment:
+      CELERY_BROKER_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      - redis
+
+  node-exporter:
+    <<: *common
+    image: prom/node-exporter:v1.8
+    profiles: ["monitoring"]
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+networks:
+  teammatex:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  redis_data:
+  cloned_repos:
+  caddy_data:
+  caddy_config:
+  prometheus_data:
+  grafana_data:
+  loki_data:
