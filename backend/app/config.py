@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     slack_signing_secret: str = ""
     slack_app_token: str = ""
 
+    auto_sync_webhook_enabled: bool = False
+    auto_sync_poll_interval_minutes: int = 15
+    auto_sync_max_concurrent: int = 2
+
+    digest_enabled: bool = True
+    digest_schedule_day: str = "monday"
+    digest_schedule_hour: int = 9
+
     prometheus_enabled: bool = True
     grafana_admin_password: str = "admin"
 

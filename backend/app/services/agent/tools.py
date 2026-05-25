@@ -461,6 +461,34 @@ class ToolRegistry:
             category="agent",
         ))
 
+        self.register(ToolDefinition(
+            name="explain_architecture",
+            description="Generate an architecture overview and docs for the codebase. Explains how the system is structured.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo_id": {"type": "string", "description": "Repo ID to explain"},
+                },
+                "required": ["repo_id"],
+            },
+            category="knowledge",
+        ))
+
+        self.register(ToolDefinition(
+            name="trace_issue",
+            description="Trace who broke a function or file using git blame and call graph. Finds likely culprits.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo_id": {"type": "string", "description": "Repo ID"},
+                    "entity_name": {"type": "string", "description": "Function or entity name to trace"},
+                    "file_path": {"type": "string", "description": "File path (optional)"},
+                },
+                "required": ["repo_id", "entity_name"],
+            },
+            category="knowledge",
+        ))
+
     def register(self, tool: ToolDefinition) -> None:
         self._tools[tool.name] = tool
 

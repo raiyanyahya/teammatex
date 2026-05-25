@@ -32,6 +32,15 @@ async def github_webhook(request: Request):
 
     payload = json.loads(body)
     result = await GitHubProvider.handle_webhook(event, payload)
+
+    if event == "push" and settings.auto_sync_webhook_enabled:
+        from app.services.agent.auto_sync import auto_sync
+        repo_name = payload.get("repository", {}).get("name", "")
+        if repo_name:
+            import asyncio
+            asyncio.create_task(auto_sync.handle_webhook_push(repo_name))
+            logger.info("auto_sync_webhook_triggered", repo=repo_name)
+
     logger.info("github_webhook_processed", event=event, result=str(result)[:200])
     return {"received": True, "event": event}
 
@@ -73,10 +82,15 @@ async def slack_webhook(request: Request):
         event_type = event.get("type", "unknown")
         logger.info("slack_event", type=event_type)
 
-        if event_type == "app_mention":
-            text = event.get("text", "")
-            channel = event.get("channel", "")
-            user = event.get("user", "")
-            logger.info("slack_mention_for_agent", channel=channel, user=user, text=text[:200])
+    if event_type == "app_mention":
+        text = event.get("text", "")
+        channel = event.get("channel", "")
+        user = event.get("user", "")
+        logger.info("slack_mention_for_agent", channel=channel, user=user, text=text[:200])
+
+        from app.services.integrations.slack_bot import slack_bot
+        import asyncio
+        question = text.replace("<@U", "").replace(">", "").strip()
+        asyncio.create_task(slack_bot.answer_question(channel, user, question))
 
     return {"received": True}

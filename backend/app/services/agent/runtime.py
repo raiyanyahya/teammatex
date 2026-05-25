@@ -356,7 +356,8 @@ class AgentRuntime:
         if tool_name in ("semantic_search", "find_owner", "find_dependents",
                          "find_dependencies", "get_architecture", "search_notes",
                          "write_note", "read_file", "list_directory", "glob_search",
-                         "run_command", "ask_question", "report_status", "graph_query"):
+                         "run_command", "ask_question", "report_status", "graph_query",
+                         "explain_architecture", "trace_issue"):
             return await self._dispatch_legacy(tool_name, args, ctx)
         elif tool_name == "write_file":
             return await self._tool_write_file(args, ctx)
@@ -658,6 +659,17 @@ class AgentRuntime:
             return await self.rag.graph.search_graph(
                 args["query"], limit=args.get("limit", 10),
             )
+        elif tool_name == "explain_architecture":
+            from app.services.reporting.docs_generator import docs_generator
+            result = await docs_generator.generate_repo_docs(args["repo_id"], "")
+            return {"architecture": result}
+        elif tool_name == "trace_issue":
+            from app.services.agent.blame_tracer import blame_tracer
+            result = await blame_tracer.trace(
+                args["repo_id"], "", args["entity_name"],
+                args.get("file_path", ""), "",
+            )
+            return result
         elif tool_name == "run_command":
             import subprocess
             loop = asyncio.get_running_loop()

@@ -19,7 +19,21 @@ async def lifespan(app: FastAPI):
         logger.info("neo4j_connected")
     except Exception as e:
         logger.warning("neo4j_unavailable", error=str(e))
+
+    try:
+        from app.services.agent.auto_sync import auto_sync
+        await auto_sync.start_polling(settings.auto_sync_poll_interval_minutes)
+        logger.info("auto_sync_polling_configured", webhook=settings.auto_sync_webhook_enabled,
+                    polling_min=settings.auto_sync_poll_interval_minutes)
+    except Exception as e:
+        logger.warning("auto_sync_start_failed", error=str(e))
+
     yield
+    try:
+        from app.services.agent.auto_sync import auto_sync
+        await auto_sync.stop()
+    except Exception:
+        pass
     try:
         from app.db.neo4j import get_neo4j_manager
         await get_neo4j_manager().close()

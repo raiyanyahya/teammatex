@@ -12,6 +12,7 @@ from app.api.features import router as features_router
 from app.api.config_endpoints import router as config_router
 
 from app.api.logs_endpoint import router as logs_router
+from app.api.reporting import router as reports_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -25,6 +26,7 @@ api_router.include_router(plugins_router)
 api_router.include_router(features_router)
 api_router.include_router(config_router)
 api_router.include_router(logs_router)
+api_router.include_router(reports_router)
 
 @api_router.get("/health")
 async def health_check():
