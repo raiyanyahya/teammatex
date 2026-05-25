@@ -39,11 +39,6 @@ class GraphBuilder:
 
             await self.graph.ensure_file_node(repo_id, rel_path, lang, analysis.lines)
 
-            # Module detection from first path component
-            parts = Path(rel_path).parts
-            if len(parts) > 1:
-                await self.graph.ensure_module_node(repo_id, parts[0])
-
             for entity in analysis.entities:
                 entities_found += 1
                 if entity.kind == "function":

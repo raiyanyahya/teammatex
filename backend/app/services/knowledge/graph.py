@@ -66,13 +66,14 @@ class KnowledgeGraph:
         repo_nid = node_id(repo_id, "Repository", repo_name)
         await self.run("""
         MERGE (r:Repository {id: $id})
-        SET r.name = $name, r.version = $version
-        """, id=repo_nid, name=repo_name, version=EXTRACTOR_VERSION)
+        SET r.repo_id = $repo_id, r.name = $name, r.version = $version
+        """, id=repo_nid, repo_id=repo_id, name=repo_name, version=EXTRACTOR_VERSION)
 
     async def ensure_file_node(
         self, repo_id: str, file_path: str, language: str, lines: int
     ) -> None:
         file_nid = node_id(repo_id, "File", file_path)
+        repo_nid = node_id(repo_id, "Repository", self._resolve_repo_name(repo_id))
         await self.run("""
         MERGE (f:File {id: $id})
         SET f.repo_id = $repo_id, f.path = $path, f.language = $language, f.lines = $lines, f.version = $version
@@ -80,7 +81,7 @@ class KnowledgeGraph:
         MATCH (r:Repository {id: $repo_nid})
         MERGE (f)-[:PART_OF]->(r)
         """, id=file_nid, repo_id=repo_id, path=file_path, language=language, lines=lines, version=EXTRACTOR_VERSION,
-             repo_nid=node_id(repo_id, "Repository", await self._get_repo_name(repo_id)))
+             repo_nid=repo_nid)
 
     async def ensure_function_node(
         self,
@@ -132,6 +133,7 @@ class KnowledgeGraph:
 
     async def ensure_module_node(self, repo_id: str, name: str) -> None:
         mod_nid = node_id(repo_id, "Module", name)
+        repo_nid = node_id(repo_id, "Repository", self._resolve_repo_name(repo_id))
         await self.run("""
         MERGE (m:Module {id: $id})
         SET m.repo_id = $repo_id, m.name = $name, m.version = $version
@@ -139,7 +141,7 @@ class KnowledgeGraph:
         MATCH (r:Repository {id: $repo_nid})
         MERGE (m)-[:PART_OF]->(r)
         """, id=mod_nid, repo_id=repo_id, name=name, version=EXTRACTOR_VERSION,
-             repo_nid=await self._get_repo_node_id(repo_id))
+             repo_nid=repo_nid)
 
     async def ensure_contributor_node(self, email: str, name: str) -> None:
         contrib_nid = node_id("", "Contributor", email, name)
@@ -157,21 +159,19 @@ class KnowledgeGraph:
         callee_name: str,
     ) -> None:
         caller_nid = node_id(repo_id, "Function", caller_file, caller_name)
-        callee_nid = node_id(repo_id, "Function", "", callee_name)
-        rel_eid = edge_id(repo_id, "CALLS", caller_nid, callee_nid)
         await self.run("""
         MATCH (a:Function {id: $caller_nid})
-        MERGE (b:Function {id: $callee_nid})
+        MERGE (b:Function {repo_id: $repo_id, name: $callee_name})
         MERGE (a)-[r:CALLS]->(b)
-        SET r.id = $rel_eid, r.version = $version
-        """, caller_nid=caller_nid, callee_nid=callee_nid, rel_eid=rel_eid,
+        SET r.version = $version
+        """, caller_nid=caller_nid, repo_id=repo_id, callee_name=callee_name,
              version=EXTRACTOR_VERSION)
 
     async def add_ownership(
         self, email: str, repo_id: str, file_path: str, weight: float = 1.0
     ) -> None:
         file_nid = node_id(repo_id, "File", file_path)
-        contrib_nid = node_id("", "Contributor", email)
+        contrib_nid = node_id("", "Contributor", email, email)
         rel_eid = edge_id(repo_id, "OWNS", contrib_nid, file_nid)
         await self.run("""
         MATCH (c:Contributor {id: $contrib_nid})
@@ -192,20 +192,18 @@ class KnowledgeGraph:
         return record
 
     async def find_dependents(self, repo_id: str, entity_name: str) -> list[dict]:
-        fn_nid = node_id(repo_id, "Function", "", entity_name)
         return await self.run("""
-        MATCH (a)-[:CALLS]->(b:Function {id: $fn_nid})
+        MATCH (a)-[:CALLS]->(b:Function {repo_id: $repo_id, name: $name})
         RETURN a.file_path AS file, a.name AS caller, a.start_line AS line
         LIMIT 50
-        """, fn_nid=fn_nid)
+        """, repo_id=repo_id, name=entity_name)
 
     async def find_dependencies(self, repo_id: str, entity_name: str) -> list[dict]:
-        fn_nid = node_id(repo_id, "Function", "", entity_name)
         return await self.run("""
-        MATCH (a:Function {id: $fn_nid})-[:CALLS]->(b)
+        MATCH (a:Function {repo_id: $repo_id, name: $name})-[:CALLS]->(b)
         RETURN b.file_path AS file, b.name AS callee, b.language AS language
         LIMIT 50
-        """, fn_nid=fn_nid)
+        """, repo_id=repo_id, name=entity_name)
 
     async def get_architecture(self, repo_id: str) -> list[dict]:
         return await self.run("""
@@ -257,17 +255,8 @@ class KnowledgeGraph:
         LIMIT $limit
         """, query=query, limit=limit)
 
-    async def _get_repo_node_id(self, repo_id: str) -> str:
-        record = await self.run_single("""
-        MATCH (r:Repository {repo_id: $repo_id}) RETURN r.id AS id LIMIT 1
-        """, repo_id=repo_id)
-        return record["id"] if record else node_id(repo_id, "Repository", repo_id)
-
-    async def _get_repo_name(self, repo_id: str) -> str:
-        record = await self.run_single("""
-        MATCH (r:Repository) WHERE r.id CONTAINS $repo_id RETURN r.name AS name LIMIT 1
-        """, repo_id=repo_id)
-        return record["name"] if record else repo_id
+    def _resolve_repo_name(self, repo_id: str) -> str:
+        return repo_id
 
     async def run(self, cql: str, **params: Any) -> list[dict]:
         async with get_neo4j_manager().session() as session:

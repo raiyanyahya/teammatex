@@ -126,6 +126,8 @@ class AgentRuntime:
         total_tokens_out = 0
         total_cost = 0
         llm_call_count = 0
+        used_provider = "deepseek"
+        used_model_name = "deepseek-chat"
 
         for iteration in range(max_iterations):
             providers = await LLMProvider._get_available_providers()
@@ -138,6 +140,8 @@ class AgentRuntime:
                         model=actual_model, messages=messages, api_key=key,
                         temperature=0.2, max_tokens=2000, tools=tools,
                     )
+                    used_provider = provider
+                    used_model_name = model
                     break
                 except Exception:
                     continue
@@ -226,11 +230,11 @@ class AgentRuntime:
                 yield f"data: {json.dumps({'type': 'text', 'content': '(I checked the codebase but need more context to give you a thorough answer. Try asking about a specific file or function!)'})}\n\n"
 
         if total_tokens_in > 0:
-            provider, model = "deepseek", "deepseek-chat"
-            estimated_cost = int(total_tokens_in * 0.014 / 1000 * 100) + int(total_tokens_out * 0.028 / 1000 * 100)
-            total_cost = estimated_cost
+            pricing = {"deepseek": (0.014, 0.028), "openai": (0.15, 0.60), "anthropic": (0.30, 1.50), "groq": (0.0, 0.0)}
+            rate_in, rate_out = pricing.get(used_provider, (0.014, 0.028))
+            total_cost = int(total_tokens_in * rate_in / 1000 * 100) + int(total_tokens_out * rate_out / 1000 * 100)
             try:
-                await log_cost(provider, model, "chat", total_tokens_in, total_tokens_out, total_cost)
+                await log_cost(used_provider, used_model_name, "chat", total_tokens_in, total_tokens_out, total_cost)
             except Exception:
                 pass
             try:
@@ -387,8 +391,6 @@ class AgentRuntime:
         if not _is_safe_path(args["file_path"]):
             return {"error": "Path outside allowed directories"}
         loop = asyncio.get_running_loop()
-        async with ctx.db.begin() if ctx.db else None:
-            pass
         await loop.run_in_executor(None, lambda: _Path(args["file_path"]).write_text(args["content"]))
         return {"written": True, "file_path": args["file_path"]}
 
@@ -445,9 +447,10 @@ class AgentRuntime:
         loop = asyncio.get_running_loop()
         import pygit2
         def _commit():
-            repo = pygit2.Repository("/data/repos")
+            repo_path = f"/data/repos/{ctx.repo_name or ''}"
+            repo = pygit2.Repository(repo_path)
             for fpath, content in args["files"].items():
-                abs_path = _Path("/data/repos") / fpath
+                abs_path = _Path(repo_path) / fpath
                 abs_path.parent.mkdir(parents=True, exist_ok=True)
                 abs_path.write_text(content)
             repo.index.add_all()

@@ -100,8 +100,8 @@ def _save_stage_status(repo_id: str, stage_name: str, status: str, error: str = 
                     completed_at=now if status=="completed" else None))
             db.commit()
         engine.dispose()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("save_stage_status_failed", repo_id=repo_id, stage=stage_name, error=str(e)[:200])
 
 
 def _execute_stage(
@@ -289,6 +289,7 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
     if not root.exists():
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0}
 
+    async_engine = None
     try:
         async_engine = create_async_engine(_s.database_url, pool_pre_ping=True)
         async_session = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
@@ -303,6 +304,9 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
     except Exception as e:
         logger.error("embedding_build_failed", repo=repo_id, error=str(e)[:200])
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0, "error": str(e)[:200]}
+    finally:
+        if async_engine:
+            asyncio.run(async_engine.dispose())
 
 
 def _persist_memory_sync():
@@ -317,41 +321,8 @@ def _persist_memory_sync():
                          {"val": json.dumps({"preferences": {}, "conventions": ["Onboarding complete"], "episodic": []})})
             conn.commit()
         engine.dispose()
-    except Exception:
-        pass
-
-
-def _learn_styles(clone_path: str) -> list[str]:
-    from pathlib import Path as _P
-    conventions: list[str] = []
-    root = _P(clone_path) if clone_path else None
-    if not root or not root.exists():
-        return conventions
-
-    indent_found: dict[str, int] = {}
-    py_files = list(root.rglob("*.py"))[:200]
-    for fp in py_files:
-        try:
-            first_line = fp.read_text().splitlines()[0] if fp.read_text().splitlines() else ""
-            if first_line.startswith("    "):
-                indent_found["spaces_4"] = indent_found.get("spaces_4", 0) + 1
-            elif first_line.startswith("\t"):
-                indent_found["tabs"] = indent_found.get("tabs", 0) + 1
-            elif first_line.startswith("  "):
-                indent_found["spaces_2"] = indent_found.get("spaces_2", 0) + 1
-        except Exception:
-            pass
-
-    if indent_found:
-        dominant = max(indent_found, key=indent_found.get)
-        conventions.append(f"Indentation: {dominant} ({indent_found[dominant]} of {sum(indent_found.values())} files)")
-    return conventions
-
-
-def _collect_repo_info(prev_result: Any) -> dict:
-    if isinstance(prev_result, dict):
-        return dict(prev_result)
-    return {}
+    except Exception as e:
+        logger.warning("persist_memory_failed", error=str(e)[:200])
 
 
 def _create_synthesis_notes_sync(repo_id: str, repo_name: str, prev_result: dict, clone_path: str) -> int:
@@ -378,7 +349,7 @@ def _create_synthesis_notes_sync(repo_id: str, repo_name: str, prev_result: dict
 
     notes.append((
         f"Architecture — {repo_name}",
-        f"# {repo_name}\n\n- **Files**: {total}\n- **Python**: {py_count}\n- **Languages**: {lang_str}\n- **Branch**: {prev_result.get('default_branch', 'main')}\n- **Commits**: {prev_result.get('commit_count', 0)}\n- **Contributors**: {prev_result.get('contributor_count', 1)}",
+        f"# {repo_name}\n\n- **Files**: {total}\n- **Python**: {py_count}\n- **Languages**: {lang_str}",
         repo_id,
     ))
 

@@ -28,7 +28,14 @@ def clone_or_pull(
             repo = pygit2.clone_repository(url, path)
             head = repo.head.shorthand if not repo.head_is_unborn else "main"
             if head != branch:
-                branch = head
+                try:
+                    remote_branch = f"refs/remotes/origin/{branch}"
+                    if remote_branch in repo.references:
+                        repo.checkout(remote_branch)
+                    else:
+                        branch = head
+                except Exception:
+                    branch = head
 
     return repo
 
@@ -50,22 +57,31 @@ def read_file_from_bare(repo_path: str, file_path: str, ref: str = "HEAD") -> st
 def _fetch_and_reset(
     repo: pygit2.Repository, branch: str, bare: bool = False
 ) -> None:
-    remote = repo.remotes["origin"]
+    try:
+        remote = repo.remotes["origin"]
+    except KeyError:
+        return
     remote.fetch()
     remote_branch = f"refs/remotes/origin/{branch}"
-    if remote_branch in repo.references:
-        if bare:
-            repo.set_head(remote_branch)
-        else:
-            repo.checkout(remote_branch)
-            repo.reset(
-                repo.lookup_reference(remote_branch).target, pygit2.GIT_RESET_HARD
-            )
+    try:
+        if remote_branch in repo.references:
+            if bare:
+                repo.set_head(remote_branch)
+            else:
+                repo.checkout(remote_branch)
+                repo.reset(
+                    repo.lookup_reference(remote_branch).target, pygit2.GIT_RESET_HARD
+                )
+    except Exception:
+        pass
 
 
 def create_branch(repo_path: str, branch_name: str, base: str = "main") -> str:
     repo = pygit2.Repository(repo_path)
-    base_oid = repo.references[f"refs/remotes/origin/{base}"].target
+    base_ref = f"refs/remotes/origin/{base}"
+    if base_ref not in repo.references:
+        base_ref = f"refs/heads/{base}"
+    base_oid = repo.references[base_ref].target
     branch_ref = f"refs/heads/{branch_name}"
     repo.branches.local.create(branch_name, repo[base_oid])
     repo.checkout(branch_ref)

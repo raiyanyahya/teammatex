@@ -108,10 +108,10 @@ class EmbeddingService:
         limit: int = 10,
     ) -> list[dict]:
         query_vector = (await self.embed([query]))[0]
-        vector_str = f"'[{', '.join(str(v) for v in query_vector)}]'"
+        vector_str = f"[{', '.join(str(v) for v in query_vector)}]"
 
-        conditions = []
-        params: dict = {"limit": limit}
+        conditions = ["TRUE"]
+        params: dict = {"limit": limit, "vector": vector_str}
         if repo_id:
             conditions.append("ce.file_path LIKE :repo_prefix")
             params["repo_prefix"] = f"repos/{repo_id}/%"
@@ -122,16 +122,16 @@ class EmbeddingService:
             conditions.append("ce.language = :language")
             params["language"] = language
 
-        where = " AND ".join(conditions) if conditions else "TRUE"
+        where = " AND ".join(conditions)
 
         result = await db.execute(
             text(f"""
             SELECT ce.file_path, ce.start_line, ce.end_line, ce.text,
                    ce.entity_type, ce.language, ce.entity_name,
-                   1 - (ce.embedding <=> {vector_str}) AS similarity
+                   1 - (ce.embedding <=> CAST(:vector AS vector)) AS similarity
             FROM code_embeddings ce
             WHERE {where}
-            ORDER BY ce.embedding <=> {vector_str}
+            ORDER BY ce.embedding <=> CAST(:vector AS vector)
             LIMIT :limit
             """),
             params,
