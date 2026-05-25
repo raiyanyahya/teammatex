@@ -157,6 +157,15 @@ class AgentRuntime:
         import json
 
         ctx = AgentContext(repo_id=repo_id, db=db)
+
+        # Self-heal git/gh auth so a token added via Settings works without an
+        # API restart (otherwise the agent thrashes on push with no credentials).
+        try:
+            from app.services.agent.git_setup import ensure_gh_ready
+            await ensure_gh_ready(db)
+        except Exception:
+            pass
+
         try:
             context = await self.rag.retrieve_context(db, user_message, repo_id)
         except Exception:

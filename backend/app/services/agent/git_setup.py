@@ -55,10 +55,28 @@ def _find_remote_token() -> str | None:
     return None
 
 
-async def ensure_git_and_gh(db=None) -> None:
+_gh_ready = False
+
+
+def _gh_authenticated() -> bool:
+    return _run("gh auth status").returncode == 0
+
+
+async def ensure_git_and_gh(db=None) -> bool:
+    """Set git identity and authenticate gh from any available token.
+
+    Returns True if gh ends up authenticated. Idempotent and cheap to re-call:
+    skips the login if gh is already authed.
+    """
     _run(f'git config --global user.name "{GIT_NAME}"')
     _run(f'git config --global user.email "{GIT_EMAIL}"')
     _run('git config --global init.defaultBranch main')
+
+    if _run("which gh").returncode != 0:
+        logger.info("gh_setup_skipped", reason="gh not installed")
+        return False
+    if _gh_authenticated():
+        return True
 
     env_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     db_value = None
@@ -76,10 +94,19 @@ async def ensure_git_and_gh(db=None) -> None:
     token = resolve_github_token(env_token, db_value, remote_url)
     if not token:
         logger.info("gh_setup_skipped", reason="no token found")
-        return
-    if _run("which gh").returncode != 0:
-        logger.info("gh_setup_skipped", reason="gh not installed")
-        return
+        return False
     login = _run("gh auth login --with-token", stdin=token)
     _run("gh auth setup-git")
-    logger.info("gh_configured", login_ok=(login.returncode == 0))
+    ok = login.returncode == 0
+    logger.info("gh_configured", login_ok=ok)
+    return ok
+
+
+async def ensure_gh_ready(db=None) -> bool:
+    """Self-healing entry point for the chat path: authenticate gh on the first
+    request after a token is added, without needing an API restart."""
+    global _gh_ready
+    if _gh_ready:
+        return True
+    _gh_ready = await ensure_git_and_gh(db)
+    return _gh_ready
