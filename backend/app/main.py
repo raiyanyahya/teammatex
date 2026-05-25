@@ -21,6 +21,16 @@ async def lifespan(app: FastAPI):
         logger.warning("neo4j_unavailable", error=str(e))
 
     try:
+        from app.services.agent.git_setup import ensure_git_and_gh
+        import app.db.session as _session
+        _session._init_engine()
+        async with _session.async_session_factory() as _db:
+            await ensure_git_and_gh(_db)
+        logger.info("git_gh_ready")
+    except Exception as e:
+        logger.warning("git_gh_setup_failed", error=str(e))
+
+    try:
         from app.services.agent.auto_sync import auto_sync
         await auto_sync.start_polling(settings.auto_sync_poll_interval_minutes)
         logger.info("auto_sync_polling_configured", webhook=settings.auto_sync_webhook_enabled,

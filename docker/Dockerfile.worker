@@ -13,14 +13,25 @@ RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi --no-root
 
 FROM python:3.12-slim
+# git for repo ops; gh so the teammate can open real PRs by running commands.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl libssl3 libssh2-1 \
+    git curl libssl3 libssh2-1 gpg ca-certificates \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Web search backend for the agent (kept out of poetry to avoid lock churn).
+RUN pip install --no-cache-dir ddgs==9.14.4
+
 COPY . .
 
 ENV GIT_PYTHON_REFRESH=quiet
