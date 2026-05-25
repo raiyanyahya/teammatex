@@ -101,9 +101,22 @@ class AgentRuntime:
                 repo_details.append(detail)
             if repos:
                 context += f"\n\nOnboarded repos ({len(repos)}):\n" + "\n".join(repo_details)
-            # Check GitHub integration
+            # Check GitHub integration (env or DB)
             from app.config import settings as _s
             github_connected = bool(_s.github_client_secret or _s.github_webhook_secret)
+            if not github_connected:
+                try:
+                    from sqlalchemy import select as _sel
+                    from app.models.app_config import AppConfig
+                    result = await db.execute(_sel(AppConfig).where(AppConfig.key == "github_token"))
+                    row = result.scalar_one_or_none()
+                    if row and row.value:
+                        import json as _json
+                        token_data = _json.loads(row.value) if isinstance(row.value, str) else row.value
+                        if token_data.get("token"):
+                            github_connected = True
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -126,14 +139,17 @@ class AgentRuntime:
 RULES FOR USING TOOLS:
 - For simple factual questions about the codebase (repos, languages, file counts, overview),
   answer DIRECTLY from the knowledge above. DO NOT use tools.
-- Only use tools when you genuinely need to read a file, search code, or query the graph.
-- NEVER use run_command for things you already know from context.
-- NEVER say \"I don't have access\" or \"not cloned\" — all repos ARE cloned and available.
-- If a tool returns empty or error, stop after 2 attempts and explain what you know.
+- For git operations (branches, commits, logs), use run_command with the repo path.
+  Example: cd /data/repos/kit-fork && git log --oneline -5
+- Only use graph_query/semantic_search when you genuinely need codebase search.
+- NEVER say \"I don't have access\" or \"not cloned\" — repos ARE cloned at /data/repos/.
+- If a tool returns empty or error, stop after 2 attempts and tell the user what you found.
 - Be a real teammate: direct, helpful, and conversational. No corporate speak."""
 
         if not github_connected:
-            system_prompt += "\n\n(GitHub integration is NOT connected. For PR/branch questions, tell the user to connect GitHub in Settings.)"
+            system_prompt += "\n\n(GitHub not connected. For local git: use run_command. For PRs: suggest Settings.)"
+        else:
+            system_prompt += "\n\n(GitHub connected: use list_prs for pull requests.)"
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:
@@ -695,11 +711,23 @@ RULES FOR USING TOOLS:
             return result
         elif tool_name == "list_prs":
             from app.config import settings as _s
-            if not _s.github_client_secret and not _s.github_webhook_secret:
-                hint = "GitHub integration not configured. Connect GitHub in Settings."
-                return {"error": hint, "hint": hint}
+            token = _s.github_client_secret or _s.github_webhook_secret
+            if not token:
+                try:
+                    from sqlalchemy import select as _sel
+                    from app.models.app_config import AppConfig
+                    result = await ctx.db.execute(_sel(AppConfig).where(AppConfig.key == "github_token"))
+                    row = result.scalar_one_or_none()
+                    if row and row.value:
+                        import json as _json
+                        token_data = _json.loads(row.value) if isinstance(row.value, str) else row.value
+                        token = token_data.get("token", "")
+                except Exception:
+                    pass
+            if not token:
+                return {"error": "GitHub token not found. Set it in Settings."}
             from app.services.integrations.github import GitHubProvider
-            provider = GitHubProvider()
+            provider = GitHubProvider(token=token)
             repo_name = args.get("repo_name", "")
             state = args.get("state", "open")
             limit = args.get("limit", 10)
