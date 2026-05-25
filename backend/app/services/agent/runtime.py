@@ -179,6 +179,12 @@ RULES FOR USING TOOLS:
         messages.append({"role": "user", "content": user_message})
 
         tools = self.tools.get_openai_tools()
+        # Limit tools to prevent choice paralysis — keep the most useful ones
+        keep_tools = {"read_file", "list_directory", "glob_search", "grep_search",
+                     "create_branch", "edit_file", "write_file", "commit_files",
+                     "create_pr", "graph_query", "semantic_search", "run_command",
+                     "get_architecture", "list_prs", "search_notes"}
+        tools = [t for t in tools if t["function"]["name"] in keep_tools]
         max_iterations = 8
         empty_tool_results = 0
         read_tool_count = 0
