@@ -128,7 +128,7 @@ export default function ChatPage() {
 
       if (accumulated) {
         const toolNote = toolMessages.length > 0
-          ? `\n\n<small style='color:#4a4a4e'>✓ ${toolMessages.map(t => t.tool).join(', ')}</small>`
+          ? '\n\n' + toolMessages.map(t => `[${t.tool}]`).join(' ')
           : '';
         setMessages((prev) => [
           ...prev,
