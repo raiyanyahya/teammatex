@@ -153,18 +153,16 @@ class AgentRuntime:
             capabilities.append("GitHub API: PR listing, branch creation, code review posting")
 
         system_prompt = self._get_persona_prompt()
-        system_prompt += f"\n\nCodebase knowledge:\n{context}"
+        system_prompt += f"\n\nCodebase:\n{context}"
+        system_prompt += f"\nCapabilities: {', '.join(capabilities)}."
 
-        system_prompt += f"""
-\n\nYOUR CAPABILITIES: {', '.join(capabilities)}.
-
-RULES FOR USING TOOLS:
-- Factual questions: answer DIRECTLY from context. No tools needed.
-- NEVER fabricate URLs, PR numbers, hashes — only report actual tool output.
-- If a tool fails, say so. Do not pretend it succeeded.
-- When told 'yes'/'go': do all steps needed. Don't ask again.
-- Stop when done. No follow-ups, no fluff.
-- Senior dev on Slack. Direct. Precise."""
+        # Claude Code insight: for multi-step tasks, batch ALL tool calls in ONE response
+        if is_edit_request:
+            system_prompt += (
+                "\n\nIMPORTANT: You can call MULTIPLE tools in a single response. For git workflows "
+                "(branch → edit → commit → PR), call ALL tools at once. Use run_command for git ops: "
+                "git checkout -b, git add, git commit, git push. Do NOT spread work across messages."
+            )
 
         if not github_connected:
             system_prompt += "\n\n(GitHub not connected. For local git: use run_command. For PRs: suggest Settings.)"
@@ -179,12 +177,20 @@ RULES FOR USING TOOLS:
         messages.append({"role": "user", "content": user_message})
 
         tools = self.tools.get_openai_tools()
-        # Limit tools to prevent choice paralysis — keep the most useful ones
-        keep_tools = {"read_file", "list_directory", "glob_search", "grep_search",
-                     "create_branch", "edit_file", "write_file", "commit_files",
-                     "create_pr", "graph_query", "semantic_search", "run_command",
-                     "get_architecture", "list_prs", "search_notes"}
-        tools = [t for t in tools if t["function"]["name"] in keep_tools]
+        # Only send edit/write tools when the user explicitly asks for code changes.
+        # Research (Aider benchmarks) shows models write worse code when forced into
+        # JSON tool calling for every interaction. Keep read tools always available.
+        is_edit_request = any(w in user_message.lower() for w in
+            ["update", "fix", "change", "modify", "add", "remove", "create", "patch",
+             "refactor", "rewrite", "bump", "pr", "pull request", "branch", "commit"])
+        
+        if not is_edit_request:
+            read_tool_names = {"read_file", "list_directory", "glob_search", "grep_search",
+                             "graph_query", "semantic_search", "get_architecture",
+                             "search_notes", "list_prs", "find_owner",
+                             "find_dependents", "find_dependencies",
+                             "explain_architecture", "trace_issue", "run_command"}
+            tools = [t for t in tools if t["function"]["name"] in read_tool_names]
         max_iterations = 8
         empty_tool_results = 0
         read_tool_count = 0
