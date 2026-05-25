@@ -89,18 +89,21 @@ class AgentRuntime:
 
         repo_details = []
         github_connected = False
+        repo_path_hints = []
         try:
             from app.models.repo import Repo
             from sqlalchemy import select
             result = await db.execute(select(Repo).where(Repo.is_active == True).limit(10))
             repos = result.scalars().all()
             for r in repos:
-                detail = f"- **{r.local_name}**: {r.default_branch or 'main'}"
+                detail = f"- **{r.local_name}**: branch={r.default_branch or 'main'}"
                 if hasattr(r, 'language') and r.language:
-                    detail += f", primary: {r.language}"
+                    detail += f", lang={r.language}"
                 repo_details.append(detail)
+                repo_path_hints.append(f"/data/repos/{r.local_name}")
             if repos:
                 context += f"\n\nOnboarded repos ({len(repos)}):\n" + "\n".join(repo_details)
+                context += f"\nClone paths: {', '.join(repo_path_hints)}"
             # Check GitHub integration (env or DB)
             from app.config import settings as _s
             github_connected = bool(_s.github_client_secret or _s.github_webhook_secret)
@@ -726,17 +729,47 @@ RULES FOR USING TOOLS:
                     pass
             if not token:
                 return {"error": "GitHub token not found. Set it in Settings."}
-            from app.services.integrations.github import GitHubProvider
-            provider = GitHubProvider(token=token)
+
+            from app.models.repo import Repo
+            from sqlalchemy import select as _sel2
             repo_name = args.get("repo_name", "")
             state = args.get("state", "open")
             limit = args.get("limit", 10)
+
+            # If no repo or 'all', query all active repos
+            repos_to_check = []
             try:
-                prs = await provider.list_prs(repo_name, state)
-                prs = prs[:limit]
-                return {"repo": repo_name, "count": len(prs), "prs": [{"number": p.number, "title": p.title, "url": p.url} for p in prs]}
+                result = await ctx.db.execute(_sel2(Repo).where(Repo.is_active == True))
+                all_repos = result.scalars().all()
+                if not repo_name or repo_name == "all":
+                    repos_to_check = all_repos
+                else:
+                    matched = [r for r in all_repos if r.local_name == repo_name]
+                    repos_to_check = matched if matched else all_repos
+            except Exception:
+                repos_to_check = []
+
+            from app.services.integrations.github import GitHubProvider
+            provider = GitHubProvider(token=token)
+            all_prs = []
+            try:
+                for repo in repos_to_check[:5]:
+                    full_name = repo.local_name
+                    if repo.github_url:
+                        url = repo.github_url.rstrip("/").rstrip(".git")
+                        parts = url.split("/")
+                        if len(parts) >= 2:
+                            full_name = f"{parts[-2]}/{parts[-1]}"
+                    try:
+                        prs = await provider.list_prs(full_name, state)
+                        for p in prs[:3]:
+                            all_prs.append({"repo": repo.local_name, "github": full_name,
+                                "number": p.number, "title": p.title, "url": p.url})
+                    except Exception:
+                        pass
+                return {"count": len(all_prs), "prs": all_prs[:limit]}
             except Exception as e:
-                return {"error": f"Failed to list PRs: {str(e)}"}
+                return {"error": f"Failed: {str(e)}"}
             finally:
                 await provider.close()
         elif tool_name == "run_command":
