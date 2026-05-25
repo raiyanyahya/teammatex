@@ -25,6 +25,25 @@ from app.services.agent.confidence import ConfidenceTier, is_low_confidence, fla
 from app.services.agent.cost_tracker import log_cost, log_audit
 from app.services.llm.provider import LLMProvider
 
+
+def _get_github_token() -> str:
+    from app.config import settings as _s
+    token = _s.github_client_secret or _s.github_webhook_secret
+    if not token:
+        try:
+            from sqlalchemy import create_engine, text
+            engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"))
+            with engine.connect() as conn:
+                row = conn.execute(text("SELECT value FROM app_config WHERE key = 'github_token'")).fetchone()
+                if row and row[0]:
+                    import json as _json
+                    data = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                    token = data.get("token", "")
+            engine.dispose()
+        except Exception:
+            pass
+    return token
+
 logger = get_logger(__name__)
 
 SAFE_ROOTS = ["/data/repos", "/tmp", "/app"]
@@ -140,14 +159,12 @@ class AgentRuntime:
 \n\nYOUR CAPABILITIES: {', '.join(capabilities)}.
 
 RULES FOR USING TOOLS:
-- For simple factual questions (repos, languages, file counts), answer DIRECTLY from context.
-- For git operations: use run_command with the clone path from context.
-- When you find the answer, STOP. Don't ask follow-up questions or offer unnecessary work.
-- When told 'yes' or 'go ahead', do ALL edits at once WITHOUT asking again.
-- Only use tools when you genuinely need to. Don't use 4 tools when 1 would work.
-- If you find nothing to do (no deps, no PRs), say so in ONE short sentence and stop.
-- NEVER say \"I don't have access\" — repos ARE cloned at paths shown in context.
-- Be direct. No fluff. No corporate speak. Think: senior dev on Slack."""
+- Factual questions: answer DIRECTLY from context. No tools needed.
+- NEVER fabricate URLs, PR numbers, hashes — only report actual tool output.
+- If a tool fails, say so. Do not pretend it succeeded.
+- When told 'yes'/'go': do all steps needed. Don't ask again.
+- Stop when done. No follow-ups, no fluff.
+- Senior dev on Slack. Direct. Precise."""
 
         if not github_connected:
             system_prompt += "\n\n(GitHub not connected. For local git: use run_command. For PRs: suggest Settings.)"
@@ -162,8 +179,9 @@ RULES FOR USING TOOLS:
         messages.append({"role": "user", "content": user_message})
 
         tools = self.tools.get_openai_tools()
-        max_iterations = 5
+        max_iterations = 8
         empty_tool_results = 0
+        read_tool_count = 0
         total_tokens_in = 0
         total_tokens_out = 0
         total_cost = 0
@@ -200,6 +218,9 @@ RULES FOR USING TOOLS:
                 total_tokens_out += response.usage.completion_tokens or 0
 
             has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
+            logger.debug("llm_response", has_content=bool(msg.content), tool_count=len(msg.tool_calls) if has_tool_calls else 0,
+                        first_tool=(msg.tool_calls[0].function.name if has_tool_calls else ""),
+                        tc_type=str(type(msg.tool_calls[0])) if has_tool_calls else "")
 
             if msg.content and not has_tool_calls:
                 yield f"data: {json.dumps({'type': 'text', 'content': msg.content})}\n\n"
@@ -211,7 +232,9 @@ RULES FOR USING TOOLS:
 
             for tc in msg.tool_calls[:5]:
                 tool_name = tc.function.name
-                tool_args = json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments
+                raw_args = tc.function.arguments
+                logger.debug("processing_tool_call", name=tool_name, args_type=str(type(raw_args)), args_preview=str(raw_args)[:200])
+                tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
 
                 yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name, 'args': str(tool_args)[:200]})}\n\n"
 
@@ -221,24 +244,29 @@ RULES FOR USING TOOLS:
                 except Exception as e:
                     result_str = json.dumps({"error": str(e)})
 
-                # Track empty/useless results
-                parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
-                if isinstance(parsed, dict):
-                    data = parsed.get("data", parsed)
-                    if data == [] or data == {} or data == 0 or data == "" or data is None:
-                        empty_tool_results += 1
-                    elif isinstance(data, dict) and data.get("error"):
-                        empty_tool_results += 1
-                    else:
-                        empty_tool_results = 0
+                # Track empty results (skip for read-only tools)
+                read_tools = {"read_file", "list_directory", "glob_search", "graph_query",
+                             "semantic_search", "search_notes", "list_prs", "get_architecture",
+                             "find_owner", "find_dependents", "find_dependencies",
+                             "explain_architecture", "trace_issue"}
+                if tool_name not in read_tools:
+                    parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
+                    if isinstance(parsed, dict):
+                        data = parsed.get("data", parsed)
+                        if data == [] or data == {} or data == 0 or data == "" or data is None:
+                            empty_tool_results += 1
+                        elif isinstance(data, dict) and data.get("error"):
+                            empty_tool_results += 1
+                        else:
+                            empty_tool_results = 0
 
                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': tool_name, 'result': result_str[:500]})}\n\n"
 
                 messages.append({"role": "assistant", "content": None, "tool_calls": [tc]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
 
-            if empty_tool_results >= 3:
-                yield "data: {\"type\":\"text\",\"content\":\"(Looking into this, but tools aren't finding much. Let me work with what I have...)\"}\n\n"
+            if empty_tool_results >= 5:
+                yield "data: {\"type\":\"text\",\"content\":\"(Tools aren't producing useful results. Working with what I have...)\"}\n\n"
                 break
 
             if iteration == max_iterations - 1:
@@ -477,9 +505,11 @@ RULES FOR USING TOOLS:
     async def _tool_create_branch(self, args: dict, ctx: AgentContext) -> dict:
         loop = asyncio.get_running_loop()
         from app.utils.git import create_branch
-        name = f"teammatex/{args['name']}" if not args['name'].startswith("teammatex/") else args['name']
+        name = args["name"]
+        base = args.get("base", "main")
+        repo_path = f"/data/repos/{ctx.repo_name or 'unknown'}"
         ref = await loop.run_in_executor(
-            None, lambda: create_branch("/data/repos", name, args.get("base", "main")),
+            None, lambda: create_branch(repo_path, name, base),
         )
         ctx.branch = name
         return {"branch": name, "ref": ref}
@@ -526,6 +556,57 @@ RULES FOR USING TOOLS:
             ctx.branch, args.get("base", "main"),
         )
         return {"pr_number": pr.number, "title": pr.title, "url": pr.url}
+
+    async def _tool_create_pr_with_changes(self, args: dict, ctx: AgentContext) -> dict:
+        import pygit2
+        repo_name = args["repo_name"]
+        branch = args["branch"]
+        files = args.get("files", {})
+        commit_msg = args.get("commit_message", "Update")
+        repo_path = f"/data/repos/{repo_name}"
+        loop = asyncio.get_running_loop()
+
+        def _do():
+            try:
+                repo = pygit2.Repository(repo_path)
+            except Exception:
+                return {"error": f"Repo not found at {repo_path}"}
+
+            try:
+                base = repo.head.target
+                repo.branches.local.create(branch, repo[base])
+                repo.checkout(f"refs/heads/{branch}")
+            except pygit2.errors.ExistsError:
+                repo.checkout(f"refs/heads/{branch}")
+            except Exception as e:
+                return {"error": f"Branch failed: {e}"}
+
+            from pathlib import Path as _P
+            written = []
+            for fpath, content in files.items():
+                abs_path = _P(repo_path) / fpath
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_path.write_text(content)
+                written.append(fpath)
+
+            repo.index.add_all()
+            repo.index.write()
+            tree = repo.index.write_tree()
+            sig = pygit2.Signature("TeammateX", "teammatex@local")
+            oid = repo.create_commit(
+                f"refs/heads/{branch}", sig, sig, commit_msg, tree, [base]
+            )
+
+            return {
+                "branch": branch, "commit": str(oid)[:8], "files": written,
+                "repo": repo_name,
+            }
+
+        result = await loop.run_in_executor(None, _do)
+        if "commit" in result:
+            ctx.branch = result["branch"]
+            ctx.files_modified = result["files"]
+        return result
 
     async def _tool_get_diff(self, args: dict) -> dict:
         loop = asyncio.get_running_loop()

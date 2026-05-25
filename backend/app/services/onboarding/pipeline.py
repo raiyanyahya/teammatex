@@ -353,7 +353,8 @@ def _build_graph_sync(repo_id: str, repo_name: str, clone_path: str) -> dict:
         batch = statements[i:i+100]
         try:
             data = json.dumps({"statements": batch}).encode()
-            req = urllib.request.Request("http://neo4j:7474/db/neo4j/tx/commit", data=data,
+            host = _s.neo4j_uri.replace("bolt://", "").split(":")[0]
+            req = urllib.request.Request(f"http://{host}:7474/db/neo4j/tx/commit", data=data,
                 headers={"Content-Type": "application/json", "Authorization": f"Basic {auth}"})
             urllib.request.urlopen(req, timeout=60)
         except Exception as e:

@@ -10,13 +10,21 @@ logger = get_logger(__name__)
 QUERY_INTENTS = {
     "exact_name": ["find", "locate", "where is", "show me the", "what file", "which file contains"],
     "config": ["config", "settings", "env", "parameter", "option", "how to configure", "setup"],
-    "wiring": ["depend", "import", "call", "connect", "how does X call Y", "what uses",
-               "who uses", "reference", "where is X used", "what calls"],
-    "flow": ["how does", "what happens when", "flow", "pipeline", "process", "workflow",
-             "step by step", "trigger", "event"],
-    "conceptual": ["what is", "explain", "architecture", "overview", "concept", "why",
-                   "design", "pattern", "strategy", "how should"],
+    "wiring": ["depend", "import", "call", "connect", "what uses", "who uses", "reference", "where is X used", "what calls"],
+    "flow": ["how does", "what happens when", "flow", "pipeline", "process", "workflow", "step by step", "trigger", "event"],
+    "conceptual": ["what is", "explain", "architecture", "overview", "concept", "why", "design", "pattern", "strategy", "how should"],
 }
+
+
+def classify_query_intent(query: str) -> str:
+    lower = query.lower()
+    scores = {intent: 0 for intent in QUERY_INTENTS}
+    for intent, keywords in QUERY_INTENTS.items():
+        for kw in keywords:
+            if kw in lower:
+                scores[intent] += 1
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "conceptual"
 
 
 def classify_query_intent(query: str) -> str:
@@ -56,22 +64,10 @@ class RAGPipeline:
         max_graph_results: int = 3,
     ) -> str:
         intent = classify_query_intent(query)
-
         chunk_limit = max_chunks
         graph_limit = max_graph_results
-        if intent == "exact_name":
-            chunk_limit = 3
-            graph_limit = 5
-        elif intent == "conceptual":
-            chunk_limit = max(5, max_chunks + 2)
-            graph_limit = max(3, max_graph_results)
-        elif intent == "wiring":
-            graph_limit = max(5, max_graph_results + 2)
 
-        chunks = await self.embedder.search(
-            db, query=query, repo_id=repo_id, limit=chunk_limit,
-        )
-
+        chunks = await self.embedder.search(db, query=query, repo_id=repo_id, limit=chunk_limit)
         graph_results = await self.graph.search_graph(query, limit=graph_limit)
 
         if repo_id:

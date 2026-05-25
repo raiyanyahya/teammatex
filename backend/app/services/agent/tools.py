@@ -129,11 +129,11 @@ class ToolRegistry:
     def _register_git_tools(self):
         self.register(ToolDefinition(
             name="create_branch",
-            description="Create a new git branch prefixed with teammatex/.",
+            description="Create a new git branch.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Branch name (teammatex/ prefix added automatically)"},
+                    "name": {"type": "string", "description": "Branch name"},
                     "base": {"type": "string", "description": "Base branch (default: main)", "default": "main"},
                 },
                 "required": ["name"],
