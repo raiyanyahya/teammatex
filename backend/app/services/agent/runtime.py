@@ -100,6 +100,9 @@ class AgentRuntime:
         import json
 
         ctx = AgentContext(repo_id=repo_id, db=db)
+        is_edit_request = any(w in user_message.lower() for w in
+            ["update", "fix", "change", "modify", "add", "remove", "create", "patch",
+             "refactor", "rewrite", "bump", "pr", "pull request", "branch", "commit"])
 
         try:
             context = await self.rag.retrieve_context(db, user_message, repo_id)
@@ -177,13 +180,6 @@ class AgentRuntime:
         messages.append({"role": "user", "content": user_message})
 
         tools = self.tools.get_openai_tools()
-        # Only send edit/write tools when the user explicitly asks for code changes.
-        # Research (Aider benchmarks) shows models write worse code when forced into
-        # JSON tool calling for every interaction. Keep read tools always available.
-        is_edit_request = any(w in user_message.lower() for w in
-            ["update", "fix", "change", "modify", "add", "remove", "create", "patch",
-             "refactor", "rewrite", "bump", "pr", "pull request", "branch", "commit"])
-        
         if not is_edit_request:
             read_tool_names = {"read_file", "list_directory", "glob_search", "grep_search",
                              "graph_query", "semantic_search", "get_architecture",
