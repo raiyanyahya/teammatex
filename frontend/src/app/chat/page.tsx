@@ -127,15 +127,17 @@ export default function ChatPage() {
       setActiveTool(null);
 
       if (accumulated) {
+        const toolNote = toolMessages.length > 0
+          ? `\n\n<small style='color:#4a4a4e'>✓ ${toolMessages.map(t => t.tool).join(', ')}</small>`
+          : '';
         setMessages((prev) => [
           ...prev,
-          ...toolMessages,
-          { role: "assistant", content: accumulated },
+          { role: "assistant", content: accumulated + toolNote },
         ]);
-      } else if (toolMessages.length > 0) {
+      } else if (toolMessages.length > 0 && accumulated === "") {
         setMessages((prev) => [
           ...prev,
-          ...toolMessages,
+          { role: "assistant", content: "(I checked the codebase but need you to be more specific — what exactly are you looking for?)" },
         ]);
       }
       setStreamContent("");
@@ -163,29 +165,7 @@ export default function ChatPage() {
           <div className="space-y-5">
             {messages.map((msg, i) => {
               if (msg.role === "tool") {
-                return (
-                  <div key={i} className="flex justify-center">
-                    <button
-                      onClick={() => {
-                        setMessages(prev => { const u = [...prev]; u[i].expanded = !u[i].expanded; return u; });
-                      }}
-                      className="group rounded-full border border-[#2a2a30] bg-[#19191f] px-3 py-1 text-[11px] text-[#5a5a5e] hover:border-[#3a3a40] hover:text-[#8a8a8e] transition-all"
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <Wrench className="h-3 w-3" />
-                        <span className="font-medium">{msg.tool}</span>
-                        {!msg.expanded && msg.args && (
-                          <span className="opacity-60">— {msg.args.slice(0, 60)}</span>
-                        )}
-                      </span>
-                      {msg.expanded && msg.result && (
-                        <pre className="mt-1 max-h-24 overflow-y-auto text-left text-[10px] text-[#6a6a6e] whitespace-pre-wrap border-t border-[#2a2a30] pt-1">
-                          {msg.result}
-                        </pre>
-                      )}
-                    </button>
-                  </div>
-                );
+                return null;
               }
 
               return (

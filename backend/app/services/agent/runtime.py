@@ -86,33 +86,54 @@ class AgentRuntime:
             context = await self.rag.retrieve_context(db, user_message, repo_id)
         except Exception:
             context = ""
+
+        repo_details = []
+        github_connected = False
         try:
             from app.models.repo import Repo
             from sqlalchemy import select
             result = await db.execute(select(Repo).where(Repo.is_active == True).limit(10))
             repos = result.scalars().all()
+            for r in repos:
+                detail = f"- **{r.local_name}**: {r.default_branch or 'main'}"
+                if hasattr(r, 'language') and r.language:
+                    detail += f", primary: {r.language}"
+                repo_details.append(detail)
             if repos:
-                context += "\nOnboarded repos: " + ", ".join(r.local_name for r in repos)
+                context += f"\n\nOnboarded repos ({len(repos)}):\n" + "\n".join(repo_details)
+            # Check GitHub integration
+            from app.config import settings as _s
+            github_connected = bool(_s.github_client_secret or _s.github_webhook_secret)
         except Exception:
             pass
 
+        # Build capabilities list
+        capabilities = [
+            "File reading and directory listing",
+            "Code search via regex and semantic search",
+            "Knowledge graph queries (entities, dependencies, architecture)",
+            "Git commit log, diff, and blame",
+        ]
+        if github_connected:
+            capabilities.append("GitHub API: PR listing, branch creation, code review posting")
+
         system_prompt = self._get_persona_prompt()
-        system_prompt += f"\n\nCodebase context:\n{context}"
+        system_prompt += f"\n\nCodebase knowledge:\n{context}"
 
-        if "LOW CONFIDENCE" in context:
-            confidence_note = (
-                "\n\n⚠️ Some context results have low confidence. "
-                "When answering based on low-confidence sources, clearly indicate your uncertainty "
-                "and suggest verification steps."
-            )
-            system_prompt += confidence_note
+        system_prompt += f"""
+\n\nYOUR CAPABILITIES: {', '.join(capabilities)}.
 
-        system_prompt += (
-            "\n\nTOOLS: You can use tools to search code, read files, and explore repos. "
-            "But for simple questions (\"how many repos\", \"what's my name\", etc.), "
-            "answer DIRECTLY without tools. "
-            "When you answer, be conversational — like a real teammate. Keep it short and natural."
-        )
+RULES FOR USING TOOLS:
+- For simple factual questions about the codebase (repos, languages, file counts, overview),
+  answer DIRECTLY from the knowledge above. DO NOT use tools.
+- Only use tools when you genuinely need to read a file, search code, or query the graph.
+- NEVER use run_command for things you already know from context.
+- NEVER say \"I don't have access\" or \"not cloned\" — all repos ARE cloned and available.
+- If a tool returns empty or error, stop after 2 attempts and explain what you know.
+- Be a real teammate: direct, helpful, and conversational. No corporate speak."""
+
+        if not github_connected:
+            system_prompt += "\n\n(GitHub integration is NOT connected. For PR/branch questions, tell the user to connect GitHub in Settings.)"
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:
@@ -359,7 +380,7 @@ class AgentRuntime:
                          "find_dependencies", "get_architecture", "search_notes",
                          "write_note", "read_file", "list_directory", "glob_search",
                          "run_command", "ask_question", "report_status", "graph_query",
-                         "explain_architecture", "trace_issue"):
+                         "explain_architecture", "trace_issue", "list_prs"):
             return await self._dispatch_legacy(tool_name, args, ctx)
         elif tool_name == "write_file":
             return await self._tool_write_file(args, ctx)
@@ -672,6 +693,24 @@ class AgentRuntime:
                 args.get("file_path", ""), "",
             )
             return result
+        elif tool_name == "list_prs":
+            from app.config import settings as _s
+            if not _s.github_client_secret and not _s.github_webhook_secret:
+                hint = "GitHub integration not configured. Connect GitHub in Settings."
+                return {"error": hint, "hint": hint}
+            from app.services.integrations.github import GitHubProvider
+            provider = GitHubProvider()
+            repo_name = args.get("repo_name", "")
+            state = args.get("state", "open")
+            limit = args.get("limit", 10)
+            try:
+                prs = await provider.list_prs(repo_name, state)
+                prs = prs[:limit]
+                return {"repo": repo_name, "count": len(prs), "prs": [{"number": p.number, "title": p.title, "url": p.url} for p in prs]}
+            except Exception as e:
+                return {"error": f"Failed to list PRs: {str(e)}"}
+            finally:
+                await provider.close()
         elif tool_name == "run_command":
             import subprocess
             loop = asyncio.get_running_loop()

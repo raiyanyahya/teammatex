@@ -489,6 +489,21 @@ class ToolRegistry:
             category="knowledge",
         ))
 
+        self.register(ToolDefinition(
+            name="list_prs",
+            description="List open pull requests for an onboarded repository. Requires GitHub integration.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo_name": {"type": "string", "description": "Local name of the onboarded repo (e.g. 'kit-fork')"},
+                    "state": {"type": "string", "description": "PR state filter: open, closed, all (default: open)"},
+                    "limit": {"type": "integer", "description": "Max PRs to list (default: 10)", "default": 10},
+                },
+                "required": ["repo_name"],
+            },
+            category="integrations",
+        ))
+
     def register(self, tool: ToolDefinition) -> None:
         self._tools[tool.name] = tool
 
