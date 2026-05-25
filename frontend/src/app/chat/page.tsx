@@ -57,11 +57,16 @@ export default function ChatPage() {
     let accumulated = "";
     let toolMessages: Message[] = [];
 
+    const history = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-20)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     try {
       const response = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({ message: userMsg, history }),
       });
 
       const reader = response.body?.getReader();

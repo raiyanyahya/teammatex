@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
     repo_id: str | None = None
     conversation_id: str | None = None
+    history: list[dict] | None = None
 
 
 class PlanRequest(BaseModel):
@@ -52,7 +53,7 @@ class ReviewRequest(BaseModel):
 @router.post("/chat")
 async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
     async def stream():
-        async for event in agent_runtime.chat(db, payload.message, payload.repo_id):
+        async for event in agent_runtime.chat(db, payload.message, payload.repo_id, payload.history):
             yield event
         yield "data: [DONE]\n\n"
 

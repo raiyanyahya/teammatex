@@ -110,13 +110,15 @@ class AgentRuntime:
         system_prompt += (
             "\n\nTOOLS: You can use tools to search code, read files, and explore repos. "
             "But for simple questions (\"how many repos\", \"what's my name\", etc.), "
-            "answer DIRECTLY without tools. Only use tools when you genuinely need codebase context. "
+            "answer DIRECTLY without tools. "
             "When you answer, be conversational — like a real teammate. Keep it short and natural."
         )
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:
-            messages.extend(conversation_history[-20:])
+            for msg in conversation_history[-30:]:
+                if msg.get("role") in ("user", "assistant"):
+                    messages.append({"role": msg["role"], "content": msg.get("content", "")})
         messages.append({"role": "user", "content": user_message})
 
         tools = self.tools.get_openai_tools()

@@ -260,53 +260,199 @@ def _learn_styles(clone_path: str) -> list[str]:
 
 
 def _build_graph_sync(repo_id: str, repo_name: str, clone_path: str) -> dict:
-    import asyncio
     from pathlib import Path
-    from app.services.onboarding.graph_builder import GraphBuilder
+    import json, urllib.request, base64
+    from app.config import settings as _s
+    from app.services.knowledge.graph_ids import node_id, edge_id, EXTRACTOR_VERSION
+    from app.services.knowledge.repo_manifest import RepoManifest
+    from app.services.onboarding.code_parser import CodeParser
 
     root = Path(clone_path)
     if not root.exists():
         return {"files_processed": 0, "entities_found": 0, "relationships_created": 0}
 
-    try:
-        builder = GraphBuilder()
-        result = asyncio.run(builder.build(repo_id, repo_name, clone_path))
-        return result
-    except Exception as e:
-        logger.error("graph_build_failed", repo=repo_name, error=str(e)[:200])
-        return {"files_processed": 0, "entities_found": 0, "relationships_created": 0, "error": str(e)[:200]}
+    parser = CodeParser()
+    auth = base64.b64encode(f"{_s.neo4j_user}:{_s.neo4j_password}".encode()).decode()
+    statements = []
+    files_processed = 0
+    entities_found = 0
+    relationships_created = 0
+
+    repo_nid = node_id(repo_id, "Repository", repo_name)
+    statements.append({
+        "statement": "MERGE (r:Repository {id: $id}) SET r.repo_id = $repo_id, r.name = $name, r.version = $version",
+        "parameters": {"id": repo_nid, "repo_id": repo_id, "name": repo_name, "version": EXTRACTOR_VERSION}
+    })
+
+    lang_map = {".py": "python", ".js": "javascript", ".ts": "typescript",
+                ".tsx": "typescript", ".go": "go", ".rs": "rust", ".java": "java"}
+
+    for file_path in root.rglob("*"):
+        if not file_path.is_file() or ".git" in file_path.parts:
+            continue
+        files_processed += 1
+        if files_processed > 500:
+            break
+
+        rel = str(file_path.relative_to(root))
+        ext = file_path.suffix
+        lang = lang_map.get(ext, "")
+        role = RepoManifest.classify_path_role(rel)
+        file_nid = node_id(repo_id, "File", rel)
+
+        try:
+            content = file_path.read_text(errors="replace")
+        except Exception:
+            content = ""
+
+        statements.append({
+            "statement": "MERGE (f:File {id: $id}) SET f.repo_id = $repo_id, f.path = $path, f.language = $lang, f.role = $role, f.version = $version WITH f MATCH (r:Repository {id: $repo_nid}) MERGE (f)-[:PART_OF]->(r)",
+            "parameters": {"id": file_nid, "repo_id": repo_id, "path": rel, "lang": lang, "role": role, "version": EXTRACTOR_VERSION, "repo_nid": repo_nid}
+        })
+        entities_found += 1
+
+        # Parse with tree-sitter for entity extraction
+        analysis = parser.parse_file(str(file_path))
+        if analysis:
+            for entity in analysis.entities:
+                if entity.kind == "function":
+                    fn_nid = node_id(repo_id, "Function", rel, entity.name)
+                    statements.append({
+                        "statement": "MERGE (fn:Function {id: $id}) SET fn.repo_id = $repo_id, fn.file_path = $path, fn.name = $name, fn.start_line = $start, fn.end_line = $end, fn.language = $lang, fn.signature = $sig, fn.version = $v WITH fn MATCH (f:File {id: $fid}) MERGE (fn)-[:PART_OF]->(f)",
+                        "parameters": {"id": fn_nid, "repo_id": repo_id, "path": rel, "name": entity.name, "start": entity.start_line, "end": entity.end_line, "lang": lang, "sig": entity.signature or "", "v": EXTRACTOR_VERSION, "fid": file_nid}
+                    })
+                    entities_found += 1
+                elif entity.kind == "class":
+                    cls_nid = node_id(repo_id, "Class", rel, entity.name)
+                    statements.append({
+                        "statement": "MERGE (c:Class {id: $id}) SET c.repo_id = $repo_id, c.file_path = $path, c.name = $name, c.start_line = $start, c.end_line = $end, c.language = $lang, c.version = $v WITH c MATCH (f:File {id: $fid}) MERGE (c)-[:PART_OF]->(f)",
+                        "parameters": {"id": cls_nid, "repo_id": repo_id, "path": rel, "name": entity.name, "start": entity.start_line, "end": entity.end_line, "lang": lang, "v": EXTRACTOR_VERSION, "fid": file_nid}
+                    })
+                    entities_found += 1
+
+            for dep in analysis.dependencies:
+                if dep.kind == "imports" and dep.target:
+                    for mod_name in dep.target.replace("import ", "").replace("from ", "").split(","):
+                        clean = mod_name.strip().strip("\"'").split()[0].lstrip(".")
+                        if clean and not clean.startswith("."):
+                            mod_nid = node_id(repo_id, "Module", clean)
+                            statements.append({
+                                "statement": "MERGE (m:Module {id: $id}) SET m.repo_id = $repo_id, m.name = $name, m.version = $v WITH m MATCH (r:Repository {id: $rnid}) MERGE (m)-[:PART_OF]->(r)",
+                                "parameters": {"id": mod_nid, "repo_id": repo_id, "name": clean, "v": EXTRACTOR_VERSION, "rnid": repo_nid}
+                            })
+                            relationships_created += 1
+                elif dep.kind == "calls" and dep.target:
+                    caller_nid = node_id(repo_id, "Function", rel, dep.source or "")
+                    statements.append({
+                        "statement": "MATCH (a:Function {id: $cid}) MERGE (b:Function {repo_id: $repo_id, name: $cname}) MERGE (a)-[r:CALLS]->(b) SET r.version = $v",
+                        "parameters": {"cid": caller_nid, "repo_id": repo_id, "cname": dep.target, "v": EXTRACTOR_VERSION}
+                    })
+                    relationships_created += 1
+
+    for i in range(0, len(statements), 100):
+        batch = statements[i:i+100]
+        try:
+            data = json.dumps({"statements": batch}).encode()
+            req = urllib.request.Request("http://neo4j:7474/db/neo4j/tx/commit", data=data,
+                headers={"Content-Type": "application/json", "Authorization": f"Basic {auth}"})
+            urllib.request.urlopen(req, timeout=60)
+        except Exception as e:
+            logger.warning("neo4j_batch_failed", repo=repo_name, error=str(e)[:100])
+
+    return {"files_processed": files_processed, "entities_found": entities_found, "relationships_created": relationships_created}
 
 
 def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
-    import asyncio
     from pathlib import Path
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import create_engine, text as sqla_text
     from app.config import settings as _s
-    from app.services.onboarding.embedding_builder import EmbeddingBuilder
+    from app.services.knowledge.chunker import CodeChunker
+    import hashlib
 
     root = Path(clone_path)
     if not root.exists():
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0}
 
-    async_engine = None
     try:
-        async_engine = create_async_engine(_s.database_url, pool_pre_ping=True)
-        async_session = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+        engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
 
-        async def _run():
-            async with async_session() as db:
-                builder = EmbeddingBuilder()
-                return await builder.build(db, clone_path, repo_id)
+        # Create table and extension
+        with engine.connect() as conn:
+            conn.execute(sqla_text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.execute(sqla_text(f"""
+            CREATE TABLE IF NOT EXISTS code_embeddings (
+                id VARCHAR(32) PRIMARY KEY,
+                text TEXT NOT NULL,
+                embedding vector({384 if _s.embedding_provider == 'local' else 1536}),
+                file_path VARCHAR(1024) NOT NULL,
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                entity_type VARCHAR(50),
+                language VARCHAR(50),
+                entity_name VARCHAR(255)
+            )
+            """))
+            conn.commit()
 
-        result = asyncio.run(_run())
-        return result
+        # Load embedding model and compute
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer(_s.embedding_model)
+        chunker = CodeChunker()
+
+        files_scanned = 0
+        chunks_stored = 0
+        lang_map = {".py": "python", ".js": "javascript", ".ts": "typescript",
+                    ".tsx": "typescript", ".go": "go", ".rs": "rust", ".java": "java"}
+        all_chunks = []
+
+        for file_path in root.rglob("*"):
+            if not file_path.is_file() or ".git" in file_path.parts:
+                continue
+            if files_scanned >= 5000:
+                break
+
+            ext = file_path.suffix.lower()
+            lang = lang_map.get(ext)
+            if not lang:
+                continue
+
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            if not content.strip():
+                continue
+
+            chunks = chunker.chunk_file(content, str(file_path.relative_to(root)), lang)
+            all_chunks.extend(chunks)
+            files_scanned += 1
+
+        if all_chunks:
+            texts = [c.text for c in all_chunks]
+            vectors = model.encode(texts, show_progress_bar=False).tolist()
+
+            with engine.connect() as conn:
+                for chunk, vector in zip(all_chunks, vectors):
+                    chunk_id = hashlib.md5(f"{chunk.file_path}:{chunk.start_line}".encode()).hexdigest()
+                    vector_str = "[" + ",".join(str(v) for v in vector) + "]"
+                    try:
+                        conn.execute(sqla_text(
+                            "INSERT INTO code_embeddings (id, text, embedding, file_path, start_line, end_line, entity_type, language, entity_name) "
+                            "VALUES (:id, :text, CAST(:emb AS vector), :fp, :sl, :el, :et, :la, :en) "
+                            "ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, text = EXCLUDED.text"
+                        ), {"id": chunk_id, "text": chunk.text, "emb": vector_str, "fp": chunk.file_path,
+                            "sl": chunk.start_line, "el": chunk.end_line, "et": chunk.entity_type,
+                            "la": chunk.language, "en": chunk.entity_name})
+                        chunks_stored += 1
+                    except Exception:
+                        pass
+                conn.commit()
+
+        engine.dispose()
+        return {"files_scanned": files_scanned, "chunks_created": len(all_chunks), "chunks_stored": chunks_stored}
     except Exception as e:
         logger.error("embedding_build_failed", repo=repo_id, error=str(e)[:200])
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0, "error": str(e)[:200]}
-    finally:
-        if async_engine:
-            asyncio.run(async_engine.dispose())
 
 
 def _persist_memory_sync():
