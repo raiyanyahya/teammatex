@@ -98,8 +98,6 @@ class LLMProvider:
 
     @classmethod
     def _get_model_name(cls, provider: str, model: str) -> str:
-        if model in ("deepseek-v4-flash", "deepseek-v4-pro"):
-            return f"deepseek/deepseek-chat"
         mapping = {
             "anthropic": f"anthropic/{model}",
             "openai": model,
@@ -118,8 +116,7 @@ class LLMProvider:
         last_error = None
 
         for provider, model, api_key in providers:
-            # Force DeepSeek to always use deepseek-chat which LiteLLM supports
-            actual_model = "deepseek/deepseek-chat" if provider == "deepseek" else cls._get_model_name(provider, model)
+            actual_model = cls._get_model_name(provider, model)
             kwargs: dict[str, Any] = {
                 "model": actual_model, "messages": messages,
                 "temperature": temperature, "max_tokens": max_tokens,
@@ -129,12 +126,15 @@ class LLMProvider:
                 kwargs["tools"] = tools
             try:
                 response = await acompletion(**kwargs)
-                cost = completion_cost(completion_response=response)
-                logger.debug("llm_call", provider=provider, model=model_name, cost=cost)
+                try:
+                    cost = completion_cost(completion_response=response)
+                except Exception:
+                    cost = 0.0
+                logger.debug("llm_call", provider=provider, model=model, cost=cost)
                 return {
                     "content": response.choices[0].message.content or "",
                     "role": response.choices[0].message.role,
-                    "model": model_name,
+                    "model": model,
                     "provider": provider,
                     "usage": {
                         "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
@@ -156,7 +156,7 @@ class LLMProvider:
         providers = await cls._get_available_providers()
         last_error = None
         for provider, model, api_key in providers:
-            actual_model = "deepseek/deepseek-chat" if provider == "deepseek" else cls._get_model_name(provider, model)
+            actual_model = cls._get_model_name(provider, model)
             try:
                 response = await acompletion(
                     model=actual_model, messages=messages,

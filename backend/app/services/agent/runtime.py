@@ -46,15 +46,10 @@ def _get_github_token() -> str:
 
 logger = get_logger(__name__)
 
-SAFE_ROOTS = ["/data/repos", "/tmp", "/app"]
-
-
 def _is_safe_path(path: str) -> bool:
-    resolved = _Path(path).resolve()
-    return any(
-        str(resolved).startswith(_Path(r).resolve().as_posix())
-        for r in SAFE_ROOTS
-    )
+    # Full access inside the container (the container is the sandbox, and
+    # run_command is already unrestricted). Any concrete path is allowed.
+    return bool(path and str(path).strip())
 
 
 class AgentState(str, Enum):
@@ -92,6 +87,68 @@ class AgentRuntime:
         template = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["helpful_senior_dev"])
         return template.format(name=settings.teammate_name)
 
+    # Tools the chat agent is allowed to drive. A small, powerful set: a real
+    # shell does the git/gh/test work, so there are no scripted git tools and no
+    # (currently empty) graph/semantic tools to waste turns on.
+    CORE_TOOLS = {
+        "read_file", "write_file", "edit_file", "list_directory",
+        "glob_search", "grep_search", "run_command", "web_search",
+    }
+
+    def _curated_tools(self) -> list[dict]:
+        return [t for t in self.tools.get_openai_tools()
+                if t["function"]["name"] in self.CORE_TOOLS]
+
+    async def _github_token_present(self, db: AsyncSession | None) -> bool:
+        from app.config import settings as _s
+        if _s.github_client_secret or _s.github_webhook_secret:
+            return True
+        if db is None:
+            return False
+        try:
+            from sqlalchemy import select
+            from app.models.app_config import AppConfig
+            result = await db.execute(select(AppConfig).where(AppConfig.key == "github_token"))
+            row = result.scalar_one_or_none()
+            if row and row.value:
+                data = json.loads(row.value) if isinstance(row.value, str) else row.value
+                return bool(data.get("token"))
+        except Exception:
+            pass
+        return False
+
+    def _build_system_prompt(self, context: str, env_block: str,
+                             github_connected: bool) -> str:
+        name = settings.teammate_name
+        git_caps = (
+            "git is installed and configured, and the `gh` GitHub CLI is installed "
+            "and authenticated — so you can branch, edit, commit, push, and open "
+            "real pull requests entirely on your own by running commands."
+            if github_connected else
+            "git is installed for local work; pushing or opening a PR needs a GitHub "
+            "token, so if the user asks for a PR and one isn't configured, tell them "
+            "to add a token in Settings."
+        )
+        parts = [
+            f"You are {name}, an autonomous software-engineering teammate working on "
+            f"the user's codebases. You are NOT Claude, GPT, or any specific model.",
+            "",
+            "You have a real Linux shell with full access via the run_command tool, "
+            "plus tools to read/write/edit files, search code (grep/glob), and search "
+            f"the live web. {git_caps}",
+            "",
+            "Work like a senior engineer: investigate first (read, grep, ls), make the "
+            "change, verify it where you can (build/lint/test), then deliver. Decide HOW "
+            "to do a task yourself and just do it — don't ask permission for routine "
+            "steps, and never write tool calls as plain text. When finished, reply with "
+            "a short plain-text summary of what you did, including any PR links.",
+            "",
+            env_block or "",
+        ]
+        if context:
+            parts += ["", "Relevant code context:", context]
+        return "\n".join(parts)
+
     async def chat(
         self, db: AsyncSession, user_message: str,
         repo_id: str | None = None, conversation_history: list[dict] | None = None,
@@ -100,77 +157,19 @@ class AgentRuntime:
         import json
 
         ctx = AgentContext(repo_id=repo_id, db=db)
-        is_edit_request = any(w in user_message.lower() for w in
-            ["update", "fix", "change", "modify", "add", "remove", "create", "patch",
-             "refactor", "rewrite", "bump", "pr", "pull request", "branch", "commit"])
-
         try:
             context = await self.rag.retrieve_context(db, user_message, repo_id)
         except Exception:
             context = ""
 
-        repo_details = []
-        github_connected = False
-        repo_path_hints = []
         try:
-            from app.models.repo import Repo
-            from sqlalchemy import select
-            result = await db.execute(select(Repo).where(Repo.is_active == True).limit(10))
-            repos = result.scalars().all()
-            for r in repos:
-                detail = f"- **{r.local_name}**: branch={r.default_branch or 'main'}"
-                if hasattr(r, 'language') and r.language:
-                    detail += f", lang={r.language}"
-                repo_details.append(detail)
-                repo_path_hints.append(f"/data/repos/{r.local_name}")
-            if repos:
-                context += f"\n\nOnboarded repos ({len(repos)}):\n" + "\n".join(repo_details)
-                context += f"\nClone paths: {', '.join(repo_path_hints)}"
-            # Check GitHub integration (env or DB)
-            from app.config import settings as _s
-            github_connected = bool(_s.github_client_secret or _s.github_webhook_secret)
-            if not github_connected:
-                try:
-                    from sqlalchemy import select as _sel
-                    from app.models.app_config import AppConfig
-                    result = await db.execute(_sel(AppConfig).where(AppConfig.key == "github_token"))
-                    row = result.scalar_one_or_none()
-                    if row and row.value:
-                        import json as _json
-                        token_data = _json.loads(row.value) if isinstance(row.value, str) else row.value
-                        if token_data.get("token"):
-                            github_connected = True
-                except Exception:
-                    pass
+            from app.services.agent.environment import build_environment_context
+            env_block = await build_environment_context(db)
         except Exception:
-            pass
+            env_block = ""
 
-        # Build capabilities list
-        capabilities = [
-            "File reading and directory listing",
-            "Code search via regex and semantic search",
-            "Knowledge graph queries (entities, dependencies, architecture)",
-            "Git commit log, diff, and blame",
-        ]
-        if github_connected:
-            capabilities.append("GitHub API: PR listing, branch creation, code review posting")
-
-        system_prompt = self._get_persona_prompt()
-        system_prompt += f"\n\nCodebase:\n{context}"
-        system_prompt += f"\nCapabilities: {', '.join(capabilities)}."
-
-        # Claude Code insight: for multi-step tasks, batch ALL tool calls in ONE response
-        if is_edit_request:
-            system_prompt += (
-                "\n\nIMPORTANT: You can call MULTIPLE tools in a single response. For git workflows "
-                "(branch → edit → commit → PR), call ALL tools at once. Use run_command for git ops: "
-                "git checkout -b, git add, git commit, git push. Do NOT spread work across messages."
-            )
-
-        if not github_connected:
-            system_prompt += "\n\n(GitHub not connected. For local git: use run_command. For PRs: suggest Settings.)"
-        else:
-            system_prompt += "\n\n(GitHub connected: use list_prs for pull requests.)"
+        github_connected = await self._github_token_present(db)
+        system_prompt = self._build_system_prompt(context, env_block, github_connected)
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:
@@ -179,148 +178,56 @@ class AgentRuntime:
                     messages.append({"role": msg["role"], "content": msg.get("content", "")})
         messages.append({"role": "user", "content": user_message})
 
-        tools = self.tools.get_openai_tools()
-        if not is_edit_request:
-            read_tool_names = {"read_file", "list_directory", "glob_search", "grep_search",
-                             "graph_query", "semantic_search", "get_architecture",
-                             "search_notes", "list_prs", "find_owner",
-                             "find_dependents", "find_dependencies",
-                             "explain_architecture", "trace_issue", "run_command"}
-            tools = [t for t in tools if t["function"]["name"] in read_tool_names]
-        max_iterations = 8
-        empty_tool_results = 0
-        read_tool_count = 0
-        total_tokens_in = 0
-        total_tokens_out = 0
-        total_cost = 0
-        llm_call_count = 0
-        used_provider = "deepseek"
-        used_model_name = "deepseek-chat"
+        tools = self._curated_tools()
 
-        for iteration in range(max_iterations):
+        usage = {"in": 0, "out": 0, "calls": 0,
+                 "provider": "deepseek", "model": "deepseek-v4-flash"}
+
+        async def llm_call(msgs, tls):
             providers = await LLMProvider._get_available_providers()
-            response = None
-
             for provider, model, key in providers:
                 try:
-                    actual_model = "deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}"
-                    response = await acompletion(
-                        model=actual_model, messages=messages, api_key=key,
-                        temperature=0.2, max_tokens=2000, tools=tools,
-                    )
-                    used_provider = provider
-                    used_model_name = model
-                    break
-                except Exception:
-                    continue
-
-            if not response:
-                yield "data: {\"type\":\"error\",\"content\":\"LLM unavailable\"}\n\n"
-                return
-
-            choice = response.choices[0]
-            msg = choice.message
-            llm_call_count += 1
-            if response.usage:
-                total_tokens_in += response.usage.prompt_tokens or 0
-                total_tokens_out += response.usage.completion_tokens or 0
-
-            has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-            logger.debug("llm_response", has_content=bool(msg.content), tool_count=len(msg.tool_calls) if has_tool_calls else 0,
-                        first_tool=(msg.tool_calls[0].function.name if has_tool_calls else ""),
-                        tc_type=str(type(msg.tool_calls[0])) if has_tool_calls else "")
-
-            if msg.content and not has_tool_calls:
-                yield f"data: {json.dumps({'type': 'text', 'content': msg.content})}\n\n"
-                messages.append({"role": "assistant", "content": msg.content})
-                break
-
-            if not has_tool_calls:
-                break
-
-            for tc in msg.tool_calls[:5]:
-                tool_name = tc.function.name
-                raw_args = tc.function.arguments
-                logger.debug("processing_tool_call", name=tool_name, args_type=str(type(raw_args)), args_preview=str(raw_args)[:200])
-                tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-
-                yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name, 'args': str(tool_args)[:200]})}\n\n"
-
-                try:
-                    result = await self.execute_tool(ctx, tool_name, tool_args)
-                    result_str = json.dumps(result)[:3000]
-                except Exception as e:
-                    result_str = json.dumps({"error": str(e)})
-
-                # Track empty results (skip for read-only tools)
-                read_tools = {"read_file", "list_directory", "glob_search", "graph_query",
-                             "semantic_search", "search_notes", "list_prs", "get_architecture",
-                             "find_owner", "find_dependents", "find_dependencies",
-                             "explain_architecture", "trace_issue"}
-                if tool_name not in read_tools:
-                    parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
-                    if isinstance(parsed, dict):
-                        data = parsed.get("data", parsed)
-                        if data == [] or data == {} or data == 0 or data == "" or data is None:
-                            empty_tool_results += 1
-                        elif isinstance(data, dict) and data.get("error"):
-                            empty_tool_results += 1
-                        else:
-                            empty_tool_results = 0
-
-                yield f"data: {json.dumps({'type': 'tool_end', 'tool': tool_name, 'result': result_str[:500]})}\n\n"
-
-                messages.append({"role": "assistant", "content": None, "tool_calls": [tc]})
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
-
-            if empty_tool_results >= 5:
-                yield "data: {\"type\":\"text\",\"content\":\"(Tools aren't producing useful results. Working with what I have...)\"}\n\n"
-                break
-
-            if iteration == max_iterations - 1:
-                yield "data: {\"type\":\"text\",\"content\":\"(Let me pull together what I found...)\"}\n\n"
-
-        # Final synthesis if no natural response yet
-        if not any(m.get("role") == "assistant" and m.get("content") for m in messages[-6:]):
-            messages.append({
-                "role": "system",
-                "content": "Synthesize a natural response based on all collected info. No tools. Be direct."
-            })
-            providers = await LLMProvider._get_available_providers()
-            synth_content = ""
-            for provider, model, key in providers:
-                try:
-                    actual_model = "deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}"
+                    actual_model = LLMProvider._get_model_name(provider, model)
                     resp = await acompletion(
-                        model=actual_model, messages=messages, api_key=key,
-                        temperature=0.3, max_tokens=1000,
+                        model=actual_model, messages=msgs, api_key=key,
+                        temperature=0.2, max_tokens=2000, tools=tls,
                     )
-                    synth_content = resp.choices[0].message.content or ""
-                    if synth_content:
-                        break
+                    usage["calls"] += 1
+                    usage["provider"], usage["model"] = provider, model
+                    if resp.usage:
+                        usage["in"] += resp.usage.prompt_tokens or 0
+                        usage["out"] += resp.usage.completion_tokens or 0
+                    return resp
                 except Exception as e:
-                    logger.warning("synthesis_failed", provider=provider, error=str(e)[:100])
+                    logger.warning("llm_call_failed", provider=provider, error=str(e)[:200])
                     continue
+            return None
 
-            if synth_content:
-                yield f"data: {json.dumps({'type': 'text', 'content': synth_content})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'text', 'content': '(I checked the codebase but need more context to give you a thorough answer. Try asking about a specific file or function!)'})}\n\n"
+        async def do_tool(name, args):
+            return await self.execute_tool(ctx, name, args)
 
-        if total_tokens_in > 0:
-            pricing = {"deepseek": (0.014, 0.028), "openai": (0.15, 0.60), "anthropic": (0.30, 1.50), "groq": (0.0, 0.0)}
-            rate_in, rate_out = pricing.get(used_provider, (0.014, 0.028))
-            total_cost = int(total_tokens_in * rate_in / 1000 * 100) + int(total_tokens_out * rate_out / 1000 * 100)
+        from app.services.agent.loop import run_agent_loop
+        async for ev in run_agent_loop(
+            llm_call=llm_call, execute_tool=do_tool,
+            messages=messages, tools=tools, max_iterations=25,
+        ):
+            yield f"data: {json.dumps(ev)}\n\n"
+
+        if usage["in"] > 0:
+            pricing = {"deepseek": (0.014, 0.028), "openai": (0.15, 0.60),
+                       "anthropic": (0.30, 1.50), "groq": (0.0, 0.0)}
+            rate_in, rate_out = pricing.get(usage["provider"], (0.014, 0.028))
+            total_cost = (int(usage["in"] * rate_in / 1000 * 100)
+                          + int(usage["out"] * rate_out / 1000 * 100))
             try:
-                await log_cost(used_provider, used_model_name, "chat", total_tokens_in, total_tokens_out, total_cost)
+                await log_cost(usage["provider"], usage["model"], "chat",
+                               usage["in"], usage["out"], total_cost)
             except Exception:
                 pass
             try:
-                await log_audit(
-                    "chat_query", "conversation", "",
-                    f"Chat: {user_message[:80]}", llm_call_count,
-                    total_tokens_in + total_tokens_out, total_cost, "success",
-                )
+                await log_audit("chat_query", "conversation", "",
+                                f"Chat: {user_message[:80]}", usage["calls"],
+                                usage["in"] + usage["out"], total_cost, "success")
             except Exception:
                 pass
 
@@ -443,6 +350,8 @@ class AgentRuntime:
             return await self._tool_edit_file(args, ctx)
         elif tool_name == "grep_search":
             return await self._tool_grep_search(args)
+        elif tool_name == "web_search":
+            return await self._tool_web_search(args)
         elif tool_name == "create_branch":
             return await self._tool_create_branch(args, ctx)
         elif tool_name == "commit_files":
@@ -483,6 +392,10 @@ class AgentRuntime:
         new_content = content.replace(args["old_string"], args["new_string"], 1)
         await loop.run_in_executor(None, lambda: _Path(args["file_path"]).write_text(new_content))
         return {"edited": True, "file_path": args["file_path"]}
+
+    async def _tool_web_search(self, args: dict) -> dict:
+        from app.services.agent.web_search import web_search
+        return await web_search(args["query"], args.get("max_results", 5))
 
     async def _tool_grep_search(self, args: dict) -> dict:
         loop = asyncio.get_running_loop()
@@ -864,7 +777,7 @@ class AgentRuntime:
         elif tool_name == "run_command":
             import subprocess
             loop = asyncio.get_running_loop()
-            timeout = args.get("timeout", 15)
+            timeout = args.get("timeout", 120)
             def _run():
                 try:
                     result = subprocess.run(

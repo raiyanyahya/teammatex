@@ -69,29 +69,23 @@ class TestToolRegistry:
 
 
 class TestPathSafety:
-    def test_safe_path_inside_data_repos(self):
+    # The agent has full access inside the container (the user's choice): the
+    # container IS the sandbox, and run_command is already unrestricted, so the
+    # file tools allow any absolute path here too.
+    def test_allows_repo_path(self):
         assert _is_safe_path("/data/repos/my-repo/src/main.py") is True
 
-    def test_safe_path_tmp(self):
+    def test_allows_tmp(self):
         assert _is_safe_path("/tmp/test-file.py") is True
 
-    def test_safe_path_app(self):
+    def test_allows_app(self):
         assert _is_safe_path("/app/config.py") is True
 
-    def test_unsafe_path_etc_passwd(self):
-        assert _is_safe_path("/etc/passwd") is False
+    def test_allows_arbitrary_container_path(self):
+        assert _is_safe_path("/usr/local/bin/gh") is True
 
-    def test_unsafe_path_home(self):
-        assert _is_safe_path("/home/user/.ssh/id_rsa") is False
-
-    def test_unsafe_path_root(self):
-        assert _is_safe_path("/root/.bashrc") is False
-
-    def test_path_traversal_blocked(self):
-        assert _is_safe_path("/data/repos/../../../etc/passwd") is False
-
-    def test_symlink_like_paths(self):
-        assert _is_safe_path("/data/repos/..") is False
+    def test_rejects_empty_path(self):
+        assert _is_safe_path("") is False
 
 
 class TestCustomToolRegistration:
