@@ -404,21 +404,6 @@ class ToolRegistry:
         ))
 
         self.register(ToolDefinition(
-            name="ask_question",
-            description="Ask the team a question when uncertain. Blocks the current task until answered.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "Current task ID"},
-                    "question": {"type": "string", "description": "The question to ask the team"},
-                    "context": {"type": "object", "description": "Additional context for the question"},
-                },
-                "required": ["task_id", "question"],
-            },
-            category="agent",
-        ))
-
-        self.register(ToolDefinition(
             name="http_request",
             description="Make an HTTP request to an approved external API.",
             parameters={
@@ -448,30 +433,6 @@ class ToolRegistry:
                 "required": ["name", "trigger_time", "action"],
             },
             category="agent",
-        ))
-
-        self.register(ToolDefinition(
-            name="report_status",
-            description="Report the current status of the teammate's tasks and state.",
-            parameters={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-            category="agent",
-        ))
-
-        self.register(ToolDefinition(
-            name="explain_architecture",
-            description="Generate an architecture overview and docs for the codebase. Explains how the system is structured.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Repo ID to explain"},
-                },
-                "required": ["repo_id"],
-            },
-            category="knowledge",
         ))
 
         self.register(ToolDefinition(

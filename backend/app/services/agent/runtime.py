@@ -393,8 +393,8 @@ class AgentRuntime:
         if tool_name in ("semantic_search", "find_owner", "find_dependents",
                          "find_dependencies", "get_architecture", "search_notes",
                          "write_note", "read_file", "list_directory", "glob_search",
-                         "run_command", "ask_question", "report_status", "graph_query",
-                         "explain_architecture", "trace_issue", "list_prs"):
+                         "run_command", "graph_query",
+                         "trace_issue", "list_prs"):
             return await self._dispatch_legacy(tool_name, args, ctx)
         elif tool_name == "write_file":
             return await self._tool_write_file(args, ctx)
@@ -755,10 +755,6 @@ class AgentRuntime:
             return await self.rag.graph.search_graph(
                 args["query"], limit=args.get("limit", 10),
             )
-        elif tool_name == "explain_architecture":
-            from app.services.reporting.docs_generator import docs_generator
-            result = await docs_generator.generate_repo_docs(args["repo_id"], "")
-            return {"architecture": result}
         elif tool_name == "trace_issue":
             from app.services.agent.blame_tracer import blame_tracer
             result = await blame_tracer.trace(
@@ -844,15 +840,6 @@ class AgentRuntime:
                 except subprocess.TimeoutExpired:
                     return {"error": f"Command timed out after {timeout}s", "exit_code": -1}
             return await loop.run_in_executor(None, _run)
-        elif tool_name == "ask_question":
-            logger.info("question_raised", task=args["task_id"], question=args["question"][:200])
-            return {"status": "pending", "question": args["question"]}
-        elif tool_name == "report_status":
-            return {
-                "state": ctx.state.value, "repo": ctx.repo_name,
-                "branch": ctx.branch, "files_modified": len(ctx.files_modified),
-                "memory_items": len(self.memory.working),
-            }
         return {"error": f"Tool {tool_name} not implemented"}
 
 

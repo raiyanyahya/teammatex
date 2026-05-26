@@ -19,7 +19,7 @@ class TestToolRegistry:
             "create_branch", "commit_files", "create_pr",
             "get_diff", "get_blame", "get_commit_log",
             "run_command", "run_tests", "run_lint",
-            "ask_question", "http_request", "schedule_task", "report_status",
+            "http_request", "schedule_task",
         ]
         for tool_name in expected_tools:
             assert tool_name in tools, f"Missing tool: {tool_name}"

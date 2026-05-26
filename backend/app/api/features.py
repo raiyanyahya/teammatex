@@ -11,10 +11,8 @@ from app.services.agent.proactive import (
 )
 from app.services.agent.self_extension import SelfExtension
 from app.services.agent.proactive_extras import (
-    IncidentResponseAssistant,
     SprintRetrospectiveAssistant,
     GitHygieneAutomation,
-    MeetingActionItemExtractor,
 )
 
 router = APIRouter(prefix="/features", tags=["features"])
@@ -23,10 +21,8 @@ doc_gen = DocumentationGenerator()
 release_gen = ReleaseNotesGenerator()
 test_gen = TestGenerator()
 self_ext = SelfExtension()
-incident = IncidentResponseAssistant()
 retro = SprintRetrospectiveAssistant()
 hygiene = GitHygieneAutomation()
-meeting = MeetingActionItemExtractor()
 
 
 from pydantic import BaseModel
@@ -125,54 +121,14 @@ async def analyze_test_gaps(payload: TestGapAnalysisRequest):
     return analysis
 
 
-class IncidentAnalysisRequest(BaseModel):
-    repo_name: str
-    incident_description: str
-
-
-class PostmortemRequest(BaseModel):
-    incident_description: str
-    timeline: list[dict] = []
-    resolution: str
-
-
 class RetroRequest(BaseModel):
     sprint_name: str
     completed: list[dict] = []
     planned: list[dict] = []
 
 
-class VelocityRequest(BaseModel):
-    completed: list[dict] = []
-    sprint_days: int = 10
-
-
-class BottleneckRequest(BaseModel):
-    issues: list[dict] = []
-
-
 class GitHygieneRequest(BaseModel):
     repo_path: str
-
-
-class MeetingExtractRequest(BaseModel):
-    transcript: str
-
-
-# ─── Incident Response ──────────────────────────────────
-
-@router.post("/incident/analyze")
-async def analyze_incident(payload: IncidentAnalysisRequest, db: AsyncSession = Depends(get_db)):
-    result = await incident.analyze_incident(db, payload.repo_name, payload.incident_description)
-    return result
-
-
-@router.post("/incident/postmortem")
-async def generate_postmortem(payload: PostmortemRequest):
-    report = await incident.generate_postmortem(
-        payload.incident_description, payload.timeline, payload.resolution,
-    )
-    return {"postmortem": report}
 
 
 # ─── Sprint Retrospective ───────────────────────────────
@@ -183,29 +139,9 @@ async def generate_retrospective(payload: RetroRequest):
     return {"retrospective": summary}
 
 
-@router.post("/retro/velocity")
-async def compute_velocity(payload: VelocityRequest):
-    result = retro.compute_velocity(payload.completed, payload.sprint_days)
-    return result
-
-
-@router.post("/retro/bottlenecks")
-async def detect_bottlenecks(payload: BottleneckRequest):
-    result = retro.detect_bottlenecks(payload.issues)
-    return {"bottlenecks": result}
-
-
 # ─── Git Hygiene ────────────────────────────────────────
 
 @router.post("/git-hygiene/analyze")
 async def analyze_git_hygiene(payload: GitHygieneRequest):
     result = await hygiene.analyze(payload.repo_path)
     return result
-
-
-# ─── Meeting Extractor ──────────────────────────────────
-
-@router.post("/meeting/extract")
-async def extract_meeting_actions(payload: MeetingExtractRequest):
-    items = await meeting.extract(payload.transcript)
-    return {"action_items": items, "count": len(items)}
