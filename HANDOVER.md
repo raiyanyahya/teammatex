@@ -56,10 +56,11 @@ Only `pyproject.toml`/`package.json`/Dockerfile changes need `docker compose bui
   from the model and self-corrects a table created at the wrong dimension. Search:
   `EmbeddingService.search` / the `semantic_search` tool.
 - **Graph** (Neo4j): `Repository`, `File`, `Function`, `Module`, `Class` joined by
-  `PART_OF`. Files/Functions carry `repo_id`. Tools: `get_architecture` (files ranked
-  by function count, scoped by repo id/name or all repos) and `graph_query` (name
-  search). Re-onboard a repo to populate both.
-- All three knowledge tools are in the chat agent's tool set.
+  `PART_OF`, plus `CALLS` edges between functions (caller → callee). Files/Functions
+  carry `repo_id`. Tools: `get_architecture` (files ranked by function count),
+  `graph_query` (name search), and `find_dependents`/`find_dependencies` (who calls X /
+  what X calls). All scope by repo id/name or span all repos. Re-onboard to populate.
+- These knowledge tools are all in the chat agent's tool set.
 
 ## Switching model (DeepSeek default → Claude/GPT)
 DeepSeek is the cheap default. To use a stronger model for higher tool-calling
@@ -77,8 +78,6 @@ push (read-only tokens clone but 403 on push). git+gh auth self-heals on the fir
 chat after a token is added — no restart needed.
 
 ## Known limitations / not-yet-done
-- The graph has no `CALLS` edges: the tree-sitter parser doesn't currently extract
-  calls (`find_dependents`/`find_dependencies` return empty). Structural-only graph.
 - `pr_reviewer` and the Slack bot need live inputs/config to exercise end to end.
 - `test_api.py` has pre-existing failures (endpoint tests that need DB fixtures); not
   a regression — see the suite baseline.

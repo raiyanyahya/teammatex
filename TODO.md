@@ -37,12 +37,17 @@ this now records what was done and what genuinely remains._
   and added `SECURITY.md`. **The leaked credentials remain in git history — rotate them.**
 - **Docs.** `HANDOVER.md` rewritten to current state; `NEXT.md` retired into `TODO.md`/`SECURITY.md`.
 
+### KG call graph (done)
+- **`CALLS` edges now exist.** Two parser bugs: Python calls weren't detected (the
+  walker only matched `call_expression`; Python uses `call`), and the caller was
+  recorded as the file path instead of the enclosing function (so the builder couldn't
+  match it). Fixed in `onboarding/code_parser.py` (recognize `call`/`call_expression`/
+  `method_invocation`, track the enclosing function). Re-onboarded → 2,734 CALLS edges.
+  `find_dependents`/`find_dependencies` return data and are exposed to the agent
+  (repo id/name or all-repos). `test_parse_detects_calls` now passes.
+
 ## Remaining / next
 
-- [ ] **Graph has no `CALLS` edges** — the tree-sitter parser doesn't extract calls, so
-  `find_dependents`/`find_dependencies` return empty and the call graph is structural-only.
-  (`test_parser_chunker::test_parse_detects_calls` is the failing guard.) Fix call
-  extraction in `onboarding/code_parser.py`, then re-onboard.
 - [ ] **Frontend rebuild** to ship the token-verify UI: `docker compose build frontend`.
 - [ ] **Exercise `pr_reviewer` + Slack** end to end with a live PR / Slack token.
 - [ ] **Pre-existing `test_api.py` failures** (endpoint tests needing DB fixtures) — wire a

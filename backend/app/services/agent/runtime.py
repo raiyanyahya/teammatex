@@ -96,6 +96,7 @@ class AgentRuntime:
         "read_file", "write_file", "edit_file", "list_directory",
         "glob_search", "grep_search", "run_command", "web_search",
         "semantic_search", "graph_query", "get_architecture",
+        "find_dependents", "find_dependencies",
     }
 
     def _curated_tools(self) -> list[dict]:

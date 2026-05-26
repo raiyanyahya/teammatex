@@ -192,18 +192,26 @@ class KnowledgeGraph:
         return record
 
     async def find_dependents(self, repo_id: str, entity_name: str) -> list[dict]:
-        return await self.run("""
-        MATCH (a)-[:CALLS]->(b:Function {repo_id: $repo_id, name: $name})
-        RETURN a.file_path AS file, a.name AS caller, a.start_line AS line
+        """Functions that call `entity_name`. Scoped to a repo (id or name) when
+        one resolves, else across all onboarded repos."""
+        canonical = await self._resolve_repo_id(repo_id)
+        callee = "{repo_id: $repo_id, name: $name}" if canonical else "{name: $name}"
+        return await self.run(f"""
+        MATCH (a:Function)-[:CALLS]->(b:Function {callee})
+        RETURN a.file_path AS file, a.name AS caller, a.start_line AS line, a.repo_id AS repo_id
         LIMIT 50
-        """, repo_id=repo_id, name=entity_name)
+        """, repo_id=canonical, name=entity_name)
 
     async def find_dependencies(self, repo_id: str, entity_name: str) -> list[dict]:
-        return await self.run("""
-        MATCH (a:Function {repo_id: $repo_id, name: $name})-[:CALLS]->(b)
+        """Functions that `entity_name` calls. Scoped to a repo (id or name) when
+        one resolves, else across all onboarded repos."""
+        canonical = await self._resolve_repo_id(repo_id)
+        caller = "{repo_id: $repo_id, name: $name}" if canonical else "{name: $name}"
+        return await self.run(f"""
+        MATCH (a:Function {caller})-[:CALLS]->(b:Function)
         RETURN b.file_path AS file, b.name AS callee, b.language AS language
         LIMIT 50
-        """, repo_id=repo_id, name=entity_name)
+        """, repo_id=canonical, name=entity_name)
 
     async def _resolve_repo_id(self, value: str) -> str | None:
         """Map a repo_id OR a human repo name to the canonical repo_id stored on

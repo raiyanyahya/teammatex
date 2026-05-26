@@ -291,28 +291,28 @@ class ToolRegistry:
 
         self.register(ToolDefinition(
             name="find_dependents",
-            description="Find all functions that call a given function.",
+            description="Find all functions that call a given function (who calls X). Optional repo_id/name scopes it; omit for all repos.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "repo_id": {"type": "string"},
+                    "repo_id": {"type": "string", "description": "Optional repo_id or name; omit for all repos"},
                     "entity_name": {"type": "string", "description": "Function name to find callers of"},
                 },
-                "required": ["repo_id", "entity_name"],
+                "required": ["entity_name"],
             },
             category="knowledge",
         ))
 
         self.register(ToolDefinition(
             name="find_dependencies",
-            description="Find all functions called by a given function.",
+            description="Find all functions called by a given function (what X calls). Optional repo_id/name scopes it; omit for all repos.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "repo_id": {"type": "string"},
+                    "repo_id": {"type": "string", "description": "Optional repo_id or name; omit for all repos"},
                     "entity_name": {"type": "string", "description": "Function name to find callees of"},
                 },
-                "required": ["repo_id", "entity_name"],
+                "required": ["entity_name"],
             },
             category="knowledge",
         ))

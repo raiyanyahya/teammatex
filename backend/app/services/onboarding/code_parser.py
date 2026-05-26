@@ -153,24 +153,34 @@ class CodeParser:
 
         return analysis
 
-    def _walk_tree(self, node, source: str, analysis: FileAnalysis, language: str, depth: int = 0) -> None:
+    # Call-expression node types per grammar: Python `call`; JS/TS/Go/Rust
+    # `call_expression`; Java `method_invocation`. (We only checked
+    # `call_expression`, so Python calls were never detected.)
+    _CALL_NODES = ("call", "call_expression", "method_invocation")
+
+    def _walk_tree(self, node, source: str, analysis: FileAnalysis, language: str,
+                   depth: int = 0, enclosing_fn: str | None = None) -> None:
         if depth > 500:
             return
+        node_fn = enclosing_fn
         if node.type in ("function_definition", "function_declaration", "method_definition"):
-            analysis.entities.append(self._extract_function(node, source, analysis.file_path, language))
+            entity = self._extract_function(node, source, analysis.file_path, language)
+            analysis.entities.append(entity)
+            # Attribute calls inside this subtree to this function (the caller).
+            node_fn = entity.name
         elif node.type in ("class_definition", "class_declaration"):
             analysis.entities.append(self._extract_class(node, source, analysis.file_path, language))
         elif node.type == "import_statement" or node.type == "import_declaration":
             dep = self._extract_import(node, source, analysis.file_path, language)
             if dep:
                 analysis.dependencies.append(dep)
-        elif node.type == "call_expression":
-            dep = self._extract_call(node, source, analysis.file_path, language)
+        elif node.type in self._CALL_NODES:
+            dep = self._extract_call(node, source, analysis.file_path, language, enclosing_fn)
             if dep:
                 analysis.dependencies.append(dep)
 
         for child in node.children:
-            self._walk_tree(child, source, analysis, language, depth + 1)
+            self._walk_tree(child, source, analysis, language, depth + 1, node_fn)
 
     def _extract_function(self, node, source: str, file_path: str, language: str) -> CodeEntity:
         name_node = node.child_by_field_name("name")
@@ -226,12 +236,17 @@ class CodeParser:
             kind="imports",
         )
 
-    def _extract_call(self, node, source: str, file_path: str, language: str) -> Dependency | None:
-        func_node = node.child_by_field_name("function")
+    def _extract_call(self, node, source: str, file_path: str, language: str,
+                      enclosing_fn: str | None = None) -> Dependency | None:
+        # `function` field: Python/JS/TS/Go/Rust; `name` field: Java method_invocation.
+        func_node = node.child_by_field_name("function") or node.child_by_field_name("name")
         if func_node:
             name = func_node.text.decode()[:100]
+            # source is the CALLER function name so the graph builder can match it
+            # to a Function node; falls back to the file for module-level calls
+            # (which have no caller node and so won't create an edge).
             return Dependency(
-                source=file_path,
+                source=enclosing_fn or file_path,
                 target=name,
                 kind="calls",
             )
