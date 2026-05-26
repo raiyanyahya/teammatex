@@ -26,6 +26,30 @@ from app.services.agent.cost_tracker import log_cost, log_audit
 from app.services.llm.provider import LLMProvider
 
 
+def _with_prompt_cache(messages: list[dict]) -> list[dict]:
+    """Mark the (static) system prompt as an Anthropic cache breakpoint.
+
+    The system prompt + tool schemas are re-sent on every turn of the agent
+    loop; on Anthropic that prefix is reprocessed (and re-billed) each time
+    unless an explicit ``cache_control`` breakpoint is set. DeepSeek and OpenAI
+    cache matching prefixes automatically, so this is only needed — and only
+    applied — for Anthropic. Returns a shallow copy; never mutates the caller's
+    list (the loop keeps appending to the original)."""
+    if not messages or messages[0].get("role") != "system":
+        return messages
+    content = messages[0].get("content")
+    if not isinstance(content, str):
+        return messages  # already block-formatted; leave it alone
+    cached_system = {
+        "role": "system",
+        "content": [
+            {"type": "text", "text": content,
+             "cache_control": {"type": "ephemeral"}},
+        ],
+    }
+    return [cached_system, *messages[1:]]
+
+
 def _get_github_token() -> str:
     from app.config import settings as _s
     token = _s.github_client_secret or _s.github_webhook_secret
@@ -97,6 +121,9 @@ class AgentRuntime:
         "glob_search", "grep_search", "run_command", "web_search",
         "semantic_search", "graph_query", "get_architecture",
         "find_dependents", "find_dependencies",
+        # Persistent team memory (remember/recall decisions) + issue tracing
+        # via the call graph — capabilities a plain RAG bot doesn't have.
+        "write_note", "search_notes", "trace_issue",
     }
 
     def _curated_tools(self) -> list[dict]:
@@ -140,6 +167,16 @@ class AgentRuntime:
             "You have a real Linux shell with full access via the run_command tool, "
             "plus tools to read/write/edit files, search code (grep/glob), and search "
             f"the live web. {git_caps}",
+            "",
+            "You also have capabilities a plain chatbot doesn't: a semantic + graph "
+            "index of the onboarded code (semantic_search, graph_query, get_architecture, "
+            "find_dependents/find_dependencies to answer 'who calls this / what does this "
+            "depend on', and trace_issue to find code related to a break), plus a "
+            "persistent team memory (write_note to record a decision or convention, "
+            "search_notes to recall one later). Use write_note whenever the user states a "
+            "lasting decision, preference, or convention so you remember it next time. "
+            "When asked, you can also produce module/architecture docs, a standup, or "
+            "release notes by combining these tools with git history — just do it.",
             "",
             "Work like a senior engineer: investigate first (read, grep, ls), make the "
             "change, verify it where you can (build/lint/test), then deliver. Decide HOW "
@@ -201,8 +238,9 @@ class AgentRuntime:
             for provider, model, key in providers:
                 try:
                     actual_model = LLMProvider._get_model_name(provider, model)
+                    send_msgs = _with_prompt_cache(msgs) if provider == "anthropic" else msgs
                     resp = await acompletion(
-                        model=actual_model, messages=msgs, api_key=key,
+                        model=actual_model, messages=send_msgs, api_key=key,
                         temperature=0.2, max_tokens=2000, tools=tls,
                     )
                     usage["calls"] += 1

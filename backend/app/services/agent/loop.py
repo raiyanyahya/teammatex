@@ -47,13 +47,37 @@ def _parse_args(raw):
     return raw or {}
 
 
+_ELIDED = '{"note": "earlier tool output elided to save context"}'
+
+
+def _prune_tool_results(messages, keep_last: int) -> None:
+    """Shrink older tool-result messages in place so a long multi-step loop
+    doesn't re-send every (up to 4 KB) tool blob on every turn — the dominant
+    token cost in deep runs.
+
+    The tool messages are kept (dropping one would orphan the matching
+    assistant ``tool_calls`` and break the API contract); only their content is
+    replaced with a small stub. The most recent ``keep_last`` results stay
+    intact, since those are what the model is actively reasoning over."""
+    if keep_last <= 0:
+        return
+    tool_idxs = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    for i in tool_idxs[: len(tool_idxs) - keep_last]:
+        if messages[i].get("content") != _ELIDED:
+            messages[i] = {**messages[i], "content": _ELIDED}
+
+
 async def run_agent_loop(
     *, llm_call, execute_tool, messages, tools,
     max_iterations: int = 25, max_tools_per_turn: int = 8,
+    keep_tool_results: int = 8,
 ) -> AsyncIterator[dict]:
     nudges = 0
 
     for _iteration in range(max_iterations):
+        # Elide stale tool outputs before re-sending the transcript so a deep
+        # loop's context (and cost) stays bounded; the latest turn is intact.
+        _prune_tool_results(messages, keep_tool_results)
         response = await llm_call(messages, tools)
         if response is None:
             yield {"type": "error", "content": "LLM unavailable — check provider keys."}

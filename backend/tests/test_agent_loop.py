@@ -165,3 +165,80 @@ class TestAgentLoop:
         end = [e for e in events if e["type"] == "tool_end"][0]
         assert "kaboom" in end["result"]
         assert events[-1]["content"] == "recovered"
+
+
+# ─── token-saving behaviour ──────────────────────────────────────────────
+
+from app.services.agent.loop import _ELIDED, _prune_tool_results
+from app.services.agent.runtime import _with_prompt_cache
+
+
+def _msgs_with_tool_turns(n):
+    msgs = [{"role": "system", "content": "sys"},
+            {"role": "user", "content": "go"}]
+    for i in range(n):
+        msgs.append({"role": "assistant", "content": None,
+                     "tool_calls": [{"id": f"c{i}", "type": "function",
+                                     "function": {"name": "bash", "arguments": "{}"}}]})
+        msgs.append({"role": "tool", "tool_call_id": f"c{i}", "content": "X" * 4000})
+    return msgs
+
+
+class TestToolResultPruning:
+    def test_old_results_elided_recent_kept(self):
+        msgs = _msgs_with_tool_turns(10)
+        _prune_tool_results(msgs, keep_last=3)
+        tools = [m for m in msgs if m["role"] == "tool"]
+        assert len(tools) == 10  # none dropped — tool_call contract preserved
+        assert all(t["content"] == _ELIDED for t in tools[:7])
+        assert all(t["content"] == "X" * 4000 for t in tools[-3:])
+
+    def test_no_op_when_under_limit(self):
+        msgs = _msgs_with_tool_turns(2)
+        _prune_tool_results(msgs, keep_last=8)
+        assert all(m["content"] == "X" * 4000 for m in msgs if m["role"] == "tool")
+
+    def test_assistant_tool_calls_never_dropped(self):
+        msgs = _msgs_with_tool_turns(5)
+        before = sum(1 for m in msgs if m.get("tool_calls"))
+        _prune_tool_results(msgs, keep_last=1)
+        after = sum(1 for m in msgs if m.get("tool_calls"))
+        assert before == after == 5
+
+    async def test_loop_prunes_during_a_run(self):
+        big = "Y" * 4000
+
+        async def big_exec(name, args):
+            return {"data": big}
+
+        llm = _scripted_llm([
+            _response(tool_calls=[_tc("a", "bash", "{}")]),
+            _response(tool_calls=[_tc("b", "bash", "{}")]),
+            _response(tool_calls=[_tc("c", "bash", "{}")]),
+            _response(content="done"),
+        ])
+        msgs = [{"role": "user", "content": "x"}]
+        await _collect(run_agent_loop(
+            llm_call=llm, execute_tool=big_exec, messages=msgs, tools=[],
+            keep_tool_results=1))
+        tools = [m for m in msgs if m["role"] == "tool"]
+        assert tools[-1]["content"] != _ELIDED          # most recent intact
+        assert all(t["content"] == _ELIDED for t in tools[:-1])  # rest elided
+
+
+class TestPromptCacheBreakpoint:
+    def test_anthropic_system_gets_cache_control(self):
+        msgs = [{"role": "system", "content": "you are X"},
+                {"role": "user", "content": "hi"}]
+        out = _with_prompt_cache(msgs)
+        assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert out[0]["content"][0]["text"] == "you are X"
+        assert msgs[0]["content"] == "you are X"  # original list untouched
+
+    def test_no_system_message_is_passthrough(self):
+        msgs = [{"role": "user", "content": "hi"}]
+        assert _with_prompt_cache(msgs) is msgs
+
+    def test_already_block_formatted_is_left_alone(self):
+        msgs = [{"role": "system", "content": [{"type": "text", "text": "x"}]}]
+        assert _with_prompt_cache(msgs) is msgs

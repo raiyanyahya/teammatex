@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Wrench, ChevronRight, Check, X, Shield, Trash2 } from "lucide-react";
+import { Send, Loader2, Wrench, ChevronRight, Check, X, Shield, Trash2,
+  Compass, Network, Bug, NotebookPen, Search, GitPullRequest, FileText, ListChecks } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant" | "tool";
@@ -15,6 +16,25 @@ interface Message {
 
 const STORAGE_KEY = "teammatex_chat";
 const MAX_STORED = 50;
+
+const CAPABILITIES = [
+  { label: "Understand the architecture", icon: Compass,
+    example: "Explain how this codebase is structured." },
+  { label: "Trace dependencies", icon: Network,
+    example: "What calls the login function, and what does it depend on?" },
+  { label: "Find & fix issues", icon: Bug,
+    example: "Find security bugs in our codebase and fix them." },
+  { label: "Remember a decision", icon: NotebookPen,
+    example: "Remember that we use snake_case for all API field names." },
+  { label: "Recall what we agreed", icon: Search,
+    example: "What conventions have we agreed on so far?" },
+  { label: "Open a pull request", icon: GitPullRequest,
+    example: "Add rate limiting to the login endpoint and open a PR." },
+  { label: "Write docs", icon: FileText,
+    example: "Write module docs for the auth package." },
+  { label: "Standup", icon: ListChecks,
+    example: "Give me a standup of recent activity." },
+];
 
 function loadMessages(): Message[] {
   if (typeof window === "undefined") return [];
@@ -153,9 +173,28 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-6 py-8">
           {messages.length === 0 && !streaming && (
-            <div className="mt-32 text-center">
-              <h1 className="text-lg font-semibold text-[#cccccc]">TeammateX</h1>
-              <p className="mt-1 text-sm text-[#6a6a6e]">Ask about your codebase. Add a repository to get started.</p>
+            <div className="mt-20">
+              <div className="text-center">
+                <h1 className="text-lg font-semibold text-[#cccccc]">TeammateX</h1>
+                <p className="mt-1 text-sm text-[#6a6a6e]">
+                  An AI teammate that knows your codebase. Here&apos;s what you can ask — click one to start.
+                </p>
+              </div>
+              <div className="mt-8 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {CAPABILITIES.map((c) => (
+                  <button
+                    key={c.label}
+                    onClick={() => { setInput(c.example); inputRef.current?.focus(); }}
+                    className="rounded-md border border-[#2a2a30] bg-[#1e1e24] px-3 py-2.5 text-left transition-colors hover:border-[#264f78] hover:bg-[#25252b]"
+                  >
+                    <div className="flex items-center gap-2 text-[13px] font-medium text-[#cccccc]">
+                      <c.icon className="h-3.5 w-3.5 text-[#7a9ec8]" />
+                      {c.label}
+                    </div>
+                    <div className="mt-1 text-xs text-[#6a6a6e]">&ldquo;{c.example}&rdquo;</div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
