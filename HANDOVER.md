@@ -56,11 +56,16 @@ Only `pyproject.toml`/`package.json`/Dockerfile changes need `docker compose bui
   from the model and self-corrects a table created at the wrong dimension. Search:
   `EmbeddingService.search` / the `semantic_search` tool.
 - **Graph** (Neo4j): `Repository`, `File`, `Function`, `Module`, `Class` joined by
-  `PART_OF`, plus `CALLS` edges between functions (caller → callee). Files/Functions
-  carry `repo_id`. Tools: `get_architecture` (files ranked by function count),
-  `graph_query` (name search), and `find_dependents`/`find_dependencies` (who calls X /
-  what X calls). All scope by repo id/name or span all repos. Re-onboard to populate.
-- These knowledge tools are all in the chat agent's tool set.
+  `PART_OF`; `CALLS` edges between functions (caller → callee); and `OWNS` edges from
+  `Contributor` → `File` (the top committer per file, from `people_profiler`).
+  Files/Functions carry `repo_id`. Tools: `get_architecture` (files ranked by function
+  count), `graph_query` (name search), `find_dependents`/`find_dependencies` (who calls
+  X / what X calls), and `find_owner` (who owns a file / should review it). All scope by
+  repo id/name or span all repos. Re-onboard to populate.
+- These knowledge tools are all in the chat agent's tool set, alongside a persistent
+  team memory (`write_note`/`search_notes`) and `trace_issue` (call-graph analysis of
+  what's related to a break). The chat empty-state surfaces these as clickable
+  capability cards.
 
 ## Switching model (DeepSeek default → Claude/GPT)
 DeepSeek is the cheap default. To use a stronger model for higher tool-calling
