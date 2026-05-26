@@ -349,6 +349,31 @@ def _build_graph_sync(repo_id: str, repo_name: str, clone_path: str) -> dict:
                     })
                     relationships_created += 1
 
+    # Ownership edges: the primary contributor per file (the one with the most
+    # commits to it) becomes its OWNS owner, so find_owner / "who should review
+    # this?" returns data. Files must already be MERGE'd above (they come first
+    # in the statement list, hence in earlier batches), so the OWNS MATCH lands.
+    try:
+        from app.services.onboarding.people_profiler import PeopleProfiler
+        profiles = PeopleProfiler().profile_repo(clone_path)
+        for prof in profiles.values():
+            if not prof.owned_files:
+                continue
+            contrib_nid = node_id("", "Contributor", prof.email)
+            statements.append({
+                "statement": "MERGE (c:Contributor {id: $id}) SET c.email = $email, c.name = $name, c.version = $v",
+                "parameters": {"id": contrib_nid, "email": prof.email, "name": prof.name, "v": EXTRACTOR_VERSION}
+            })
+            for owned in prof.owned_files:
+                owned_fid = node_id(repo_id, "File", owned)
+                statements.append({
+                    "statement": "MATCH (c:Contributor {id: $cid}) MATCH (f:File {id: $fid}) MERGE (c)-[o:OWNS]->(f) SET o.weight = $w, o.version = $v",
+                    "parameters": {"cid": contrib_nid, "fid": owned_fid, "w": prof.commit_count, "v": EXTRACTOR_VERSION}
+                })
+                relationships_created += 1
+    except Exception as e:
+        logger.warning("ownership_build_failed", repo=repo_name, error=str(e)[:100])
+
     for i in range(0, len(statements), 100):
         batch = statements[i:i+100]
         try:

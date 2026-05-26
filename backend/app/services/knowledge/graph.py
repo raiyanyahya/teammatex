@@ -144,7 +144,9 @@ class KnowledgeGraph:
              repo_nid=repo_nid)
 
     async def ensure_contributor_node(self, email: str, name: str) -> None:
-        contrib_nid = node_id("", "Contributor", email, name)
+        # Key the node on email only; name can vary between commits, and
+        # add_ownership keys the same way, so the OWNS MATCH must agree.
+        contrib_nid = node_id("", "Contributor", email)
         await self.run("""
         MERGE (c:Contributor {id: $id})
         SET c.email = $email, c.name = $name, c.version = $version
@@ -171,7 +173,7 @@ class KnowledgeGraph:
         self, email: str, repo_id: str, file_path: str, weight: float = 1.0
     ) -> None:
         file_nid = node_id(repo_id, "File", file_path)
-        contrib_nid = node_id("", "Contributor", email, email)
+        contrib_nid = node_id("", "Contributor", email)
         rel_eid = edge_id(repo_id, "OWNS", contrib_nid, file_nid)
         await self.run("""
         MATCH (c:Contributor {id: $contrib_nid})
@@ -182,7 +184,10 @@ class KnowledgeGraph:
              weight=weight, version=EXTRACTOR_VERSION)
 
     async def find_owner(self, repo_id: str, file_path: str) -> dict | None:
-        file_nid = node_id(repo_id, "File", file_path)
+        # Accept a repo id OR name (the agent works with names), like the other
+        # graph tools — File nodes are keyed by the canonical repo_id.
+        canonical = await self._resolve_repo_id(repo_id) or repo_id
+        file_nid = node_id(canonical, "File", file_path)
         record = await self.run_single("""
         MATCH (c:Contributor)-[o:OWNS]->(f:File {id: $file_nid})
         RETURN c.name AS name, c.email AS email, o.weight AS weight

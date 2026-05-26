@@ -120,7 +120,7 @@ class AgentRuntime:
         "read_file", "write_file", "edit_file", "list_directory",
         "glob_search", "grep_search", "run_command", "web_search",
         "semantic_search", "graph_query", "get_architecture",
-        "find_dependents", "find_dependencies",
+        "find_dependents", "find_dependencies", "find_owner",
         # Persistent team memory (remember/recall decisions) + issue tracing
         # via the call graph — capabilities a plain RAG bot doesn't have.
         "write_note", "search_notes", "trace_issue",
@@ -171,7 +171,8 @@ class AgentRuntime:
             "You also have capabilities a plain chatbot doesn't: a semantic + graph "
             "index of the onboarded code (semantic_search, graph_query, get_architecture, "
             "find_dependents/find_dependencies to answer 'who calls this / what does this "
-            "depend on', and trace_issue to find code related to a break), plus a "
+            "depend on', find_owner for 'who owns this file / who should review it', and "
+            "trace_issue to find code related to a break), plus a "
             "persistent team memory (write_note to record a decision or convention, "
             "search_notes to recall one later). Use write_note whenever the user states a "
             "lasting decision, preference, or convention so you remember it next time. "

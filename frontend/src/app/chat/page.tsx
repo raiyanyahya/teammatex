@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Wrench, ChevronRight, Check, X, Shield, Trash2,
-  Compass, Network, Bug, NotebookPen, Search, GitPullRequest, FileText, ListChecks } from "lucide-react";
+  Compass, Network, Bug, NotebookPen, Search, GitPullRequest, FileText, ListChecks, Users } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant" | "tool";
@@ -22,6 +22,8 @@ const CAPABILITIES = [
     example: "Explain how this codebase is structured." },
   { label: "Trace dependencies", icon: Network,
     example: "What calls the login function, and what does it depend on?" },
+  { label: "Find the owner", icon: Users,
+    example: "Who owns the auth module and should review changes to it?" },
   { label: "Find & fix issues", icon: Bug,
     example: "Find security bugs in our codebase and fix them." },
   { label: "Remember a decision", icon: NotebookPen,
