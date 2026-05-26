@@ -375,16 +375,27 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0}
 
     try:
+        from sentence_transformers import SentenceTransformer
+        from app.services.knowledge.embedding_schema import reconcile_embeddings_dim
+
         engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
 
-        # Create table and extension
-        with engine.connect() as conn:
+        # Load the model first so the table dimension matches what it actually
+        # emits (local all-MiniLM = 384, OpenAI = 1536). A mismatch makes every
+        # pgvector insert fail with "expected N dimensions".
+        model = SentenceTransformer(_s.embedding_model)
+        dim = model.get_sentence_embedding_dimension() or len(model.encode(["x"])[0])
+        chunker = CodeChunker()
+
+        # Create the table at the right dimension, and reconcile an existing
+        # table that was created with the wrong one (embeddings are regenerable).
+        with engine.begin() as conn:
             conn.execute(sqla_text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(sqla_text(f"""
             CREATE TABLE IF NOT EXISTS code_embeddings (
                 id VARCHAR(32) PRIMARY KEY,
                 text TEXT NOT NULL,
-                embedding vector({384 if _s.embedding_provider == 'local' else 1536}),
+                embedding vector({dim}),
                 file_path VARCHAR(1024) NOT NULL,
                 start_line INTEGER NOT NULL,
                 end_line INTEGER NOT NULL,
@@ -393,12 +404,9 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
                 entity_name VARCHAR(255)
             )
             """))
-            conn.commit()
-
-        # Load embedding model and compute
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer(_s.embedding_model)
-        chunker = CodeChunker()
+            action = reconcile_embeddings_dim(conn, dim)
+        if action == "fixed":
+            logger.warning("embeddings_table_dim_reset", repo=repo_id, dim=dim)
 
         files_scanned = 0
         chunks_stored = 0
@@ -428,26 +436,44 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
             all_chunks.extend(chunks)
             files_scanned += 1
 
+        insert_errors: list[str] = []
         if all_chunks:
             texts = [c.text for c in all_chunks]
             vectors = model.encode(texts, show_progress_bar=False).tolist()
 
+            # One savepoint per row: a single bad row no longer poisons the whole
+            # transaction (the old code shared one transaction + swallowed every
+            # error, so one failure silently lost the entire batch).
             with engine.connect() as conn:
-                for chunk, vector in zip(all_chunks, vectors):
-                    chunk_id = hashlib.md5(f"{chunk.file_path}:{chunk.start_line}".encode()).hexdigest()
-                    vector_str = "[" + ",".join(str(v) for v in vector) + "]"
-                    try:
-                        conn.execute(sqla_text(
-                            "INSERT INTO code_embeddings (id, text, embedding, file_path, start_line, end_line, entity_type, language, entity_name) "
-                            "VALUES (:id, :text, CAST(:emb AS vector), :fp, :sl, :el, :et, :la, :en) "
-                            "ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, text = EXCLUDED.text"
-                        ), {"id": chunk_id, "text": chunk.text, "emb": vector_str, "fp": chunk.file_path,
-                            "sl": chunk.start_line, "el": chunk.end_line, "et": chunk.entity_type,
-                            "la": chunk.language, "en": chunk.entity_name})
-                        chunks_stored += 1
-                    except Exception:
-                        pass
-                conn.commit()
+                with conn.begin():
+                    for chunk, vector in zip(all_chunks, vectors):
+                        # Identify a chunk by repo + path + span + its text. Paths are
+                        # repo-relative (two repos can share src/index.js) and the
+                        # chunker can emit several windows for one entity span, so
+                        # anything coarser silently overwrites distinct chunks; the
+                        # text keeps windows distinct while a re-onboard of unchanged
+                        # code stays idempotent.
+                        chunk_id = hashlib.md5(
+                            f"{repo_id}:{chunk.file_path}:{chunk.start_line}:{chunk.end_line}:{chunk.text}".encode()
+                        ).hexdigest()
+                        vector_str = "[" + ",".join(str(v) for v in vector) + "]"
+                        try:
+                            with conn.begin_nested():
+                                conn.execute(sqla_text(
+                                    "INSERT INTO code_embeddings (id, text, embedding, file_path, start_line, end_line, entity_type, language, entity_name) "
+                                    "VALUES (:id, :text, CAST(:emb AS vector), :fp, :sl, :el, :et, :la, :en) "
+                                    "ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, text = EXCLUDED.text"
+                                ), {"id": chunk_id, "text": chunk.text, "emb": vector_str, "fp": chunk.file_path,
+                                    "sl": chunk.start_line, "el": chunk.end_line, "et": chunk.entity_type,
+                                    "la": chunk.language, "en": chunk.entity_name})
+                            chunks_stored += 1
+                        except Exception as e:
+                            if len(insert_errors) < 3:
+                                insert_errors.append(f"{type(e).__name__}: {str(e)[:160]}")
+
+        if insert_errors:
+            logger.error("embedding_insert_errors", repo=repo_id, stored=chunks_stored,
+                         total=len(all_chunks), samples=insert_errors)
 
         engine.dispose()
         return {"files_scanned": files_scanned, "chunks_created": len(all_chunks), "chunks_stored": chunks_stored}

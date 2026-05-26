@@ -88,11 +88,14 @@ class AgentRuntime:
         return template.format(name=settings.teammate_name)
 
     # Tools the chat agent is allowed to drive. A small, powerful set: a real
-    # shell does the git/gh/test work, so there are no scripted git tools and no
-    # (currently empty) graph/semantic tools to waste turns on.
+    # shell does the git/gh/test work, so there are no scripted git tools. The
+    # knowledge tools (semantic_search/graph_query/get_architecture) are included
+    # now that the embeddings + graph pipelines actually return data — they let
+    # the agent jump straight to relevant code instead of brute-force grepping.
     CORE_TOOLS = {
         "read_file", "write_file", "edit_file", "list_directory",
         "glob_search", "grep_search", "run_command", "web_search",
+        "semantic_search", "graph_query", "get_architecture",
     }
 
     def _curated_tools(self) -> list[dict]:

@@ -15,6 +15,30 @@ FALLBACK_CHAIN = [
     ("ollama", settings.ollama_model),
 ]
 
+# Curated current models per provider. DeepSeek is the cheap default; Claude/GPT
+# are higher tool-calling reliability for harder work. Switch the active model by
+# saving an llm_config row: PUT /api/config/llm_config {provider, api_key, model}.
+RECOMMENDED_MODELS = {
+    "deepseek": [
+        {"model": "deepseek-v4-flash", "tier": "cheap-default", "note": "Fast, non-thinking — best for tool loops."},
+        {"model": "deepseek-v4-pro", "tier": "balanced", "note": "Thinking model; stronger reasoning, higher cost/latency."},
+    ],
+    "anthropic": [
+        {"model": "claude-sonnet-4-6", "tier": "high-reliability", "note": "Excellent tool calling; recommended upgrade."},
+        {"model": "claude-opus-4-7", "tier": "max", "note": "Most capable; highest cost."},
+        {"model": "claude-haiku-4-5-20251001", "tier": "cheap", "note": "Fast, inexpensive Claude."},
+    ],
+    "openai": [
+        {"model": "gpt-4o", "tier": "high-reliability", "note": "Strong, reliable tool calling."},
+    ],
+    "groq": [
+        {"model": "llama-3.1-70b-versatile", "tier": "cheap", "note": "Fast hosted open model."},
+    ],
+    "ollama": [
+        {"model": "llama3.1:8b", "tier": "local", "note": "Runs locally; no API key needed."},
+    ],
+}
+
 
 class LLMProvider:
     _db_config_cache: dict | None = None

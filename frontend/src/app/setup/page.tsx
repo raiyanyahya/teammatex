@@ -20,13 +20,18 @@ async function testLLMConnection(provider: string, key: string, model: string): 
   } catch { return false; }
 }
 
-async function testGithubConnection(token: string): Promise<boolean> {
+async function verifyGithubToken(token: string): Promise<any> {
+  // Use the backend verifier so we learn whether the token can actually push,
+  // not just whether it's valid (read-only tokens clone fine but 403 on push).
   try {
-    const res = await fetch("https://api.github.com/user", {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+    const res = await fetch("/api/config/github_token/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
     });
-    return res.ok;
-  } catch { return false; }
+    if (!res.ok) return { valid: false };
+    return await res.json();
+  } catch { return { valid: false }; }
 }
 
 export default function SetupPage() {
@@ -50,6 +55,7 @@ export default function SetupPage() {
   const [githubSaving, setGithubSaving] = useState(false);
   const [githubTesting, setGithubTesting] = useState(false);
   const [githubTestResult, setGithubTestResult] = useState<null | boolean>(null);
+  const [githubVerify, setGithubVerify] = useState<any>(null);
   const [ghRepos, setGhRepos] = useState<any[]>([]);
   const [ghReposLoading, setGhReposLoading] = useState(false);
   
@@ -100,7 +106,9 @@ export default function SetupPage() {
 
   async function handleTestGithub() {
     setGithubTesting(true);
-    const ok = await testGithubConnection(githubToken);
+    const result = await verifyGithubToken(githubToken);
+    setGithubVerify(result);
+    const ok = !!result.valid;
     setGithubTestResult(ok);
     if (ok) {
       setGhReposLoading(true);
@@ -222,7 +230,15 @@ export default function SetupPage() {
               </button>
             )}
           </div>
-          <p className="text-[11px] text-[#6a6a6e]">Create at github.com/settings/tokens — needs repo scope.</p>
+          {githubVerify && githubVerify.valid && (
+            <p className={`text-[11px] ${githubVerify.can_push === false ? "text-[#e0a060]" : githubVerify.can_push === true ? "text-[#6aaa6a]" : "text-[#9a9a6e]"}`}>
+              {githubVerify.login ? `@${githubVerify.login} · ` : ""}{githubVerify.token_type}
+              {" · "}
+              {githubVerify.can_push === true ? "can push & open PRs ✓" : githubVerify.can_push === false ? "READ-ONLY — pushes will 403 ✗" : "push rights unknown ⚠"}
+              <br />{githubVerify.note}
+            </p>
+          )}
+          <p className="text-[11px] text-[#6a6a6e]">Create at github.com/settings/tokens — needs repo scope (classic) or Contents+PR write (fine-grained).</p>
           {ghRepos.length > 0 && (
             <div className="mt-3 max-h-48 overflow-y-auto space-y-1">
               <p className="text-[10px] text-[#6a6a6e] mb-1">Your repositories — click to add:</p>

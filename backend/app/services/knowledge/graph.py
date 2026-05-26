@@ -205,16 +205,39 @@ class KnowledgeGraph:
         LIMIT 50
         """, repo_id=repo_id, name=entity_name)
 
-    async def get_architecture(self, repo_id: str) -> list[dict]:
-        return await self.run("""
-        MATCH (m:Module {repo_id: $repo_id})
-        OPTIONAL MATCH (f:File)-[:PART_OF]->(m)
+    async def _resolve_repo_id(self, value: str) -> str | None:
+        """Map a repo_id OR a human repo name to the canonical repo_id stored on
+        graph nodes. The agent often passes a repo's local name (e.g. 'kit-fork')
+        while nodes carry the UUID; without this, queries match nothing."""
+        if not value:
+            return None
+        rec = await self.run_single("""
+        MATCH (r:Repository)
+        WHERE r.repo_id = $v OR r.name = $v
+        RETURN r.repo_id AS repo_id
+        LIMIT 1
+        """, v=value)
+        return rec["repo_id"] if rec else value
+
+    async def get_architecture(self, repo_id: str = "") -> list[dict]:
+        """Architecture overview: files with their function counts. Scoped to one
+        repo when a repo_id/name resolves, otherwise across all onboarded repos.
+
+        The builder attaches Files and Modules to the Repository (not File->Module),
+        so the old `(File)-[:PART_OF]->(Module)` traversal always returned zero
+        counts; this queries the topology that actually exists.
+        """
+        canonical = await self._resolve_repo_id(repo_id)
+        where = "WHERE f.repo_id = $repo_id" if canonical else ""
+        return await self.run(f"""
+        MATCH (f:File)
+        {where}
         OPTIONAL MATCH (fn:Function)-[:PART_OF]->(f)
-        RETURN m.name AS module, count(DISTINCT f) AS file_count,
-               count(DISTINCT fn) AS function_count
-        ORDER BY file_count DESC
-        LIMIT 30
-        """, repo_id=repo_id)
+        RETURN f.repo_id AS repo_id, f.path AS file, f.language AS language,
+               f.role AS role, count(fn) AS function_count
+        ORDER BY function_count DESC, file ASC
+        LIMIT 40
+        """, repo_id=canonical)
 
     async def get_module_graph(self, repo_id: str) -> dict:
         nodes = await self.run("""
@@ -260,11 +283,14 @@ class KnowledgeGraph:
 
     async def run(self, cql: str, **params: Any) -> list[dict]:
         async with get_neo4j_manager().session() as session:
-            result = await session.run(cql, **params)
+            # Pass params as the `parameters` dict, not **kwargs: the driver's
+            # session.run(query, ...) reserves the name `query`, so a cypher param
+            # named $query (e.g. search_graph) otherwise collides with it.
+            result = await session.run(cql, parameters=params)
             return [dict(r) async for r in result]
 
     async def run_single(self, cql: str, **params: Any) -> dict | None:
         async with get_neo4j_manager().session() as session:
-            result = await session.run(cql, **params)
+            result = await session.run(cql, parameters=params)
             record = await result.single()
             return dict(record) if record else None

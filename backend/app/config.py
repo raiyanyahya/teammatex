@@ -25,10 +25,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
 
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-3-5-sonnet-20241022"
+    anthropic_model: str = "claude-sonnet-4-6"
 
     deepseek_api_key: str = ""
-    deepseek_model: str = "deepseek-chat"
+    # Cheap default. deepseek-chat is deprecated (retires 2026-07-24); v4-flash is
+    # the current non-thinking model and the right choice for tool loops.
+    deepseek_model: str = "deepseek-v4-flash"
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"

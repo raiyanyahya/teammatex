@@ -115,7 +115,9 @@ class AutoSyncEngine:
         return await self._sync_repo(repo)
 
     async def _notify_changes(self, repo_name: str, result: dict):
-        from app.services.agent.proactive import proactive_agent
+        # Record what changed into the teammate's memory. (There is no
+        # `proactive_agent` notification channel — that import was dead and made
+        # this whole method raise ImportError on every detected change.)
         from app.services.agent.memory import memory_manager
 
         added = result.get("added", [])
@@ -142,13 +144,9 @@ class AutoSyncEngine:
             )
 
         total = len(added) + len(changed) + len(removed)
-        if total > 0 and proactive_agent:
-            try:
-                await proactive_agent.notify(
-                    f"Repo {repo_name}: {total} files changed ({len(added)} new, {len(changed)} modified, {len(removed)} removed)"
-                )
-            except Exception:
-                pass
+        if total > 0:
+            logger.info("auto_sync_changes_recorded", repo=repo_name,
+                        added=len(added), changed=len(changed), removed=len(removed))
 
 
 auto_sync = AutoSyncEngine.get()

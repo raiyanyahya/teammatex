@@ -13,7 +13,8 @@ RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi --no-root
 
 FROM python:3.12-slim
-# git for repo ops; gh so the teammate can open real PRs by running commands.
+# git for repo ops; gh so the teammate can open real PRs by running commands;
+# node+npm so it can install deps and run tests on the JS/Electron repos it onboards.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl libssl3 libssh2-1 gpg ca-certificates \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -21,7 +22,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

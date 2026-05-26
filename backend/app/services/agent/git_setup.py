@@ -23,6 +23,68 @@ GIT_NAME = "TeammateX"
 GIT_EMAIL = "teammate@teammatex.local"
 
 
+def classify_github_token(token: str, scopes_header: str | None) -> dict:
+    """Classify a GitHub token's type and whether it can push, from the token
+    prefix and the X-OAuth-Scopes response header.
+
+    Fine-grained PATs don't expose their permissions in that header, so we can
+    confirm they're valid but can't see push rights without a write attempt —
+    surfaced as can_push=None with guidance (this is exactly the read-only vs
+    write ambiguity that cost us time during development).
+    """
+    token = (token or "").strip()
+    if token.startswith("github_pat_"):
+        token_type = "fine-grained"
+    elif token.startswith("ghp_"):
+        token_type = "classic"
+    elif token.startswith(("gho_", "ghu_", "ghs_")):
+        token_type = "oauth"
+    else:
+        token_type = "unknown"
+
+    scopes = [s.strip() for s in (scopes_header or "").split(",") if s.strip()]
+
+    if token_type == "classic" or scopes:
+        if "repo" in scopes:
+            can_push, note = True, "Classic token with full 'repo' scope — can push and open PRs."
+        elif "public_repo" in scopes:
+            can_push, note = True, "Classic token with 'public_repo' — can push to public repos only."
+        else:
+            can_push, note = False, "Token has no 'repo' scope — read-only; pushes/PRs will 403. Add the 'repo' scope."
+    elif token_type == "fine-grained":
+        can_push, note = None, ("Fine-grained token — permissions aren't exposed by the API. "
+                                "Ensure it grants Contents: write + Pull requests: write, or pushes will 403.")
+    else:
+        can_push, note = None, "Token type not recognized; could not infer push rights."
+
+    return {"token_type": token_type, "scopes": scopes, "can_push": can_push, "note": note}
+
+
+async def verify_github_token(token: str) -> dict:
+    """Validate a token against the GitHub API and report identity + push rights."""
+    token = (token or "").strip()
+    if not token:
+        return {"valid": False, "configured": False, "note": "No token provided."}
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"token {token}",
+                         "Accept": "application/vnd.github+json"},
+            )
+    except Exception as e:
+        return {"valid": False, "configured": True, "note": f"Could not reach GitHub: {str(e)[:120]}"}
+
+    if resp.status_code != 200:
+        return {"valid": False, "configured": True, "status": resp.status_code,
+                "note": "Token rejected by GitHub (invalid, expired, or revoked)."}
+
+    login = resp.json().get("login")
+    info = classify_github_token(token, resp.headers.get("X-OAuth-Scopes"))
+    return {"valid": True, "configured": True, "login": login, **info}
+
+
 def resolve_github_token(env_token=None, db_value=None, remote_url=None):
     """First available of: env token, DB app_config value, remote URL token."""
     if env_token:

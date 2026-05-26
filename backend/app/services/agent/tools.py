@@ -319,13 +319,13 @@ class ToolRegistry:
 
         self.register(ToolDefinition(
             name="get_architecture",
-            description="Get the module architecture overview for a repository.",
+            description="Get an architecture overview (files ranked by function count) for a repository. Pass a repo_id or repo name to scope it, or omit to span all onboarded repos.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "repo_id": {"type": "string"},
+                    "repo_id": {"type": "string", "description": "Optional repo_id or repo name; omit for all repos"},
                 },
-                "required": ["repo_id"],
+                "required": [],
             },
             category="knowledge",
         ))

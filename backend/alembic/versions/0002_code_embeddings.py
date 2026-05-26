@@ -10,6 +10,14 @@ from alembic import op
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 
+from app.config import settings
+from app.services.knowledge.embedding_schema import expected_dim
+
+# Match the dimension the configured embedding model emits (local=384, openai=1536).
+# Hardcoding 1536 silently broke the local default; the onboarding pipeline also
+# self-corrects an existing table whose dimension drifts from the active model.
+_EMBED_DIM = expected_dim(settings.embedding_provider)
+
 
 revision: str = "0002_code_embeddings"
 down_revision: Union[str, None] = "0001_initial"
@@ -24,7 +32,7 @@ def upgrade() -> None:
         "code_embeddings",
         sa.Column("id", sa.String(32), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("embedding", Vector(1536)),
+        sa.Column("embedding", Vector(_EMBED_DIM)),
         sa.Column("file_path", sa.String(1024), nullable=False),
         sa.Column("start_line", sa.Integer(), nullable=False),
         sa.Column("end_line", sa.Integer(), nullable=False),

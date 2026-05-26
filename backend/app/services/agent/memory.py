@@ -231,3 +231,8 @@ class MemoryManager:
                     verified_at=verified_at,
                 )
                 self.episodic.append(mem)
+
+
+# Module-level singleton, mirroring auto_sync/pr_reviewer/blame_tracer/etc.
+# auto_sync._notify_changes imports this; without it that path raised ImportError.
+memory_manager = MemoryManager()
