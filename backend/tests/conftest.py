@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -281,3 +282,136 @@ module.exports = { processData, validateInput };
 ''')
 
     return repo
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Async API fixtures — a real Postgres test database (the app uses async
+# SQLAlchemy + pgvector + JSONB, none of which SQLite can model). Endpoint
+# tests run through httpx.AsyncClient + ASGITransport so the test, the get_db
+# override, and the endpoint all share ONE event loop (session-scoped), which
+# keeps the module-level async singletons — the Neo4j driver and the asyncpg
+# engine — bound to a single loop for the whole API test run.
+# ─────────────────────────────────────────────────────────────────────────────
+
+TEST_DB_NAME = "teammatex_test"
+
+
+def _pg_components():
+    from app.config import settings
+    return (settings.postgres_user, settings.postgres_password,
+            settings.postgres_host, settings.postgres_port)
+
+
+def _sync_dsn(dbname: str) -> str:
+    u, p, h, port = _pg_components()
+    return f"postgresql+psycopg2://{u}:{p}@{h}:{port}/{dbname}"
+
+
+def _async_dsn(dbname: str) -> str:
+    u, p, h, port = _pg_components()
+    return f"postgresql+asyncpg://{u}:{p}@{h}:{port}/{dbname}"
+
+
+@pytest.fixture(scope="session")
+def _ensure_test_database():
+    """Create the test database + pgvector extension once per session (sync)."""
+    admin = create_engine(_sync_dsn("postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :n"),
+            {"n": TEST_DB_NAME},
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
+    admin.dispose()
+
+    test_db = create_engine(_sync_dsn(TEST_DB_NAME), isolation_level="AUTOCOMMIT")
+    with test_db.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    test_db.dispose()
+    yield
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def api_engine(_ensure_test_database):
+    """Session-scoped async engine bound to the test DB, with schema created."""
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(_async_dsn(TEST_DB_NAME), poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def api_client(api_engine):
+    """An httpx AsyncClient against the app, with get_db overridden to a
+    transaction that is rolled back after each test (clean isolation)."""
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.db.session import get_db
+    from app.main import app
+
+    conn = await api_engine.connect()
+    trans = await conn.begin()
+    session = AsyncSession(
+        bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False,
+    )
+
+    async def _override_get_db():
+        yield session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        await session.close()
+        await trans.rollback()
+        await conn.close()
+
+
+@pytest_asyncio.fixture
+async def async_db():
+    """A standalone async session against the test DB (own engine + loop), for
+    unit tests that call async persistence directly. Rolls back after the test."""
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    # Reuse the session-scoped DB-bootstrap done by _ensure_test_database via a
+    # direct sync create (idempotent) so this fixture has no session-loop dep.
+    admin = create_engine(_sync_dsn("postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as c:
+        if not c.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"),
+                         {"n": TEST_DB_NAME}).scalar():
+            c.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
+    admin.dispose()
+    sync_test = create_engine(_sync_dsn(TEST_DB_NAME), isolation_level="AUTOCOMMIT")
+    with sync_test.connect() as c:
+        c.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    sync_test.dispose()
+
+    engine = create_async_engine(_async_dsn(TEST_DB_NAME), poolclass=NullPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    conn = await engine.connect()
+    trans = await conn.begin()
+    session = AsyncSession(
+        bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False,
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
+        await trans.rollback()
+        await conn.close()
+        await engine.dispose()

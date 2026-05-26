@@ -107,25 +107,17 @@ async def integration_status(db: AsyncSession = Depends(get_db)):
 # ─── Provider Actions ────────────────────────────────────
 
 @router.get("/github/repos")
-async def list_github_repos():
+async def list_github_repos(db: AsyncSession = Depends(get_db)):
     """Fetch repos from GitHub using the saved token, or fall back to the env var."""
     import httpx
-    from sqlalchemy import select as sa_select
 
     token = None
     try:
-        from app.db.session import _init_engine
-        _init_engine()
-        from app.db.session import async_session_factory
-        from app.models.integration import Integration
-        async with async_session_factory() as db:
-            result = await db.execute(sa_select(Integration).where(Integration.provider == "github"))
-            row = result.scalar_one_or_none()
-            if row and row.credentials_encrypted:
-                from app.utils.crypto import decrypt
-                import json
-                creds = json.loads(decrypt(row.credentials_encrypted))
-                token = creds.get("token")
+        result = await db.execute(select(Integration).where(Integration.provider == "github"))
+        row = result.scalar_one_or_none()
+        if row and row.credentials_encrypted:
+            creds = json.loads(decrypt(row.credentials_encrypted))
+            token = creds.get("token")
     except Exception:
         pass
 

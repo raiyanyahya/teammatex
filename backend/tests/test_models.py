@@ -40,12 +40,13 @@ ALL_MODELS = [
 
 
 class TestAllModels:
-    def test_total_table_count(self, sqlite_engine):
+    def test_total_table_count(self, sqlite_engine, sqlite_session):
+        # sqlite_session creates all tables on sqlite_engine (its side effect).
         inspector = inspect(sqlite_engine)
         tables = set(inspector.get_table_names())
         assert len(tables) == 21, f"Expected 21 tables, got {len(tables)}: {tables}"
 
-    def test_all_tables_match_expected(self, sqlite_engine):
+    def test_all_tables_match_expected(self, sqlite_engine, sqlite_session):
         inspector = inspect(sqlite_engine)
         tables = set(inspector.get_table_names())
         assert tables == EXPECTED_TABLES, f"Missing: {EXPECTED_TABLES - tables}, Extra: {tables - EXPECTED_TABLES}"

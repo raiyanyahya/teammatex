@@ -77,10 +77,20 @@ PRs need a token with **Contents: write + Pull requests: write** (or classic `re
 push (read-only tokens clone but 403 on push). git+gh auth self-heals on the first
 chat after a token is added — no restart needed.
 
+## Tests
+The full backend suite is green: **189 passed, 3 skipped** (skips are
+language-parser-unavailable guards). API endpoint tests run against a real
+`teammatex_test` Postgres DB via `httpx.AsyncClient` (created automatically by
+`conftest.py`). The prod image omits test deps, so run them with:
+```bash
+docker exec teammatex-api-1 pip install -q pytest pytest-asyncio
+docker exec teammatex-api-1 python -m pytest tests/ -q
+```
+
 ## Known limitations / not-yet-done
 - `pr_reviewer` and the Slack bot need live inputs/config to exercise end to end.
-- `test_api.py` has pre-existing failures (endpoint tests that need DB fixtures); not
-  a regression — see the suite baseline.
+- The leaked DeepSeek key + GitHub PAT are still in git history (`2d96e61`) — rotate
+  them; see `SECURITY.md`.
 
 ## See also
 - `TODO.md` — prioritized backlog and continuation notes.

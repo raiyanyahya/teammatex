@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -56,9 +56,6 @@ class StandupGenerator:
             {"title": t.title, "status": t.status, "priority": t.priority or "normal"}
             for t in tasks
         ]
-
-    def _get_active_tasks(self, db: AsyncSession) -> list[dict]:
-        return []
 
     def _format_prs(self, prs: list[dict]) -> str:
         if not prs:

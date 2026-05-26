@@ -127,12 +127,9 @@ export default function ChatPage() {
       setActiveTool(null);
 
       if (accumulated) {
-        const toolNote = toolMessages.length > 0
-          ? '\n\n' + toolMessages.map(t => `[${t.tool}]`).join(' ')
-          : '';
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: accumulated + toolNote },
+          { role: "assistant", content: accumulated },
         ]);
       } else if (toolMessages.length > 0 && accumulated === "") {
         setMessages((prev) => [

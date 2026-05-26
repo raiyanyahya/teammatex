@@ -98,15 +98,15 @@ class TestMemoryManager:
         prompt = memory.build_context_prompt()
         assert "No team conventions learned yet" in prompt or prompt == ""
 
-    async def test_persist_and_load(self, memory, db_session):
+    async def test_persist_and_load(self, memory, async_db):
         memory.learn_preference("test_pref", "test_value")
         memory.learn_convention("Test convention")
         memory.remember("test_mem", "memory_value", "test", 0.7)
 
-        await memory.persist_to_db(db_session)
+        await memory.persist_to_db(async_db)
 
         memory2 = MemoryManager()
-        await memory2.load_from_db(db_session)
+        await memory2.load_from_db(async_db)
 
         assert memory2.get_preference("test_pref") == "test_value"
         assert "Test convention" in memory2.learned_conventions

@@ -41,7 +41,7 @@ async def github_webhook(request: Request):
             asyncio.create_task(auto_sync.handle_webhook_push(repo_name))
             logger.info("auto_sync_webhook_triggered", repo=repo_name)
 
-    logger.info("github_webhook_processed", event=event, result=str(result)[:200])
+    logger.info("github_webhook_processed", gh_event=event, result=str(result)[:200])
     return {"received": True, "event": event}
 
 

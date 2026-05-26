@@ -130,7 +130,15 @@ async def retry_onboarding(repo_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{repo_id}/onboarding")
 async def get_onboarding_status(repo_id: str, db: AsyncSession = Depends(get_db)):
+    from uuid import UUID
     from app.models.repo import RepoOnboardingState
+
+    # A malformed (non-UUID) id has no onboarding state; report empty rather
+    # than letting the typed column query raise a 500 on the bad cast.
+    try:
+        UUID(repo_id)
+    except ValueError:
+        return {"repo_id": repo_id, "stages": []}
 
     result = await db.execute(
         select(RepoOnboardingState)

@@ -229,7 +229,7 @@ class GitHubProvider(SCMProvider):
 
     @staticmethod
     async def handle_webhook(event: str, payload: dict) -> dict | None:
-        logger.info("github_webhook", event=event, action=payload.get("action"))
+        logger.info("github_webhook", gh_event=event, action=payload.get("action"))
 
         if event == "pull_request":
             return await GitHubProvider._handle_pr_webhook(payload)

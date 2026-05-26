@@ -185,7 +185,7 @@ class JiraProvider(ProjectMgmtProvider):
     @staticmethod
     async def handle_webhook(payload: dict) -> dict | None:
         event = payload.get("webhookEvent", "")
-        logger.info("jira_webhook", event=event)
+        logger.info("jira_webhook", jira_event=event)
 
         if event == "jira:issue_updated":
             issue = payload.get("issue", {})

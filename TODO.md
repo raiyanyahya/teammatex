@@ -46,14 +46,44 @@ this now records what was done and what genuinely remains._
   `find_dependents`/`find_dependencies` return data and are exposed to the agent
   (repo id/name or all-repos). `test_parse_detects_calls` now passes.
 
+## Done in the test-suite-green pass (2026-05-26)
+
+The whole backend suite is now green — **189 passed, 3 skipped, 0 failed** (the
+skips are language-parser-unavailable guards). Highlights:
+
+- **Real async test DB.** `test_api.py` now runs through `httpx.AsyncClient` +
+  `ASGITransport` against a real `teammatex_test` Postgres database (the app uses
+  async SQLAlchemy + pgvector + JSONB, which SQLite can't model). `conftest.py`
+  creates the DB + `vector` extension, builds the schema, and gives each test a
+  transaction that rolls back. A session-scoped loop (scoped to `test_api.py`
+  only) keeps the Neo4j driver + asyncpg engine on one loop.
+- **Real product bugs the tests exposed, fixed:**
+  - `proactive.py` standup: missing `timedelta` import, **and** a duplicate sync
+    `_get_active_tasks` that shadowed the real async one (it always returned `[]`
+    and was being `await`ed → `TypeError`).
+  - structlog `event=` kwarg collided with the positional message in three
+    webhook log calls (`webhooks.py`, `integrations/github.py`, `integrations/jira.py`)
+    → every github/jira webhook 500'd. Renamed to `gh_event`/`jira_event`.
+  - `get_onboarding_status` 500'd on a non-UUID id (raw cast → asyncpg DataError);
+    now validates the UUID and returns empty stages.
+  - `list_github_repos` ignored the injected `get_db` and opened its own session
+    against the real DB; now uses dependency injection (testable + consistent).
+- **Guardrails hardened:** a hardcoded secret literal (`API_KEY = "..."`) now
+  escalates to **BLOCK** (was WARN), so `validate_code` fails it. `check_pr_policy`
+  was a stub — now enforces branch convention, PR size, deploy-sensitive paths,
+  and deploy freeze. SQL-injection regex now also catches `f"SELECT … %s" % x`.
+- **Frontend** rebuilt to drop the trailing `[tool]` markers from chat answers.
+- **Images rebuilt** (`docker compose build api worker frontend`) so node/gh/ddgs
+  and all the above code fixes are baked in (not just `docker cp`'d).
+
 ## Remaining / next
 
-- [ ] **Frontend rebuild** to ship the token-verify UI: `docker compose build frontend`.
+- [ ] **Rotate the leaked credentials** (DeepSeek key + GitHub PAT) — they are still
+  in git history at `2d96e61`/`2192484`. This is a **user action**; see `SECURITY.md`.
 - [ ] **Exercise `pr_reviewer` + Slack** end to end with a live PR / Slack token.
-- [ ] **Pre-existing `test_api.py` failures** (endpoint tests needing DB fixtures) — wire a
-  test database/fixtures so the suite is green, or mark them integration-only.
-- [ ] **Persist the image changes**: `docker compose build api worker` bakes node/gh/ddgs
-  (currently node was also apt-installed into the running containers, which is ephemeral).
+- [ ] **(optional) Add pytest to the dev image** — the prod image (correctly) omits
+  test deps, so the suite needs a one-time `pip install pytest pytest-asyncio` in the
+  container, or a dev Dockerfile stage, to run without that step.
 
 ## Reference / gotchas
 - DeepSeek-only via DB `app_config.llm_config` (`.env` keys empty). Switch model: see HANDOVER.

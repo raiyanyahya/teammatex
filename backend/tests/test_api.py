@@ -1,26 +1,20 @@
-"""Test the API endpoints using FastAPI TestClient."""
+"""Test the API endpoints against a real async Postgres test database.
+
+The app uses async SQLAlchemy + pgvector + JSONB, so endpoints are exercised
+through httpx.AsyncClient + ASGITransport (in-process, one event loop) with
+get_db overridden to a per-test transaction that rolls back. The `api_client`
+fixture lives in conftest.py. The whole module shares a session-scoped event
+loop so the async singletons (Neo4j driver, asyncpg engine) stay on one loop.
+"""
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.main import app
-from app.db.session import get_db
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def override_db(db_session):
-    async def _override():
-        yield db_session
-    app.dependency_overrides[get_db] = _override
-    yield
-    app.dependency_overrides.clear()
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 class TestHealthEndpoint:
-    def test_health_returns_ok(self):
-        response = client.get("/api/health")
+    async def test_health_returns_ok(self, api_client):
+        response = await api_client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
@@ -28,15 +22,15 @@ class TestHealthEndpoint:
 
 
 class TestAgentEndpoints:
-    def test_list_tools(self):
-        response = client.get("/api/agent/tools")
+    async def test_list_tools(self, api_client):
+        response = await api_client.get("/api/agent/tools")
         assert response.status_code == 200
         data = response.json()
         assert "tools" in data
         assert len(data["tools"]) >= 20
 
-    def test_validate_code_pass(self):
-        response = client.post("/api/agent/validate", json={
+    async def test_validate_code_pass(self, api_client):
+        response = await api_client.post("/api/agent/validate", json={
             "code": "def hello(): return 'world'",
             "file_path": "test.py",
         })
@@ -44,8 +38,8 @@ class TestAgentEndpoints:
         data = response.json()
         assert data["passed"] is True
 
-    def test_validate_code_fail(self):
-        response = client.post("/api/agent/validate", json={
+    async def test_validate_code_fail(self, api_client):
+        response = await api_client.post("/api/agent/validate", json={
             "code": 'API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"',
             "file_path": "secrets.py",
         })
@@ -53,16 +47,16 @@ class TestAgentEndpoints:
         data = response.json()
         assert data["passed"] is False
 
-    def test_plan_endpoint_accepts_request(self):
-        response = client.post("/api/agent/plan", json={
+    async def test_plan_endpoint_accepts_request(self, api_client):
+        response = await api_client.post("/api/agent/plan", json={
             "task": "Add rate limiting to login endpoint",
             "repo_id": None,
         })
         assert response.status_code in (200, 500)
         assert "plan" in response.json()
 
-    def test_tool_execute_returns_error_for_bad_tool(self):
-        response = client.post("/api/agent/tool", json={
+    async def test_tool_execute_returns_error_for_bad_tool(self, api_client):
+        response = await api_client.post("/api/agent/tool", json={
             "tool_name": "nonexistent_tool",
             "arguments": {},
         })
@@ -70,17 +64,17 @@ class TestAgentEndpoints:
 
 
 class TestKnowledgeEndpoints:
-    def test_get_architecture_no_repo(self):
-        response = client.get("/api/knowledge/graph/architecture", params={"repo_id": "nonexistent"})
+    async def test_get_architecture_no_repo(self, api_client):
+        response = await api_client.get("/api/knowledge/graph/architecture", params={"repo_id": "nonexistent"})
         assert response.status_code == 200
 
-    def test_graph_search(self):
-        response = client.get("/api/knowledge/graph/search", params={"query": "auth"})
+    async def test_graph_search(self, api_client):
+        response = await api_client.get("/api/knowledge/graph/search", params={"query": "auth"})
         assert response.status_code == 200
         assert "results" in response.json()
 
-    def test_create_note(self):
-        response = client.post("/api/knowledge/notes", json={
+    async def test_create_note(self, api_client):
+        response = await api_client.post("/api/knowledge/notes", json={
             "title": "Test Note",
             "content": "Test content for validation",
         })
@@ -88,105 +82,107 @@ class TestKnowledgeEndpoints:
         data = response.json()
         assert data["title"] == "Test Note"
 
-    def test_list_notes(self):
-        client.post("/api/knowledge/notes", json={"title": "List test", "content": "Content"})
-        response = client.get("/api/knowledge/notes")
+    async def test_list_notes(self, api_client):
+        await api_client.post("/api/knowledge/notes", json={"title": "List test", "content": "Content"})
+        response = await api_client.get("/api/knowledge/notes")
         assert response.status_code == 200
         assert "notes" in response.json()
 
 
 class TestRepoEndpoints:
-    def test_list_repos(self):
-        response = client.get("/api/repos")
+    async def test_list_repos(self, api_client):
+        response = await api_client.get("/api/repos")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
-    def test_add_repo_invalid_url(self):
-        response = client.post("/api/repos", json={
+    async def test_add_repo_invalid_url(self, api_client):
+        # A bare token with no "/" is treated as an org/user import, which
+        # needs a GitHub token — so an unparseable URL is correctly rejected.
+        response = await api_client.post("/api/repos", json={
             "github_url": "not-a-valid-url",
         })
-        assert response.status_code == 201
+        assert response.status_code == 400
 
-    def test_get_onboarding_status_nonexistent(self):
-        response = client.get("/api/repos/nonexistent-id/onboarding")
+    async def test_get_onboarding_status_nonexistent(self, api_client):
+        response = await api_client.get("/api/repos/nonexistent-id/onboarding")
         assert response.status_code == 200
 
-    def test_duplicate_repo(self):
+    async def test_duplicate_repo(self, api_client):
         payload = {"github_url": "https://github.com/dup/test-repo"}
-        client.post("/api/repos", json=payload)
-        response = client.post("/api/repos", json=payload)
+        await api_client.post("/api/repos", json=payload)
+        response = await api_client.post("/api/repos", json=payload)
         assert response.status_code == 409
 
 
 class TestIntegrationEndpoints:
-    def test_list_integrations(self):
-        response = client.get("/api/integrations")
+    async def test_list_integrations(self, api_client):
+        response = await api_client.get("/api/integrations")
         assert response.status_code == 200
         assert "integrations" in response.json()
 
-    def test_integration_status(self):
-        response = client.get("/api/integrations/status")
+    async def test_integration_status(self, api_client):
+        response = await api_client.get("/api/integrations/status")
         assert response.status_code == 200
         data = response.json()
         assert "github" in data
         assert "jira" in data
         assert "slack" in data
 
-    def test_github_repos_not_configured(self):
-        response = client.get("/api/integrations/github/repos")
+    async def test_github_repos_not_configured(self, api_client):
+        response = await api_client.get("/api/integrations/github/repos")
         assert response.status_code == 400
 
-    def test_jira_not_configured(self):
-        response = client.get("/api/integrations/jira/projects")
+    async def test_jira_not_configured(self, api_client):
+        response = await api_client.get("/api/integrations/jira/projects")
         assert response.status_code == 400
 
-    def test_slack_not_configured(self):
-        response = client.get("/api/integrations/slack/channels")
+    async def test_slack_not_configured(self, api_client):
+        response = await api_client.get("/api/integrations/slack/channels")
         assert response.status_code == 400
 
 
 class TestPluginsEndpoints:
-    def test_list_plugins(self):
-        response = client.get("/api/plugins")
+    async def test_list_plugins(self, api_client):
+        response = await api_client.get("/api/plugins")
         assert response.status_code == 200
         assert "plugins" in response.json()
 
-    def test_discover_plugins(self):
-        response = client.post("/api/plugins/discover")
+    async def test_discover_plugins(self, api_client):
+        response = await api_client.post("/api/plugins/discover")
         assert response.status_code == 200
 
-    def test_list_plugin_tools(self):
-        response = client.get("/api/plugins/tools")
+    async def test_list_plugin_tools(self, api_client):
+        response = await api_client.get("/api/plugins/tools")
         assert response.status_code == 200
 
-    def test_marketplace_search(self):
-        response = client.get("/api/plugins/marketplace/search", params={"query": ""})
+    async def test_marketplace_search(self, api_client):
+        response = await api_client.get("/api/plugins/marketplace/search", params={"query": ""})
         assert response.status_code == 200
 
-    def test_nonexistent_plugin_reload(self):
-        response = client.post("/api/plugins/nonexistent/reload")
+    async def test_nonexistent_plugin_reload(self, api_client):
+        response = await api_client.post("/api/plugins/nonexistent/reload")
         assert response.status_code == 404
 
 
 class TestFeaturesEndpoints:
-    def test_generate_standup(self):
-        response = client.post("/api/features/standup")
+    async def test_generate_standup(self, api_client):
+        response = await api_client.post("/api/features/standup")
         assert response.status_code == 200
         data = response.json()
         assert "name" in data
         assert "date" in data
         assert "yesterday" in data
 
-    def test_generate_module_docs(self):
-        response = client.post("/api/features/docs/module", json={
+    async def test_generate_module_docs(self, api_client):
+        response = await api_client.post("/api/features/docs/module", json={
             "module_name": "auth",
             "code_summary": "Handles user authentication",
             "entities": [],
         })
         assert response.status_code in (200, 500)
 
-    def test_generate_release_notes(self):
-        response = client.post("/api/features/release-notes", json={
+    async def test_generate_release_notes(self, api_client):
+        response = await api_client.post("/api/features/release-notes", json={
             "repo_name": "test-repo",
             "commits": [{"hash": "abc123", "message": "Add feature X"}],
         })
@@ -194,12 +190,12 @@ class TestFeaturesEndpoints:
 
 
 class TestAPIRegistryEndpoints:
-    def test_list_registry(self):
-        response = client.get("/api/api-registry")
+    async def test_list_registry(self, api_client):
+        response = await api_client.get("/api/api-registry")
         assert response.status_code == 200
 
-    def test_add_entry(self):
-        response = client.post("/api/api-registry", json={
+    async def test_add_entry(self, api_client):
+        response = await api_client.post("/api/api-registry", json={
             "domain": "api.example.com",
             "description": "Test API",
             "allowed_methods": ["GET"],
@@ -207,21 +203,21 @@ class TestAPIRegistryEndpoints:
         })
         assert response.status_code == 201
 
-    def test_check_url_not_registered(self):
-        response = client.post("/api/api-registry/check", json={
+    async def test_check_url_not_registered(self, api_client):
+        response = await api_client.post("/api/api-registry/check", json={
             "url": "https://unknown.example.com/api",
             "method": "GET",
         })
         assert response.status_code == 200
         assert response.json()["allowed"] is False
 
-    def test_check_url_registered(self):
-        client.post("/api/api-registry", json={
+    async def test_check_url_registered(self, api_client):
+        await api_client.post("/api/api-registry", json={
             "domain": "check.example.com",
             "allowed_methods": ["GET"],
             "allowed_paths": ["/*"],
         })
-        response = client.post("/api/api-registry/check", json={
+        response = await api_client.post("/api/api-registry/check", json={
             "url": "https://check.example.com/data",
             "method": "GET",
         })
@@ -230,16 +226,16 @@ class TestAPIRegistryEndpoints:
 
 
 class TestWebhookEndpoints:
-    def test_slack_url_verification(self):
-        response = client.post("/api/webhooks/slack", json={
+    async def test_slack_url_verification(self, api_client):
+        response = await api_client.post("/api/webhooks/slack", json={
             "type": "url_verification",
             "challenge": "test-challenge-123",
         })
         assert response.status_code == 200
         assert response.json()["challenge"] == "test-challenge-123"
 
-    def test_slack_event_callback(self):
-        response = client.post("/api/webhooks/slack", json={
+    async def test_slack_event_callback(self, api_client):
+        response = await api_client.post("/api/webhooks/slack", json={
             "type": "event_callback",
             "event": {
                 "type": "app_mention",
@@ -250,16 +246,16 @@ class TestWebhookEndpoints:
         })
         assert response.status_code == 200
 
-    def test_github_webhook_no_signature_handles(self):
-        response = client.post(
+    async def test_github_webhook_no_signature_handles(self, api_client):
+        response = await api_client.post(
             "/api/webhooks/github",
             json={"action": "opened", "pull_request": {"number": 1}},
             headers={"X-GitHub-Event": "pull_request"},
         )
         assert response.status_code == 200
 
-    def test_jira_webhook(self):
-        response = client.post("/api/webhooks/jira", json={
+    async def test_jira_webhook(self, api_client):
+        response = await api_client.post("/api/webhooks/jira", json={
             "webhookEvent": "jira:issue_updated",
             "issue": {"key": "PROJ-1", "fields": {"summary": "Test"}},
         })
