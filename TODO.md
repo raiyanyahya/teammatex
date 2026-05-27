@@ -11,7 +11,6 @@ _What's left. Shipped work lives in git history / commit messages._
 - **Persona**: read from `app_config` in `runtime._get_persona_prompt` (settings fallback)
   so the picker actually changes the agent.
 - **Updates**: config-driven auto-sync interval + GitHub-webhook triggers.
-- **Permissions**: enforce them (the `permissions` model exists but nothing checks it).
 - **Slack / Jira**: wire credential save + actually use them.
 
 ## Known issues / tech debt
