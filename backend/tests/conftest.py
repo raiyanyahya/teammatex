@@ -348,23 +348,36 @@ async def api_engine(_ensure_test_database):
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def api_client(api_engine):
-    """An httpx AsyncClient against the app, with get_db overridden to a
-    transaction that is rolled back after each test (clean isolation)."""
-    from httpx import ASGITransport, AsyncClient
+async def api_db(api_engine):
+    """The async session that get_db is overridden to during API tests. Exposed
+    as its own fixture so a test can seed rows in the SAME transaction the
+    endpoint reads from. Rolled back after each test (clean isolation)."""
     from sqlalchemy.ext.asyncio import AsyncSession
-
-    from app.db.session import get_db
-    from app.main import app
 
     conn = await api_engine.connect()
     trans = await conn.begin()
     session = AsyncSession(
         bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False,
     )
+    try:
+        yield session
+    finally:
+        await session.close()
+        await trans.rollback()
+        await conn.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def api_client(api_db):
+    """An httpx AsyncClient against the app, with get_db overridden to the
+    api_db transaction that is rolled back after each test (clean isolation)."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.db.session import get_db
+    from app.main import app
 
     async def _override_get_db():
-        yield session
+        yield api_db
 
     app.dependency_overrides[get_db] = _override_get_db
     transport = ASGITransport(app=app)
@@ -373,9 +386,6 @@ async def api_client(api_engine):
             yield ac
     finally:
         app.dependency_overrides.pop(get_db, None)
-        await session.close()
-        await trans.rollback()
-        await conn.close()
 
 
 @pytest_asyncio.fixture

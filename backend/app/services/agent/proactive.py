@@ -14,20 +14,19 @@ logger = get_logger(__name__)
 
 class StandupGenerator:
     async def generate(self, db: AsyncSession) -> dict:
-        from sqlalchemy import select
-        from app.models.pr import PR
-        from app.models.task import Task
-
         yesterday = await self._get_prs_since(db, hours=24)
         today_planned = await self._get_active_tasks(db)
+        blockers = await self._get_pending_blockers(db)
 
         return {
             "name": settings.teammate_name,
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "yesterday": self._format_prs(yesterday) if yesterday else "No PR activity.",
             "today": self._format_tasks(today_planned) if today_planned else "Monitoring for new tasks.",
-            "blockers": "None",
+            "blockers": self._format_blockers(blockers),
             "prs": yesterday,
+            "tasks": today_planned,
+            "blockers_list": blockers,
         }
 
     async def _get_prs_since(self, db: AsyncSession, hours: int) -> list[dict]:
@@ -56,6 +55,26 @@ class StandupGenerator:
             {"title": t.title, "status": t.status, "priority": t.priority or "normal"}
             for t in tasks
         ]
+
+    async def _get_pending_blockers(self, db: AsyncSession) -> list[dict]:
+        from app.models.blocked import BlockedTask
+
+        result = await db.execute(
+            select(BlockedTask)
+            .where(BlockedTask.status == "pending")
+            .order_by(BlockedTask.created_at.desc())
+            .limit(10)
+        )
+        blocked = result.scalars().all()
+        return [
+            {"question": b.question, "created_at": b.created_at.isoformat() if b.created_at else None}
+            for b in blocked
+        ]
+
+    def _format_blockers(self, blockers: list[dict]) -> str:
+        if not blockers:
+            return "None"
+        return "\n".join(f"• {b.get('question', 'Blocked')}" for b in blockers)
 
     def _format_prs(self, prs: list[dict]) -> str:
         if not prs:

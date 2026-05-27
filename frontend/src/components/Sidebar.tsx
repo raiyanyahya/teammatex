@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquare, LayoutDashboard, Rocket, FolderGit2, ListTodo, Settings, Users, BarChart3, ScrollText, Terminal } from "lucide-react";
+import { MessageSquare, LayoutDashboard, Rocket, FolderGit2, ListTodo, ListChecks, Settings, Users, BarChart3, ScrollText, Terminal } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
 const HIDDEN_ROUTES = ["/login", "/setup"];
@@ -9,6 +9,7 @@ const HIDDEN_ROUTES = ["/login", "/setup"];
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/standup", label: "Standup", icon: ListChecks },
   { href: "/onboarding", label: "Onboarding", icon: Rocket },
   { href: "/repos", label: "Repos", icon: FolderGit2 },
   { href: "/tasks", label: "Tasks", icon: ListTodo },

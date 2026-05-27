@@ -173,6 +173,38 @@ class TestFeaturesEndpoints:
         assert "date" in data
         assert "yesterday" in data
 
+    async def test_standup_get_buckets_prs_tasks_and_pending_blockers(self, api_client, api_db):
+        """GET /api/features/standup returns recent PRs, active tasks, and only
+        the *pending* blockers as structured arrays for the in-app standup page."""
+        from app.models.repo import Repo
+        from app.models.pr import PR
+        from app.models.task import Task
+        from app.models.blocked import BlockedTask
+
+        repo = Repo(github_url="https://example.com/r.git", local_name="r")
+        api_db.add(repo)
+        await api_db.flush()
+
+        task = Task(title="Wire up metrics", status="in_progress", priority="high")
+        api_db.add(task)
+        await api_db.flush()
+
+        api_db.add(PR(repo_id=repo.id, branch="feat/rl", title="Add rate limiting", status="open"))
+        api_db.add(BlockedTask(task_id=task.id, question="Which OAuth provider?", status="pending"))
+        api_db.add(BlockedTask(task_id=task.id, question="Already answered", status="answered"))
+        await api_db.flush()
+
+        response = await api_client.get("/api/features/standup")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(p["title"] == "Add rate limiting" for p in data["prs"])
+        assert any(t["title"] == "Wire up metrics" for t in data["tasks"])
+
+        questions = [b["question"] for b in data["blockers_list"]]
+        assert "Which OAuth provider?" in questions
+        assert "Already answered" not in questions
+
     async def test_generate_module_docs(self, api_client):
         response = await api_client.post("/api/features/docs/module", json={
             "module_name": "auth",

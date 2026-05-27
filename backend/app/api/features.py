@@ -67,6 +67,7 @@ class SelfExtensionScanRequest(BaseModel):
 
 # ─── Standup ──────────────────────────────────────────
 
+@router.get("/standup")
 @router.post("/standup")
 async def generate_standup(db: AsyncSession = Depends(get_db)):
     summary = await standup.generate(db)
