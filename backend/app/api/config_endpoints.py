@@ -8,6 +8,42 @@ from app.models.app_config import AppConfig
 
 router = APIRouter(prefix="/config", tags=["config"])
 
+# Field names whose values are secrets and must never be echoed back to a client.
+_SECRET_KEYS = {
+    "api_key", "token", "secret", "password", "client_secret",
+    "signing_secret", "webhook_secret", "access_token", "refresh_token",
+    "private_key",
+}
+_MASK = "********"
+
+
+def _mask_secrets(value):
+    """Redact secret-named fields anywhere in a config value. A non-empty secret
+    becomes a fixed mask; empty/None is left as-is so the UI can still tell a
+    credential apart from one that's simply unset."""
+    if isinstance(value, dict):
+        return {
+            k: (_MASK if (k.lower() in _SECRET_KEYS and v) else _mask_secrets(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_secrets(v) for v in value]
+    return value
+
+
+def _unmask_secrets(new_value, old_value):
+    """Inverse of the GET masking on save: a secret field whose incoming value is
+    the mask means "unchanged", so keep the previously stored secret instead of
+    overwriting it with `********`."""
+    if isinstance(new_value, dict):
+        old = old_value if isinstance(old_value, dict) else {}
+        return {
+            k: (old.get(k) if (k.lower() in _SECRET_KEYS and v == _MASK)
+                else _unmask_secrets(v, old.get(k)))
+            for k, v in new_value.items()
+        }
+    return new_value
+
 
 class ConfigSetRequest(BaseModel):
     key: str
@@ -43,7 +79,7 @@ async def get_config(key: str, db: AsyncSession = Depends(get_db)):
     row = result.scalar_one_or_none()
     if not row:
         return {"key": key, "value": None}
-    return {"key": key, "value": row.value}
+    return {"key": key, "value": _mask_secrets(row.value)}
 
 
 @router.put("/{key}")
@@ -52,9 +88,9 @@ async def set_config(key: str, payload: ConfigSetRequest, db: AsyncSession = Dep
     row = result.scalar_one_or_none()
 
     if row:
-        row.value = payload.value
+        row.value = _unmask_secrets(payload.value, row.value)
     else:
-        row = AppConfig(key=key, value=payload.value)
+        row = AppConfig(key=key, value=_unmask_secrets(payload.value, None))
         db.add(row)
 
     await db.commit()
@@ -82,7 +118,7 @@ async def list_llm_providers(db: AsyncSession = Depends(get_db)):
 async def get_all_config(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AppConfig))
     rows = result.scalars().all()
-    return {"config": {r.key: r.value for r in rows}}
+    return {"config": {r.key: _mask_secrets(r.value) for r in rows}}
 
 
 @router.delete("/{key}")

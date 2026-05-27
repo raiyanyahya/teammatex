@@ -131,6 +131,61 @@ class TestKnowledgeGraphContributors:
             await g.run("MATCH (c:Contributor {email: $e}) DETACH DELETE c", e=email)
 
 
+class TestConfigEndpoints:
+    """GET /api/config and /api/config/{key} must never echo stored secrets
+    (llm api_key, github token, etc.) back to a client — only a masked marker,
+    while leaving non-secret fields and the set/unset signal intact."""
+
+    async def test_get_config_by_key_masks_api_key(self, api_client, api_db):
+        from app.models.app_config import AppConfig
+
+        api_db.add(AppConfig(key="llm_config", value={
+            "provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-supersecret123",
+        }))
+        await api_db.flush()
+
+        r = await api_client.get("/api/config/llm_config")
+        assert r.status_code == 200
+        value = r.json()["value"]
+        assert value["provider"] == "deepseek"      # non-secret preserved
+        assert value["model"] == "deepseek-chat"
+        assert value["api_key"] != "sk-supersecret123"
+        assert "supersecret" not in str(value)
+
+    async def test_get_all_config_masks_secrets(self, api_client, api_db):
+        from app.models.app_config import AppConfig
+
+        api_db.add(AppConfig(key="llm_config", value={"provider": "deepseek", "api_key": "sk-leakme"}))
+        api_db.add(AppConfig(key="github_token", value={"token": "ghp_leakme"}))
+        await api_db.flush()
+
+        r = await api_client.get("/api/config")
+        assert r.status_code == 200
+        body = str(r.json())
+        assert "sk-leakme" not in body
+        assert "ghp_leakme" not in body
+
+    async def test_set_config_preserves_masked_secret(self, api_client, api_db):
+        """A client that saves the redacted mask back (e.g. changed the model but
+        left the key field untouched) must not clobber the real stored secret."""
+        from sqlalchemy import select
+        from app.models.app_config import AppConfig
+
+        api_db.add(AppConfig(key="llm_config", value={
+            "provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-original",
+        }))
+        await api_db.flush()
+
+        r = await api_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
+            "provider": "deepseek", "model": "deepseek-reasoner", "api_key": "********",
+        }})
+        assert r.status_code == 200
+
+        row = (await api_db.execute(select(AppConfig).where(AppConfig.key == "llm_config"))).scalar_one()
+        assert row.value["api_key"] == "sk-original"        # real key preserved
+        assert row.value["model"] == "deepseek-reasoner"     # non-secret change applied
+
+
 class TestRepoEndpoints:
     async def test_list_repos(self, api_client):
         response = await api_client.get("/api/repos")
