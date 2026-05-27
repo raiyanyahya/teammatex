@@ -2,20 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { CheckCircle2, Loader2, AlertCircle, GitBranch, Plus, RefreshCw, Github, GitFork, Archive, Lock, X } from "lucide-react";
-
-type GhRepo = { name: string; url: string; default_branch?: string; private?: boolean; language?: string | null; fork?: boolean; archived?: boolean };
-
-/** Normalize a GitHub url or full_name to a lowercase owner/repo slug. */
-function repoSlug(s: string): string {
-  const t = s.trim().toLowerCase()
-    .replace(/^git@github\.com:/, "")
-    .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/\.git$/, "")
-    .replace(/\/$/, "");
-  const parts = t.split("/").filter(Boolean);
-  return parts.length >= 2 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : t;
-}
+import { CheckCircle2, Loader2, AlertCircle, GitBranch, Plus, RefreshCw, Github } from "lucide-react";
+import RepoSelector from "@/components/RepoSelector";
 
 const STAGES = [
   "Repository Discovery",
@@ -41,22 +29,18 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [retrying, setRetrying] = useState(false);
 
-  // Repo selector ("Browse my repositories")
   const [browsing, setBrowsing] = useState(false);
-  const [ghRepos, setGhRepos] = useState<GhRepo[]>([]);
-  const [ghLoading, setGhLoading] = useState(false);
-  const [ghError, setGhError] = useState("");
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [onboarding, setOnboarding] = useState(false);
-
-  // owner/repo slugs already in TeammateX — can't be re-added from the selector.
-  const addedSlugs = new Set(repos.map((r) => repoSlug(r.github_url || r.local_name)));
 
   const loadRepos = useCallback(async () => {
     try {
       const data = await api.get<{ id: string; local_name: string; github_url: string }[]>("/repos");
       setRepos(data);
-      if (data.length > 0 && !selectedId) setSelectedId(data[0].id);
+      if (data.length > 0 && !selectedId) {
+        // Deep-link: /onboarding?repo=<id> selects that repo (from the Repos page).
+        const wanted = new URLSearchParams(window.location.search).get("repo");
+        const match = wanted && data.find((r) => r.id === wanted);
+        setSelectedId(match ? wanted : data[0].id);
+      }
     } catch {}
   }, [selectedId]);
 
@@ -111,58 +95,6 @@ export default function OnboardingPage() {
     setRetrying(false);
   }
 
-  async function openSelector() {
-    setBrowsing(true);
-    setGhError("");
-    setGhLoading(true);
-    try {
-      const data = await api.get<{ repos: GhRepo[] }>("/integrations/github/repos");
-      const list = data.repos || [];
-      setGhRepos(list);
-      // Smart default: check everything that isn't already added, a fork, or archived.
-      const added = new Set(repos.map((r) => repoSlug(r.github_url || r.local_name)));
-      setChecked(new Set(
-        list.filter((r) => !added.has(repoSlug(r.name)) && !r.fork && !r.archived).map((r) => r.url)
-      ));
-    } catch (e: any) {
-      setGhError(e.message || "Couldn't load your GitHub repositories. Is a token saved in Settings?");
-    }
-    setGhLoading(false);
-  }
-
-  function toggle(url: string) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(url)) next.delete(url);
-      else next.add(url);
-      return next;
-    });
-  }
-
-  async function onboardSelected() {
-    const github_urls = [...checked];
-    if (github_urls.length === 0) return;
-    setOnboarding(true);
-    setGhError("");
-    try {
-      const res = await api.post<{ added: { repo_id: string }[] }>("/repos/bulk", { github_urls });
-      setBrowsing(false);
-      await loadRepos();
-      if (res.added?.[0]) setSelectedId(res.added[0].repo_id);
-    } catch (e: any) {
-      setGhError(e.message || "Failed to onboard the selected repositories.");
-    }
-    setOnboarding(false);
-  }
-
-  // Repos that can actually be selected (already-added ones are shown but locked).
-  const selectableCount = ghRepos.filter((r) => !addedSlugs.has(repoSlug(r.name))).length;
-  const allSelected = selectableCount > 0 && checked.size === selectableCount;
-  function toggleAll() {
-    if (allSelected) setChecked(new Set());
-    else setChecked(new Set(ghRepos.filter((r) => !addedSlugs.has(repoSlug(r.name))).map((r) => r.url)));
-  }
-
   const completed = Object.values(stages).filter((s: any) => s?.status === "completed" || s === "completed").length;
   const failed = Object.values(stages).filter((s: any) => s?.status === "failed").length;
   const pct = Object.keys(stages).length > 0 ? Math.round((completed / 12) * 100) : 0;
@@ -177,7 +109,7 @@ export default function OnboardingPage() {
           <p className="mt-0.5 text-xs text-[#6a6a6e]">Repository analysis progress</p>
         </div>
         {!browsing && repos.length > 0 && (
-          <button onClick={openSelector} className="btn-secondary">
+          <button onClick={() => setBrowsing(true)} className="btn-secondary">
             <Github className="h-3.5 w-3.5" /> Browse my repositories
           </button>
         )}
@@ -185,25 +117,16 @@ export default function OnboardingPage() {
 
       {browsing ? (
         <RepoSelector
-          loading={ghLoading}
-          error={ghError}
-          repos={ghRepos}
-          checked={checked}
-          addedSlugs={addedSlugs}
-          allSelected={allSelected}
-          selectableCount={selectableCount}
-          onboarding={onboarding}
-          onToggle={toggle}
-          onToggleAll={toggleAll}
+          existing={repos}
+          onDone={() => { setBrowsing(false); loadRepos(); }}
           onCancel={() => setBrowsing(false)}
-          onOnboard={onboardSelected}
         />
       ) : repos.length === 0 ? (
         <div className="panel p-12 text-center max-w-lg mx-auto">
           <GitBranch className="h-8 w-8 text-[#5a5a5e] mx-auto mb-4" />
           <h2 className="text-sm font-semibold text-[#cccccc] mb-1">No repositories</h2>
           <p className="text-xs text-[#6a6a6e] mb-6">Pick from your GitHub account, or add a repository by URL.</p>
-          <button onClick={openSelector} className="btn-primary mx-auto mb-5">
+          <button onClick={() => setBrowsing(true)} className="btn-primary mx-auto mb-5">
             <Github className="h-3.5 w-3.5" /> Browse my repositories
           </button>
           <div className="flex items-center gap-3 max-w-sm mx-auto mb-4 text-[10px] uppercase tracking-wider text-[#5a5a5e]">
@@ -312,90 +235,6 @@ export default function OnboardingPage() {
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-function Badge({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-[#2a2a30] text-[#8a8a8e]">
-      {icon}{label}
-    </span>
-  );
-}
-
-function RepoSelector({
-  loading, error, repos, checked, addedSlugs, allSelected, selectableCount, onboarding,
-  onToggle, onToggleAll, onCancel, onOnboard,
-}: {
-  loading: boolean; error: string; repos: GhRepo[]; checked: Set<string>;
-  addedSlugs: Set<string>; allSelected: boolean; selectableCount: number; onboarding: boolean;
-  onToggle: (url: string) => void; onToggleAll: () => void; onCancel: () => void; onOnboard: () => void;
-}) {
-  return (
-    <div className="panel max-w-3xl mx-auto">
-      <div className="flex items-center justify-between border-b border-[#2a2a2e] px-5 py-3">
-        <div className="flex items-center gap-2 text-[#cccccc]">
-          <Github className="h-4 w-4" />
-          <span className="text-sm font-semibold">Select repositories to onboard</span>
-        </div>
-        <button onClick={onCancel} className="btn-ghost"><X className="h-3.5 w-3.5" /></button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 px-5 py-12 text-sm text-[#6a6a6e]">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading your repositories…
-        </div>
-      ) : error ? (
-        <div className="px-5 py-10 text-center text-sm text-[#e06060]">{error}</div>
-      ) : repos.length === 0 ? (
-        <div className="px-5 py-10 text-center text-sm text-[#6a6a6e]">No repositories found for this token.</div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between border-b border-[#2a2a2e] px-5 py-2.5">
-            <button onClick={onToggleAll} className="text-xs text-[#7a9ec8] hover:text-[#9ab8e0]">
-              {allSelected ? "Deselect all" : "Select all"}
-            </button>
-            <span className="text-[11px] text-[#6a6a6e]">{checked.size} of {selectableCount} selected</span>
-          </div>
-
-          <div className="max-h-[55vh] divide-y divide-[#2a2a2e] overflow-y-auto">
-            {repos.map((r) => {
-              const added = addedSlugs.has(repoSlug(r.name));
-              return (
-                <label
-                  key={r.url}
-                  className={`flex items-center gap-3 px-5 py-2.5 ${added ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#25252b]"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={added ? false : checked.has(r.url)}
-                    disabled={added}
-                    onChange={() => onToggle(r.url)}
-                    className="h-3.5 w-3.5 accent-[#264f78]"
-                  />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-[#cccccc]">{r.name}</span>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {r.language && <span className="text-[10px] text-[#6a6a6e]">{r.language}</span>}
-                    {r.private && <Badge icon={<Lock className="h-2.5 w-2.5" />} label="private" />}
-                    {r.fork && <Badge icon={<GitFork className="h-2.5 w-2.5" />} label="fork" />}
-                    {r.archived && <Badge icon={<Archive className="h-2.5 w-2.5" />} label="archived" />}
-                    {added && <span className="rounded bg-[#223040] px-1.5 py-0.5 text-[10px] text-[#7a9ec8]">added</span>}
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center justify-between border-t border-[#2a2a2e] px-5 py-3">
-            <button onClick={onCancel} className="btn-ghost text-xs">Cancel</button>
-            <button onClick={onOnboard} disabled={onboarding || checked.size === 0} className="btn-primary disabled:opacity-50">
-              {onboarding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Onboard {checked.size} selected
-            </button>
-          </div>
-        </>
       )}
     </div>
   );

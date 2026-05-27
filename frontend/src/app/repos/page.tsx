@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Loader2, GitBranch, ExternalLink } from "lucide-react";
+import { Plus, Loader2, GitBranch, Github, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import RepoSelector from "@/components/RepoSelector";
+
+type Repo = { id: string; local_name: string; github_url: string };
 
 export default function ReposPage() {
   const router = useRouter();
-  const [repos, setRepos] = useState<any[]>([]);
+  const [repos, setRepos] = useState<Repo[]>([]);
   const [url, setUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [onboardStatus, setOnboardStatus] = useState<Record<string, any>>({});
+  const [browsing, setBrowsing] = useState(false);
+  const [busy, setBusy] = useState<Record<string, "resync" | "remove">>({});
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   async function loadRepos() {
     try {
-      const data = await api.get<any[]>("/repos");
+      const data = await api.get<Repo[]>("/repos");
       setRepos(data);
       for (const r of data) {
         try {
@@ -40,66 +46,111 @@ export default function ReposPage() {
     setAdding(false);
   }
 
+  async function resync(id: string) {
+    setBusy((b) => ({ ...b, [id]: "resync" }));
+    try { await api.post(`/repos/${id}/retry`, {}); await loadRepos(); } catch {}
+    setBusy((b) => { const n = { ...b }; delete n[id]; return n; });
+  }
+
+  async function remove(id: string) {
+    setBusy((b) => ({ ...b, [id]: "remove" }));
+    setConfirmRemove(null);
+    try {
+      await fetch(`/api/repos/${id}`, { method: "DELETE" });
+      setRepos((prev) => prev.filter((r) => r.id !== id));
+    } catch {}
+    setBusy((b) => { const n = { ...b }; delete n[id]; return n; });
+  }
+
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-lg font-semibold text-[#cccccc]">Repositories</h1>
-        <p className="mt-0.5 text-xs text-[#6a6a6e]">Add repos to begin onboarding</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-[#cccccc]">Repositories</h1>
+          <p className="mt-0.5 text-xs text-[#6a6a6e]">Browse your GitHub account or add repos by URL</p>
+        </div>
+        {!browsing && (
+          <button onClick={() => setBrowsing(true)} className="btn-secondary">
+            <Github className="h-3.5 w-3.5" /> Browse my repositories
+          </button>
+        )}
       </div>
 
-      <div className="mb-6 flex gap-2">
-        <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="https://github.com/owner/repo" className="input flex-1" />
-        <button onClick={addRepo} disabled={adding || !url.trim()} className="btn-primary">
-          <Plus className="h-3.5 w-3.5" /> Add
-        </button>
-      </div>
-
-      {error && <div className="mb-4 panel px-4 py-3 text-xs text-[#e06060]">{error}</div>}
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1,2,3].map((i) => <div key={i} className="h-16 rounded-md bg-[#25252b] animate-pulse" />)}
-        </div>
-      ) : repos.length === 0 ? (
-        <div className="panel p-12 text-center">
-          <GitBranch className="h-8 w-8 text-[#5a5a5e] mx-auto mb-3" />
-          <p className="text-sm text-[#6a6a6e]">No repositories added yet.</p>
-        </div>
+      {browsing ? (
+        <RepoSelector
+          existing={repos}
+          onDone={() => { setBrowsing(false); setLoading(true); loadRepos(); }}
+          onCancel={() => setBrowsing(false)}
+        />
       ) : (
-        <div className="space-y-1.5">
-          {repos.map((repo) => {
-            const status = onboardStatus[repo.id];
-            const completed = status?.stages?.filter((s: any) => s.status === "completed").length || 0;
-            const pct = status?.stages?.length > 0 ? Math.round((completed / 12) * 100) : 0;
+        <>
+          <div className="mb-6 flex gap-2">
+            <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="https://github.com/owner/repo" className="input flex-1" />
+            <button onClick={addRepo} disabled={adding || !url.trim()} className="btn-primary">
+              <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
 
-            return (
-              <div key={repo.id} className="panel flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <GitBranch className="h-4 w-4 text-[#5a5a5e]" />
-                  <div>
-                    <span className="font-mono text-sm text-[#cccccc]">{repo.local_name}</span>
-                    <span className="ml-2 text-[11px] text-[#5a5a5e]">{repo.github_url}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  {status ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-24 rounded-sm bg-[#2a2a30] overflow-hidden">
-                        <div className="h-1 rounded-sm bg-[#264f78] transition-all" style={{ width: `${pct}%` }} />
+          {error && <div className="mb-4 panel px-4 py-3 text-xs text-[#e06060]">{error}</div>}
+
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-md bg-[#25252b]" />)}
+            </div>
+          ) : repos.length === 0 ? (
+            <div className="panel p-12 text-center">
+              <GitBranch className="mx-auto mb-3 h-8 w-8 text-[#5a5a5e]" />
+              <p className="text-sm text-[#6a6a6e]">No repositories added yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {repos.map((repo) => {
+                const status = onboardStatus[repo.id];
+                const completed = status?.stages?.filter((s: any) => s.status === "completed").length || 0;
+                const pct = status?.stages?.length > 0 ? Math.round((completed / 12) * 100) : 0;
+                const action = busy[repo.id];
+
+                return (
+                  <div key={repo.id} className="panel flex items-center justify-between px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <GitBranch className="h-4 w-4 shrink-0 text-[#5a5a5e]" />
+                      <div className="min-w-0">
+                        <span className="font-mono text-sm text-[#cccccc]">{repo.local_name}</span>
+                        <span className="ml-2 truncate text-[11px] text-[#5a5a5e]">{repo.github_url}</span>
                       </div>
-                      <span className="text-[11px] text-[#6a6a6e] font-mono">{completed}/12</span>
                     </div>
-                  ) : (
-                    <span className="text-[11px] text-[#5a5a5e]">Queued</span>
-                  )}
-                  <button onClick={() => router.push("/onboarding")} className="text-[11px] text-[#5a5a5e] hover:text-[#8a8a8e] transition-colors">
-                    View pipeline
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
+                    {confirmRemove === repo.id ? (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-[#e0a060]">Remove {repo.local_name}?</span>
+                        <button onClick={() => remove(repo.id)} className="rounded bg-[#3a2020] px-2 py-1 text-[#e06060] hover:bg-[#4a2020]">Remove</button>
+                        <button onClick={() => setConfirmRemove(null)} className="btn-ghost">Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1 w-24 overflow-hidden rounded-sm bg-[#2a2a30]">
+                            <div className="h-1 rounded-sm bg-[#264f78] transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="font-mono text-[11px] text-[#6a6a6e]">{status ? `${completed}/12` : "queued"}</span>
+                        </div>
+                        <button onClick={() => router.push(`/onboarding?repo=${repo.id}`)} className="text-[11px] text-[#5a5a5e] transition-colors hover:text-[#8a8a8e]">
+                          View pipeline
+                        </button>
+                        <button onClick={() => resync(repo.id)} disabled={!!action} className="text-[#5a5a5e] transition-colors hover:text-[#8a8a8e] disabled:opacity-50" title="Re-sync (re-run onboarding)">
+                          {action === "resync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        </button>
+                        <button onClick={() => setConfirmRemove(repo.id)} disabled={!!action} className="text-[#5a5a5e] transition-colors hover:text-[#e06060] disabled:opacity-50" title="Remove">
+                          {action === "remove" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

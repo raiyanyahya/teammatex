@@ -134,6 +134,24 @@ class TestRepoEndpoints:
         assert all(a.get("repo_id") for a in data["added"])
         assert "https://github.com/acme/already.git" in data["skipped"]
 
+    async def test_delete_repo_removes_it_and_children(self, api_client, api_db):
+        from app.models.pr import PR
+
+        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/me.git"})
+        rid = r.json()["repo_id"]
+        api_db.add(PR(repo_id=rid, branch="b", title="t", status="open"))  # child FK row
+        await api_db.flush()
+
+        resp = await api_client.delete(f"/api/repos/{rid}")
+        assert resp.status_code == 200
+
+        repos = (await api_client.get("/api/repos")).json()
+        assert all(x["id"] != rid for x in repos)
+
+    async def test_delete_nonexistent_repo_404(self, api_client):
+        resp = await api_client.delete("/api/repos/00000000-0000-0000-0000-000000000000")
+        assert resp.status_code == 404
+
 
 class TestIntegrationEndpoints:
     async def test_list_integrations(self, api_client):

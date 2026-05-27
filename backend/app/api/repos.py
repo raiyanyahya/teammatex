@@ -3,10 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from structlog import get_logger
+
 from app.db.session import get_db
 from app.models.repo import Repo
 from app.services.onboarding.pipeline import start_onboarding
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/repos", tags=["repos"])
 
 
@@ -145,6 +148,36 @@ async def add_repos_bulk(payload: BulkRepoCreate, db: AsyncSession = Depends(get
         start_onboarding(item["repo_id"], item["url"], item["local_name"])
 
     return {"added": added, "skipped": skipped}
+
+
+@router.delete("/{repo_id}")
+async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
+    """Remove a repo from TeammateX: its DB rows (PRs, onboarding state, tech-debt,
+    dependency snapshots) and, best-effort, its knowledge-graph subgraph. The cloned
+    checkout and vector embeddings are left for a separate cleanup pass."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.pr import PR
+    from app.models.repo import RepoOnboardingState
+    from app.models.tech_debt import TechDebtItem
+    from app.models.dependency import DependencySnapshot
+
+    result = await db.execute(select(Repo).where(Repo.id == repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    for model in (PR, RepoOnboardingState, TechDebtItem, DependencySnapshot):
+        await db.execute(sa_delete(model).where(model.repo_id == repo_id))
+    await db.delete(repo)
+    await db.commit()
+
+    try:
+        from app.services.knowledge.graph import KnowledgeGraph
+        await KnowledgeGraph().run("MATCH (n {repo_id: $id}) DETACH DELETE n", id=repo_id)
+    except Exception as e:
+        logger.warning("repo_delete_graph_cleanup_failed", repo_id=repo_id, error=str(e)[:120])
+
+    return {"deleted": True, "repo_id": repo_id}
 
 
 @router.post("/{repo_id}/retry")
