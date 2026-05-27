@@ -1,12 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.config import settings
-from app.services.integrations.base import IntegrationRegistry
 from app.services.llm.provider import LLMProvider
 
 logger = get_logger(__name__)

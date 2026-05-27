@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,13 +23,6 @@ test_gen = TestGenerator()
 self_ext = SelfExtension()
 retro = SprintRetrospectiveAssistant()
 hygiene = GitHygieneAutomation()
-
-
-from pydantic import BaseModel
-
-
-class PostStandupRequest(BaseModel):
-    channel: str
 
 
 class DocGenRequest(BaseModel):
@@ -72,14 +65,6 @@ class SelfExtensionScanRequest(BaseModel):
 async def generate_standup(db: AsyncSession = Depends(get_db)):
     summary = await standup.generate(db)
     return summary
-
-
-@router.post("/standup/post")
-async def post_standup(payload: PostStandupRequest, db: AsyncSession = Depends(get_db)):
-    success = await standup.post_to_slack(db, payload.channel)
-    if not success:
-        raise HTTPException(status_code=400, detail="Slack not configured")
-    return {"posted": True, "channel": payload.channel}
 
 
 # ─── Documentation ────────────────────────────────────

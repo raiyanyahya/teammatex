@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.repo import Repo
-from app.services.onboarding.pipeline import OnboardingStage, start_onboarding
+from app.services.onboarding.pipeline import start_onboarding
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
@@ -135,10 +135,15 @@ async def add_repos_bulk(payload: BulkRepoCreate, db: AsyncSession = Depends(get
         repo = Repo(github_url=url, local_name=local_name)
         db.add(repo)
         await db.flush()
-        start_onboarding(str(repo.id), url, local_name)
         added.append({"url": url, "repo_id": str(repo.id), "local_name": local_name})
 
     await db.commit()
+
+    # Enqueue the pipeline only after the rows are committed, so the Celery
+    # worker can actually find each repo (start_onboarding uses apply_async).
+    for item in added:
+        start_onboarding(item["repo_id"], item["url"], item["local_name"])
+
     return {"added": added, "skipped": skipped}
 
 
