@@ -186,6 +186,41 @@ class TestConfigEndpoints:
         assert row.value["model"] == "deepseek-reasoner"     # non-secret change applied
 
 
+class TestPersona:
+    """The agent's persona is read from app_config (key 'persona'), falling back
+    to settings; unknown values normalize to the default. Each persona yields a
+    distinct style directive."""
+
+    async def test_resolve_persona_prefers_app_config(self, api_db):
+        from app.models.app_config import AppConfig
+        from app.services.agent.runtime import AgentRuntime
+
+        api_db.add(AppConfig(key="persona", value={"persona": "reviewer"}))
+        await api_db.flush()
+        assert await AgentRuntime()._resolve_persona(api_db) == "reviewer"
+
+    async def test_resolve_persona_unknown_falls_back_to_default(self, api_db):
+        from app.models.app_config import AppConfig
+        from app.services.agent.runtime import AgentRuntime
+        from app.services.agent.prompts import DEFAULT_PERSONA
+
+        api_db.add(AppConfig(key="persona", value={"persona": "bogus"}))
+        await api_db.flush()
+        assert await AgentRuntime()._resolve_persona(api_db) == DEFAULT_PERSONA
+
+    async def test_resolve_persona_no_config_uses_default(self, api_db):
+        from app.services.agent.runtime import AgentRuntime
+        from app.services.agent.prompts import DEFAULT_PERSONA
+
+        assert await AgentRuntime()._resolve_persona(api_db) == DEFAULT_PERSONA
+
+    async def test_persona_directives_are_distinct(self):
+        from app.services.agent.prompts import persona_directive, DEFAULT_PERSONA
+
+        assert persona_directive("reviewer") != persona_directive("pragmatic")
+        assert persona_directive("nonsense") == persona_directive(DEFAULT_PERSONA)
+
+
 class TestPermissionEnforcement:
     """The runtime gates tools by capability: a disabled Permission row blocks
     the mapped tools before they dispatch; an absent row means allowed (the

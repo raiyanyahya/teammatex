@@ -63,6 +63,9 @@ export default function AdminPage() {
   // Permissions
   const [perms, setPerms] = useState<Perm[]>([]);
 
+  // Persona
+  const [persona, setPersona] = useState("senior");
+
   async function loadLLM() {
     const p = await getJSON<Providers>("/config/llm/providers");
     setProv(p);
@@ -93,7 +96,15 @@ export default function AdminPage() {
       body: JSON.stringify({ enabled }),
     });
   }
-  useEffect(() => { loadLLM(); loadGh(); loadPerms(); }, []);
+  async function loadPersona() {
+    const data = await getJSON<{ value: { persona?: string } | null }>("/config/persona");
+    if (data?.value?.persona) setPersona(data.value.persona);
+  }
+  async function savePersona(key: string) {
+    setPersona(key);
+    await putConfig("persona", { persona: key });
+  }
+  useEffect(() => { loadLLM(); loadGh(); loadPerms(); loadPersona(); }, []);
 
   const providerKeys = prov ? Object.keys(prov.providers) : [];
   const providerModels = (prov && provider && prov.providers[provider]) || [];
@@ -288,8 +299,11 @@ export default function AdminPage() {
 
           {tab === "persona" && (
             <div className="panel p-5">
-              <NotWired>Persona is set via the <span className="font-mono">TEAMMATEX_TEAMMATE_PERSONA</span> env var; in-app editing isn&apos;t wired up yet.</NotWired>
-              <div className="space-y-1 opacity-50 pointer-events-none">
+              <p className="mb-4 text-xs text-[#6a6a6e]">
+                How your teammate works. The choice is woven into its system prompt — it
+                shifts tone and emphasis without changing what it&apos;s allowed to do.
+              </p>
+              <div className="space-y-1">
                 {[
                   { key: "senior", label: "Senior", desc: "Thorough and pedagogical" },
                   { key: "junior", label: "Junior", desc: "Enthusiastic, asks for clarification" },
@@ -297,8 +311,12 @@ export default function AdminPage() {
                   { key: "pragmatic", label: "Pragmatic", desc: "Favors shipping over perfection" },
                   { key: "architect", label: "Architect", desc: "Thinks in systems and diagrams" },
                 ].map((p) => (
-                  <label key={p.key} className="flex items-center gap-3 rounded px-3 py-2.5">
-                    <input type="radio" name="persona" defaultChecked={p.key === "senior"} disabled className="h-3.5 w-3.5 accent-[#264f78]" />
+                  <label key={p.key} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2.5 hover:bg-[#25252b]">
+                    <input
+                      type="radio" name="persona" checked={persona === p.key}
+                      onChange={() => savePersona(p.key)}
+                      className="h-3.5 w-3.5 accent-[#264f78]"
+                    />
                     <div><span className="text-sm text-[#cccccc]">{p.label}</span><span className="ml-2 text-[11px] text-[#6a6a6e]">{p.desc}</span></div>
                   </label>
                 ))}

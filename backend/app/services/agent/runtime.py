@@ -18,6 +18,9 @@ from app.services.agent.prompts import (
     PLANNING_PROMPT,
     CODE_GENERATION_PROMPT,
     SELF_REVIEW_PROMPT,
+    DEFAULT_PERSONA,
+    PERSONA_STYLES,
+    persona_directive,
 )
 from app.services.agent.rag import RAGPipeline
 from app.services.agent.tools import ToolRegistry, tool_registry
@@ -123,10 +126,26 @@ class AgentRuntime:
         self.tools = tool_registry
         self.llm = LLMProvider()
 
-    def _get_persona_prompt(self) -> str:
+    async def _resolve_persona(self, db: AsyncSession | None) -> str:
+        """The active persona key: app_config['persona'] if set, else
+        settings.teammate_persona, normalized to a known persona."""
         persona = settings.teammate_persona
-        template = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["helpful_senior_dev"])
-        return template.format(name=settings.teammate_name)
+        if db is not None:
+            from sqlalchemy import select as _sel
+            from app.models.app_config import AppConfig
+            try:
+                row = (await db.execute(
+                    _sel(AppConfig).where(AppConfig.key == "persona")
+                )).scalar_one_or_none()
+                if row and isinstance(row.value, dict) and row.value.get("persona"):
+                    persona = row.value["persona"]
+            except Exception:
+                pass
+        return persona if persona in PERSONA_STYLES else DEFAULT_PERSONA
+
+    def _get_persona_prompt(self, persona: str | None = None) -> str:
+        base = PERSONA_PROMPTS["helpful_senior_dev"].format(name=settings.teammate_name)
+        return f"{base}\n{persona_directive(persona)}"
 
     # Tools the chat agent is allowed to drive. A small, powerful set: a real
     # shell does the git/gh/test work, so there are no scripted git tools. The
@@ -166,7 +185,8 @@ class AgentRuntime:
         return False
 
     def _build_system_prompt(self, context: str, env_block: str,
-                             github_connected: bool) -> str:
+                             github_connected: bool,
+                             persona: str = DEFAULT_PERSONA) -> str:
         name = settings.teammate_name
         git_caps = (
             "git is installed and configured, and the `gh` GitHub CLI is installed "
@@ -180,6 +200,8 @@ class AgentRuntime:
         parts = [
             f"You are {name}, an autonomous software-engineering teammate working on "
             f"the user's codebases. You are NOT Claude, GPT, or any specific model.",
+            "",
+            persona_directive(persona),
             "",
             "You have a real Linux shell with full access via the run_command tool, "
             "plus tools to read/write/edit files, search code (grep/glob), and search "
@@ -237,7 +259,8 @@ class AgentRuntime:
             env_block = ""
 
         github_connected = await self._github_token_present(db)
-        system_prompt = self._build_system_prompt(context, env_block, github_connected)
+        persona = await self._resolve_persona(db)
+        system_prompt = self._build_system_prompt(context, env_block, github_connected, persona)
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:
@@ -321,18 +344,19 @@ class AgentRuntime:
             pass
 
         prompt = PLANNING_PROMPT.format(task=task, context=context)
-        
+        persona = await self._resolve_persona(ctx.db)
+
         # Use direct LiteLLM call that's proven to work
         from litellm import acompletion
         from app.config import settings as s
         import asyncio
-        
+
         providers = await self.llm._get_available_providers()
         for provider, model, key in providers:
             try:
                 response = await acompletion(
                     model="deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}",
-                    messages=[{"role": "system", "content": self._get_persona_prompt()},
+                    messages=[{"role": "system", "content": self._get_persona_prompt(persona)},
                               {"role": "user", "content": prompt}],
                     api_key=key, temperature=0.2, max_tokens=2000,
                 )

@@ -6,6 +6,32 @@ Be direct. No fluff. If you can't do something, say so. If a tool fails, report 
 }
 
 
+# A short tone/emphasis directive per persona. It overlays the operating
+# instructions (it doesn't replace them), so the picker shifts how the teammate
+# works without dropping the investigate→change→verify→deliver discipline. Keys
+# match the Settings → Persona options.
+DEFAULT_PERSONA = "senior"
+
+PERSONA_STYLES = {
+    "senior": "Work like a thorough senior engineer: explain your reasoning where it "
+              "helps the user learn, and call out risks you notice. No fluff.",
+    "junior": "Work like an enthusiastic junior engineer: when requirements are "
+              "ambiguous, ask a clarifying question instead of guessing.",
+    "reviewer": "Work like a strict reviewer: insist on types, tests, and edge cases, "
+                "and flag anything risky before it ships.",
+    "pragmatic": "Work pragmatically: favor shipping a working change over perfection, "
+                 "keep scope tight, and note follow-ups rather than gold-plating.",
+    "architect": "Work like an architect: think in systems — call out module "
+                 "boundaries, dependencies, and design trade-offs before diving in.",
+}
+
+
+def persona_directive(key: str | None) -> str:
+    """The style directive for a persona key, normalizing unknown/legacy keys
+    (e.g. the old `helpful_senior_dev` default) to the default persona."""
+    return PERSONA_STYLES.get(key or "", PERSONA_STYLES[DEFAULT_PERSONA])
+
+
 TOOL_USE_SYSTEM_PROMPT = """You are {name}, an AI teammate with access to tools for interacting with the codebase.
 
 ## Tool Routing Table — pick the right tool for the task:
