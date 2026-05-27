@@ -186,6 +186,56 @@ class TestConfigEndpoints:
         assert row.value["model"] == "deepseek-reasoner"     # non-secret change applied
 
 
+class TestPermissionEnforcement:
+    """The runtime gates tools by capability: a disabled Permission row blocks
+    the mapped tools before they dispatch; an absent row means allowed (the
+    model defaults enabled)."""
+
+    async def test_disabled_capability_blocks_tool(self, api_db):
+        from app.models.permission import Permission
+        from app.services.agent.runtime import AgentRuntime, AgentContext
+
+        api_db.add(Permission(capability="write_code", enabled=False))
+        await api_db.flush()
+
+        ctx = AgentContext(repo_id=None, db=api_db)
+        result = await AgentRuntime().execute_tool(
+            ctx, "write_file", {"file_path": "/etc/zzz.py", "content": "x"},
+        )
+        assert "denied" in result.get("error", "").lower()
+
+    async def test_absent_permission_allows_tool(self, api_db):
+        from app.services.agent.runtime import AgentRuntime, AgentContext
+
+        ctx = AgentContext(repo_id=None, db=api_db)
+        # read_code has no row → allowed → dispatch runs (errors on the missing
+        # file, but never with a permission denial).
+        result = await AgentRuntime().execute_tool(
+            ctx, "read_file", {"file_path": "/nonexistent/zzz.py"},
+        )
+        assert "denied" not in str(result).lower()
+
+
+class TestPermissionsAPI:
+    async def test_list_permissions_returns_defaults(self, api_client):
+        r = await api_client.get("/api/permissions")
+        assert r.status_code == 200
+        perms = {p["capability"]: p["enabled"] for p in r.json()["permissions"]}
+        assert perms["read_code"] is True
+        assert perms["merge_pr"] is False  # off by default
+
+    async def test_set_permission_persists(self, api_client):
+        r = await api_client.put("/api/permissions/write_code", json={"enabled": False})
+        assert r.status_code == 200
+        perms = {p["capability"]: p["enabled"]
+                 for p in (await api_client.get("/api/permissions")).json()["permissions"]}
+        assert perms["write_code"] is False
+
+    async def test_set_unknown_capability_404(self, api_client):
+        r = await api_client.put("/api/permissions/bogus", json={"enabled": True})
+        assert r.status_code == 404
+
+
 class TestRepoEndpoints:
     async def test_list_repos(self, api_client):
         response = await api_client.get("/api/repos")

@@ -21,6 +21,7 @@ type GhVerify = {
   valid: boolean; configured?: boolean; login?: string;
   token_type?: string; can_push?: boolean | null; note?: string;
 };
+type Perm = { capability: string; label: string; enabled: boolean };
 
 async function getJSON<T>(path: string): Promise<T | null> {
   try { const r = await fetch(`/api${path}`); return r.ok ? r.json() : null; } catch { return null; }
@@ -59,6 +60,9 @@ export default function AdminPage() {
   const [githubToken, setGithubToken] = useState("");
   const [githubSaving, setGithubSaving] = useState(false);
 
+  // Permissions
+  const [perms, setPerms] = useState<Perm[]>([]);
+
   async function loadLLM() {
     const p = await getJSON<Providers>("/config/llm/providers");
     setProv(p);
@@ -78,7 +82,18 @@ export default function AdminPage() {
     } catch { setGh(null); }
     setGhLoading(false);
   }
-  useEffect(() => { loadLLM(); loadGh(); }, []);
+  async function loadPerms() {
+    const data = await getJSON<{ permissions: Perm[] }>("/permissions");
+    if (data) setPerms(data.permissions);
+  }
+  async function togglePermission(capability: string, enabled: boolean) {
+    setPerms((ps) => ps.map((p) => (p.capability === capability ? { ...p, enabled } : p)));
+    await fetch(`/api/permissions/${capability}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+  }
+  useEffect(() => { loadLLM(); loadGh(); loadPerms(); }, []);
 
   const providerKeys = prov ? Object.keys(prov.providers) : [];
   const providerModels = (prov && provider && prov.providers[provider]) || [];
@@ -249,20 +264,24 @@ export default function AdminPage() {
 
           {tab === "permissions" && (
             <div className="panel p-5">
-              <NotWired>Permission gating isn&apos;t enforced yet — these toggles don&apos;t change the teammate&apos;s behavior.</NotWired>
-              <div className="space-y-1 opacity-50 pointer-events-none">
-                {[
-                  { key: "read_code", label: "Read code" },
-                  { key: "write_code", label: "Write code" },
-                  { key: "create_pr", label: "Create PRs" },
-                  { key: "merge_pr", label: "Merge PRs" },
-                  { key: "autonomous", label: "Autonomous mode" },
-                ].map((p) => (
-                  <label key={p.key} className="flex items-center justify-between rounded px-3 py-2.5">
+              <p className="mb-4 text-xs text-[#6a6a6e]">
+                What your teammate is allowed to do. Disabling a capability blocks its tools
+                (read/write code, PRs); the agent gets a permission error if it tries.
+              </p>
+              <div className="space-y-1">
+                {perms.map((p) => (
+                  <label key={p.capability} className="flex cursor-pointer items-center justify-between rounded px-3 py-2.5 hover:bg-[#25252b]">
                     <span className="text-sm text-[#cccccc]">{p.label}</span>
-                    <input type="checkbox" defaultChecked={p.key !== "merge_pr"} disabled className="h-3.5 w-3.5 accent-[#264f78]" />
+                    <input
+                      type="checkbox" checked={p.enabled}
+                      onChange={(e) => togglePermission(p.capability, e.target.checked)}
+                      className="h-3.5 w-3.5 accent-[#264f78]"
+                    />
                   </label>
                 ))}
+                {perms.length === 0 && (
+                  <p className="px-3 py-6 text-center text-xs text-[#5a5a5e]">Loading…</p>
+                )}
               </div>
             </div>
           )}

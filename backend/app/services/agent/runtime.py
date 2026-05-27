@@ -99,6 +99,23 @@ class AgentContext:
     low_confidence_count: int = 0
 
 
+# Which permission capability gates each tool. Tools absent from this map are
+# ungated. read_code / write_code / create_pr line up with the Settings toggles;
+# merge_pr and autonomous have no tools yet (no merge tool; autonomy is a mode).
+TOOL_CAPABILITY: dict[str, str] = {
+    "read_file": "read_code", "list_directory": "read_code",
+    "glob_search": "read_code", "grep_search": "read_code",
+    "get_diff": "read_code", "get_blame": "read_code", "get_commit_log": "read_code",
+    "semantic_search": "read_code", "graph_query": "read_code",
+    "find_owner": "read_code", "find_dependents": "read_code",
+    "find_dependencies": "read_code", "get_architecture": "read_code",
+    "search_notes": "read_code", "list_prs": "read_code", "trace_issue": "read_code",
+    "write_file": "write_code", "edit_file": "write_code",
+    "commit_files": "write_code", "create_branch": "write_code",
+    "create_pr": "create_pr",
+}
+
+
 class AgentRuntime:
     def __init__(self):
         self.memory = MemoryManager()
@@ -380,6 +397,11 @@ class AgentRuntime:
         if not tool:
             return {"error": f"Unknown tool: {tool_name}"}
 
+        denied = await self._capability_denied(ctx, tool_name)
+        if denied:
+            logger.info("tool_denied", tool=tool_name, capability=denied)
+            return {"error": f"Permission denied: the '{denied}' capability is disabled in Settings."}
+
         logger.info("tool_executing", tool=tool_name, args=str(arguments)[:200])
 
         try:
@@ -388,6 +410,21 @@ class AgentRuntime:
         except Exception as e:
             logger.error("tool_failed", tool=tool_name, error=str(e))
             return {"error": str(e)}
+
+    async def _capability_denied(self, ctx: AgentContext, tool_name: str) -> str | None:
+        """Return the gating capability if the tool is blocked, else None. Fails
+        open: an unmapped tool, no DB session, or a capability with no stored row
+        (the model defaults enabled) is allowed."""
+        capability = TOOL_CAPABILITY.get(tool_name)
+        if not capability or ctx.db is None:
+            return None
+        from sqlalchemy import select as _sel
+        from app.models.permission import Permission
+
+        row = (await ctx.db.execute(
+            _sel(Permission).where(Permission.capability == capability)
+        )).scalar_one_or_none()
+        return capability if (row is not None and not row.enabled) else None
 
     async def _dispatch_tool(self, ctx: AgentContext, tool_name: str, args: dict) -> Any:
         if tool_name in ("semantic_search", "find_owner", "find_dependents",
