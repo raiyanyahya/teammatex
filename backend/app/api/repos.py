@@ -159,8 +159,8 @@ async def add_repos_bulk(payload: BulkRepoCreate, db: AsyncSession = Depends(get
 @router.delete("/{repo_id}")
 async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     """Remove a repo from TeammateX: its DB rows (PRs, onboarding state, tech-debt,
-    dependency snapshots), the cloned checkout on disk, and, best-effort, its
-    knowledge-graph subgraph. (Vector embeddings aren't repo-scoped yet — see TODO.)"""
+    dependency snapshots, code embeddings), the cloned checkout on disk, and,
+    best-effort, its knowledge-graph subgraph."""
     import os
     import shutil
     from sqlalchemy import delete as sa_delete
@@ -168,6 +168,7 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     from app.models.repo import RepoOnboardingState
     from app.models.tech_debt import TechDebtItem
     from app.models.dependency import DependencySnapshot
+    from app.models.code_embedding import CodeEmbedding
 
     result = await db.execute(select(Repo).where(Repo.id == repo_id))
     repo = result.scalar_one_or_none()
@@ -175,7 +176,7 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Repository not found")
 
     local_name = repo.local_name
-    for model in (PR, RepoOnboardingState, TechDebtItem, DependencySnapshot):
+    for model in (PR, RepoOnboardingState, TechDebtItem, DependencySnapshot, CodeEmbedding):
         await db.execute(sa_delete(model).where(model.repo_id == repo_id))
     await db.delete(repo)
     await db.commit()

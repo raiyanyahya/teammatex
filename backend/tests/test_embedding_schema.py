@@ -34,3 +34,14 @@ def test_parse_vector_dim_handles_non_vector_types():
     assert parse_vector_dim("text") is None
     assert parse_vector_dim("") is None
     assert parse_vector_dim(None) is None
+
+
+def test_chunk_id_is_repo_scoped():
+    """The same relative path + line in two repos must not collide on the
+    primary key (otherwise one repo's embedding overwrites the other's)."""
+    from app.services.knowledge.embeddings import EmbeddingService
+
+    a = EmbeddingService._chunk_id("repo-a", "src/main.py", 10)
+    b = EmbeddingService._chunk_id("repo-b", "src/main.py", 10)
+    assert a != b
+    assert len(a) == 32  # fits the VARCHAR(32) primary key

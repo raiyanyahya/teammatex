@@ -59,7 +59,7 @@ class EmbeddingBuilder:
             all_chunks.extend(chunks)
             files_scanned += 1
 
-        stored = await embedder.embed_and_store(db, all_chunks, batch_size=self.BATCH_SIZE)
+        stored = await embedder.embed_and_store(db, all_chunks, repo_id, batch_size=self.BATCH_SIZE)
 
         logger.info(
             "embeddings_built",

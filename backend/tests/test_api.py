@@ -267,6 +267,26 @@ class TestRepoEndpoints:
         assert resp.status_code == 200
         assert not checkout.exists()
 
+    async def test_delete_repo_removes_embeddings(self, api_client, api_db):
+        """Deleting a repo purges its pgvector rows (scoped by repo_id)."""
+        from sqlalchemy import text
+
+        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/emb.git"})
+        rid = r.json()["repo_id"]
+        await api_db.execute(
+            text("INSERT INTO code_embeddings (id, repo_id, text, file_path, start_line, end_line) "
+                 "VALUES (:id, :rid, 'x', 'src/a.py', 1, 2)"),
+            {"id": "e" * 32, "rid": rid},
+        )
+        await api_db.flush()
+
+        resp = await api_client.delete(f"/api/repos/{rid}")
+        assert resp.status_code == 200
+        remaining = (await api_db.execute(
+            text("SELECT count(*) FROM code_embeddings WHERE repo_id = :rid"), {"rid": rid}
+        )).scalar()
+        assert remaining == 0
+
 
 class TestIntegrationEndpoints:
     async def test_list_integrations(self, api_client):

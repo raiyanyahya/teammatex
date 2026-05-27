@@ -54,6 +54,7 @@ class EmbeddingService:
         self,
         db: AsyncSession,
         chunks: list["CodeChunk"],
+        repo_id: str,
         batch_size: int = 20,
     ) -> int:
         from app.services.knowledge.chunker import CodeChunk
@@ -69,13 +70,13 @@ class EmbeddingService:
                 continue
 
             for chunk, vector in zip(batch, vectors):
-                chunk_id = self._chunk_id(chunk.file_path, chunk.start_line)
+                chunk_id = self._chunk_id(repo_id, chunk.file_path, chunk.start_line)
                 vector_str = "[" + ",".join(str(v) for v in vector) + "]"
                 await db.execute(
                     text("""
-                    INSERT INTO code_embeddings (id, text, embedding, file_path,
+                    INSERT INTO code_embeddings (id, repo_id, text, embedding, file_path,
                         start_line, end_line, entity_type, language, entity_name)
-                    VALUES (:id, :text, CAST(:embedding AS vector), :file_path,
+                    VALUES (:id, :repo_id, :text, CAST(:embedding AS vector), :file_path,
                         :start_line, :end_line, :entity_type, :language, :entity_name)
                     ON CONFLICT (id) DO UPDATE SET
                         embedding = EXCLUDED.embedding,
@@ -83,6 +84,7 @@ class EmbeddingService:
                     """),
                     {
                         "id": chunk_id,
+                        "repo_id": repo_id,
                         "text": chunk.text,
                         "embedding": vector_str,
                         "file_path": chunk.file_path,
@@ -113,8 +115,8 @@ class EmbeddingService:
         conditions = ["TRUE"]
         params: dict = {"limit": limit, "vector": vector_str}
         if repo_id:
-            conditions.append("ce.file_path LIKE :repo_prefix")
-            params["repo_prefix"] = f"repos/{repo_id}/%"
+            conditions.append("ce.repo_id = :repo_id")
+            params["repo_id"] = repo_id
         if entity_type:
             conditions.append("ce.entity_type = :entity_type")
             params["entity_type"] = entity_type
@@ -152,8 +154,8 @@ class EmbeddingService:
         ]
 
     @staticmethod
-    def _chunk_id(file_path: str, start_line: int) -> str:
-        raw = f"{file_path}:{start_line}"
+    def _chunk_id(repo_id: str, file_path: str, start_line: int) -> str:
+        raw = f"{repo_id}:{file_path}:{start_line}"
         return hashlib.md5(raw.encode()).hexdigest()
 
     @staticmethod
@@ -163,6 +165,7 @@ class EmbeddingService:
         await db.execute(text(f"""
         CREATE TABLE IF NOT EXISTS code_embeddings (
             id VARCHAR(32) PRIMARY KEY,
+            repo_id VARCHAR(36),
             text TEXT NOT NULL,
             embedding vector({dim}),
             file_path VARCHAR(1024) NOT NULL,
@@ -173,6 +176,8 @@ class EmbeddingService:
             entity_name VARCHAR(255)
         )
         """))
+        # Backfill the column on tables created before repo-scoping existed.
+        await db.execute(text("ALTER TABLE code_embeddings ADD COLUMN IF NOT EXISTS repo_id VARCHAR(36)"))
         await db.commit()
 
     @staticmethod
@@ -184,5 +189,9 @@ class EmbeddingService:
         await db.execute(text("""
         CREATE INDEX IF NOT EXISTS idx_code_embeddings_entity
         ON code_embeddings (entity_type, language)
+        """))
+        await db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_code_embeddings_repo
+        ON code_embeddings (repo_id)
         """))
         await db.commit()

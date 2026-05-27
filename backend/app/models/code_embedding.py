@@ -19,6 +19,7 @@ class CodeEmbedding(Base):
     __tablename__ = "code_embeddings"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    repo_id: Mapped[str | None] = mapped_column(String(36), index=True)
     text: Mapped[str] = mapped_column(Text)
     file_path: Mapped[str] = mapped_column(String(1024))
     start_line: Mapped[int] = mapped_column(Integer)
