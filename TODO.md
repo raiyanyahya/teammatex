@@ -17,6 +17,13 @@ this now records what was done and what genuinely remains._
   longer a hardcoded `"None"`) — instead of only the LLM chat answer or a Slack post.
   This supersedes the old "Batch 3: scheduled standup/digest → Slack" item: standup
   lives in the app, not Slack. Design spec: `docs/superpowers/specs/2026-05-27-in-app-standup-design.md`.
+- **Onboarding repo selector** (commit `d7ed957`). A "Browse my repositories" button
+  lists the connected account's GitHub repos and onboards a chosen set in one action
+  (previously: one pasted URL at a time). `GET /api/integrations/github/repos` now
+  returns `fork`+`archived`; `POST /api/repos/bulk {github_urls}` creates+onboards new
+  repos and skips already-registered ones. Smart default: everything checked except
+  already-added (by `owner/repo` slug, shown disabled), forks, and archived — all still
+  visible to re-check. Spec: `docs/superpowers/specs/2026-05-27-onboarding-repo-selector-design.md`.
 
 ## Done in this pass
 
