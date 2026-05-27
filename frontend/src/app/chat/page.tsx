@@ -61,15 +61,25 @@ export default function ChatPage() {
   }, [messages]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamContent]);
   useEffect(() => { inputRef.current?.focus(); }, []);
+  // Auto-send a question passed from the dashboard's "Ask" box (?q=...).
+  // Read from window.location to avoid a useSearchParams Suspense boundary.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) {
+      window.history.replaceState(null, "", "/chat");
+      send(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function clearHistory() {
     localStorage.removeItem(STORAGE_KEY);
     setMessages([]);
   }
 
-  async function send() {
-    if (!input.trim() || streaming) return;
-    const userMsg = input.trim();
+  async function send(text?: string) {
+    const userMsg = (text ?? input).trim();
+    if (!userMsg || streaming) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setStreaming(true);
@@ -283,7 +293,7 @@ export default function ChatPage() {
               </button>
             )}
             <button
-              onClick={send}
+              onClick={() => send()}
               disabled={streaming || !input.trim()}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#264f78] text-white hover:bg-[#2d5a88] disabled:opacity-30 transition-colors"
             >

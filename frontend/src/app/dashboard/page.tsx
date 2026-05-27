@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, User, Key, Code2, GitBranch, Loader2, Wifi, WifiOff } from "lucide-react";
+import Overview from "@/components/dashboard/Overview";
 
 async function saveToApi(key: string, value: any) {
   await fetch(`/api/config/${key}`, {
@@ -52,9 +53,16 @@ export default function DashboardPage() {
         setRepos(Array.isArray(reposRes) ? reposRes.length : 0);
         if (cfgRes.config?.llm_config?.provider) setHasLLM(true);
         if (cfgRes.config?.github_token?.token) setHasGithub(true);
-        
-        // If fresh install (no config at all), clear old localStorage name
-        if (!cfgRes.config?.llm_config && !cfgRes.config?.github_token && !cfgRes.config?.teammate_name) {
+
+        // Server is the source of truth for the name (localStorage is just a cache),
+        // so it doesn't show "unset" on a fresh browser.
+        const serverName = cfgRes.config?.teammate_name?.name;
+        if (serverName) {
+          setName(serverName);
+          setNameSaved(true);
+          localStorage.setItem("teammatex_name", serverName);
+        } else if (!cfgRes.config?.llm_config && !cfgRes.config?.github_token) {
+          // Fresh install (no config at all) — clear any stale cached name.
           localStorage.removeItem("teammatex_name");
           setName("");
           setNameSaved(false);
@@ -132,6 +140,31 @@ export default function DashboardPage() {
   }
 
   const done = [nameSaved, hasLLM, hasGithub, repos > 0].filter(Boolean).length;
+
+  // "Set up" = the functional essentials. Naming is cosmetic (editable from the
+  // overview), so it no longer keeps the page stuck on the checklist.
+  const configured = hasLLM && hasGithub && repos > 0;
+
+  async function renameTeammate(n: string) {
+    const v = n.trim();
+    if (!v) return;
+    await saveToApi("teammate_name", { name: v });
+    localStorage.setItem("teammatex_name", v);
+    setName(v);
+    setNameSaved(true);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-[#6a6a6e]" />
+      </div>
+    );
+  }
+
+  if (configured) {
+    return <Overview name={name} onRename={renameTeammate} />;
+  }
 
   return (
     <div className="p-8">
