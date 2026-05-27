@@ -1,7 +1,22 @@
 # TeammateX — TODO / Continuation
 
-_Last updated: 2026-05-26. The P0/P1/P2 backlog below has been worked through;
+_Last updated: 2026-05-27. The P0/P1/P2 backlog below has been worked through;
 this now records what was done and what genuinely remains._
+
+## Done 2026-05-27
+
+- **Frontend healthcheck fixed.** Next.js standalone `server.js` binds to
+  `$HOSTNAME`, which Docker auto-sets to the container id (resolves to the eth0
+  IP only), so the `localhost:3000` healthcheck always got ECONNREFUSED and the
+  container showed `unhealthy` even though it served fine on the published port.
+  Forced `HOSTNAME=0.0.0.0` for the frontend service and hardened the probe
+  (`127.0.0.1` + an error handler). Now healthy. (commit `adb72f8`)
+- **In-app Standup page** (commit `fd8a6aa`). The standup is now a real, deterministic
+  place in the product — `GET /api/features/standup` + `/standup` page rendering
+  Yesterday (PRs) / Today (tasks) / Blockers (real pending `BlockedTask` rows, no
+  longer a hardcoded `"None"`) — instead of only the LLM chat answer or a Slack post.
+  This supersedes the old "Batch 3: scheduled standup/digest → Slack" item: standup
+  lives in the app, not Slack. Design spec: `docs/superpowers/specs/2026-05-27-in-app-standup-design.md`.
 
 ## Done in this pass
 
