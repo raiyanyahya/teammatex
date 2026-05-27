@@ -45,8 +45,13 @@ workstreams queued; **WS1 done**, WS2–4 pending.
   the landing page is a real Overview (Repositories / Today's standup / Recent activity /
   Usage cards + an Ask box that routes to `/chat?q=`, which chat now consumes). Spec:
   `docs/superpowers/specs/2026-05-27-ws2-dashboard-overview-design.md`.
-- **WS3 — Repo management** (pending): Browse-repos selector on the Repos page +
-  dashboard "Add more"; remove/deactivate/re-sync; deep-link "View pipeline".
+- **WS3 — Repo management (done).** Extracted the selector into a shared
+  `components/RepoSelector.tsx` (used by Onboarding + Repos pages → add more without
+  re-typing the org URL). Repos page gained per-repo Re-sync, Remove (inline confirm →
+  new `DELETE /api/repos/{id}`, which clears child FK rows + best-effort graph subgraph),
+  and a deep-linked "View pipeline" (`/onboarding?repo=<id>`). Spec:
+  `docs/superpowers/specs/2026-05-27-ws3-repo-management-design.md`. Follow-up: clone-dir
+  + embedding cleanup on delete.
 - **WS4 — Team from the graph** (pending): surface graph-profiled contributors
   (ownership/find_owner) instead of registering login accounts with a default password.
 
