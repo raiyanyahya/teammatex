@@ -81,10 +81,15 @@ services:
       dockerfile: ../docker/Dockerfile.frontend
     depends_on:
       - api
+    # Next.js standalone server.js binds to $HOSTNAME, which Docker auto-sets to
+    # the container id (resolves to the eth0 IP only). Force 0.0.0.0 so it also
+    # listens on loopback — otherwise the healthcheck below can never connect.
+    environment:
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000',r=>process.exit(r.statusCode===200?0:1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
