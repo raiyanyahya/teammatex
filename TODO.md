@@ -17,12 +17,9 @@ _What's left. Shipped work lives in git history / commit messages._
 ## Known issues / tech debt
 - **Rotate credentials**: the leaked DeepSeek key + GitHub PAT are still in git history
   (user action — see `SECURITY.md`). The available GitHub PAT is read-only (pushes 403).
-- **Embeddings aren't repo-scoped**: `code_embeddings` has no `repo_id`, so
-  `DELETE /api/repos/{id}` can't clean a single repo's vectors. The same gap breaks
-  semantic search's repo filter — `ce.file_path LIKE 'repos/{id}/%'` matches nothing
-  (stored paths are repo-relative, e.g. `src/main.py`), and identical relative paths
-  across repos collide on the md5 `_chunk_id`. Fix = add `repo_id` (column + migration),
-  thread it through `embed_and_store`, filter/delete by it, key `_chunk_id` on it.
+- **Legacy embeddings have NULL `repo_id`**: rows written before repo-scoping aren't
+  attributable to a repo (relative paths), so they're invisible to scoped search and
+  the per-repo DELETE cleanup. A one-time re-onboard of existing repos repopulates them.
 - `pr_reviewer` + Slack: exercise end-to-end with live inputs.
 - (optional) Add pytest to the dev image so the suite runs without a manual pip install.
 
