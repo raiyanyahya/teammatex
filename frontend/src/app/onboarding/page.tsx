@@ -83,12 +83,8 @@ export default function OnboardingPage() {
       await api.post(`/repos/${selectedId}/retry`, {});
       setStages({});
       await loadStages(selectedId);
-      const interval = setInterval(async () => {
-        await loadStages(selectedId);
-        const data = await api.get<{ stages: { status: string }[] }>(`/repos/${selectedId}/onboarding`);
-        const allDone = data.stages.every((s: any) => s.status === "completed" || s.status === "failed");
-        if (allDone) clearInterval(interval);
-      }, 3000);
+      // The selectedId effect already polls loadStages every 3s with unmount
+      // cleanup, so no separate interval here (the old one leaked on unmount).
     } catch (e: any) {
       setError(e.message || "Retry failed");
     }

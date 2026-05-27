@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Terminal, RefreshCw, Loader2 } from "lucide-react";
 
 export default function LogsPage() {
@@ -8,7 +8,7 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState("api");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/logs/${service}`);
@@ -18,9 +18,9 @@ export default function LogsPage() {
       setLogs(e.message || "Error");
     }
     setLoading(false);
-  }
+  }, [service]);
 
-  useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i); }, [service]);
+  useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i); }, [load]);
 
   return (
     <div className="p-8">
