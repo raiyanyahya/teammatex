@@ -92,9 +92,15 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
             if existing_check.scalar_one_or_none(): continue
             repo = Repo(github_url=url, local_name=name)
             db.add(repo); await db.flush()
-            start_onboarding(str(repo.id), url, name); added.append(name)
+            added.append({"repo_id": str(repo.id), "url": url, "name": name})
         await db.commit()
-        return {"org": org, "repos_added": len(added), "repos": added}
+
+        # Enqueue onboarding only after the rows are committed — start_onboarding
+        # uses apply_async, so the Celery worker must be able to find each repo
+        # (same race fixed in /repos/bulk).
+        for item in added:
+            start_onboarding(item["repo_id"], item["url"], item["name"])
+        return {"org": org, "repos_added": len(added), "repos": [a["name"] for a in added]}
 
     existing = await db.execute(
         select(Repo).where(Repo.github_url == payload.github_url)
