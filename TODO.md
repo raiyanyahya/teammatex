@@ -15,16 +15,14 @@ _What's left. Shipped work lives in git history / commit messages._
 - **Slack / Jira**: wire credential save + actually use them.
 
 ## Known issues / tech debt
-- **Secret leak**: `GET /api/config` returns the raw `llm_config.api_key` to any
-  authenticated client — mask/omit secrets server-side.
 - **Rotate credentials**: the leaked DeepSeek key + GitHub PAT are still in git history
   (user action — see `SECURITY.md`). The available GitHub PAT is read-only (pushes 403).
-- `add_repo` org-import path enqueues onboarding before commit (same race fixed in
-  `/repos/bulk`).
-- `DELETE /api/repos/{id}` leaves the cloned checkout (`/data/repos`) + pgvector
-  embeddings — add a cleanup pass.
-- `retryPipeline`'s `setInterval` isn't cleared on unmount (onboarding page).
-- `logs/page.tsx`: `react-hooks/exhaustive-deps` lint warning.
+- **Embeddings aren't repo-scoped**: `code_embeddings` has no `repo_id`, so
+  `DELETE /api/repos/{id}` can't clean a single repo's vectors. The same gap breaks
+  semantic search's repo filter — `ce.file_path LIKE 'repos/{id}/%'` matches nothing
+  (stored paths are repo-relative, e.g. `src/main.py`), and identical relative paths
+  across repos collide on the md5 `_chunk_id`. Fix = add `repo_id` (column + migration),
+  thread it through `embed_and_store`, filter/delete by it, key `_chunk_id` on it.
 - `pr_reviewer` + Slack: exercise end-to-end with live inputs.
 - (optional) Add pytest to the dev image so the suite runs without a manual pip install.
 
