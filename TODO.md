@@ -25,6 +25,34 @@ this now records what was done and what genuinely remains._
   already-added (by `owner/repo` slug, shown disabled), forks, and archived — all still
   visible to re-check. Spec: `docs/superpowers/specs/2026-05-27-onboarding-repo-selector-design.md`.
 
+## UX pass 2026-05-27 (4 workstreams)
+
+After a full-app UX audit (every page walked + screenshotted), found a recurring
+theme: controls that look editable but aren't, and write-only config forms. Four
+workstreams queued; **WS1 done**, WS2–4 pending.
+
+- **WS1 — Honest UI (done, this pass).** (1) Onboarding stages never turned green —
+  the list compared the stage *object* to the string `"completed"`; now reads
+  `.status`. (2) Settings/LLM loads + shows the active provider/model and pulls the
+  model list from `/api/config/llm/providers` (dropped the stale hardcoded
+  claude-3-5/gpt-4o list). (3) Settings/GitHub shows "Connected as <login>" + push/
+  read-only note (verify endpoint) + Replace/Disconnect. (4) The unwired controls
+  (Slack/Jira, Updates, Permissions, Persona) are now disabled with honest "not wired
+  up yet" notes instead of fake Save buttons. Spec: `docs/superpowers/specs/2026-05-27-ws1-honest-ui-design.md`.
+- **WS2 — Dashboard → real overview** (pending): hydrate the teammate name from the
+  server (it's localStorage-only today → perpetual 3/4 on a fresh browser); turn the
+  landing page into a real dashboard once set up.
+- **WS3 — Repo management** (pending): Browse-repos selector on the Repos page +
+  dashboard "Add more"; remove/deactivate/re-sync; deep-link "View pipeline".
+- **WS4 — Team from the graph** (pending): surface graph-profiled contributors
+  (ownership/find_owner) instead of registering login accounts with a default password.
+
+### Noted, not yet fixed
+- `GET /api/config` returns the raw `llm_config.api_key` to any authenticated client
+  (pre-existing secret leak — mask/omit server-side).
+- `add_repo`'s org-import path enqueues onboarding before commit (same race WS-selector
+  fixed in `/repos/bulk`); `retryPipeline`'s setInterval isn't cleared on unmount.
+
 ## Done in this pass
 
 ### P0 — knowledge pipeline is now real
