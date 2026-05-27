@@ -8,8 +8,6 @@ _What's left. Shipped work lives in git history / commit messages._
   Deliver a short writeup + concrete candidate ideas.
 
 ## Honest-UI follow-ups (these Settings controls are currently disabled with a note)
-- **Persona**: read from `app_config` in `runtime._get_persona_prompt` (settings fallback)
-  so the picker actually changes the agent.
 - **Updates**: config-driven auto-sync interval + GitHub-webhook triggers.
 - **Slack / Jira**: wire credential save + actually use them.
 
