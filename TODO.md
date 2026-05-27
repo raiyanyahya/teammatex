@@ -39,9 +39,12 @@ workstreams queued; **WS1 done**, WS2–4 pending.
   read-only note (verify endpoint) + Replace/Disconnect. (4) The unwired controls
   (Slack/Jira, Updates, Permissions, Persona) are now disabled with honest "not wired
   up yet" notes instead of fake Save buttons. Spec: `docs/superpowers/specs/2026-05-27-ws1-honest-ui-design.md`.
-- **WS2 — Dashboard → real overview** (pending): hydrate the teammate name from the
-  server (it's localStorage-only today → perpetual 3/4 on a fresh browser); turn the
-  landing page into a real dashboard once set up.
+- **WS2 — Dashboard → real overview (done).** Hydrate teammate name from the server
+  (was localStorage-only → a saved name was hidden, stuck at 3/4). "Set up" = LLM +
+  GitHub + ≥1 repo (naming is now an inline rename, not a blocking step). When set up,
+  the landing page is a real Overview (Repositories / Today's standup / Recent activity /
+  Usage cards + an Ask box that routes to `/chat?q=`, which chat now consumes). Spec:
+  `docs/superpowers/specs/2026-05-27-ws2-dashboard-overview-design.md`.
 - **WS3 — Repo management** (pending): Browse-repos selector on the Repos page +
   dashboard "Add more"; remove/deactivate/re-sync; deep-link "View pipeline".
 - **WS4 — Team from the graph** (pending): surface graph-profiled contributors
