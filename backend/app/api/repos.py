@@ -159,8 +159,10 @@ async def add_repos_bulk(payload: BulkRepoCreate, db: AsyncSession = Depends(get
 @router.delete("/{repo_id}")
 async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     """Remove a repo from TeammateX: its DB rows (PRs, onboarding state, tech-debt,
-    dependency snapshots) and, best-effort, its knowledge-graph subgraph. The cloned
-    checkout and vector embeddings are left for a separate cleanup pass."""
+    dependency snapshots), the cloned checkout on disk, and, best-effort, its
+    knowledge-graph subgraph. (Vector embeddings aren't repo-scoped yet — see TODO.)"""
+    import os
+    import shutil
     from sqlalchemy import delete as sa_delete
     from app.models.pr import PR
     from app.models.repo import RepoOnboardingState
@@ -172,10 +174,22 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
+    local_name = repo.local_name
     for model in (PR, RepoOnboardingState, TechDebtItem, DependencySnapshot):
         await db.execute(sa_delete(model).where(model.repo_id == repo_id))
     await db.delete(repo)
     await db.commit()
+
+    # Best-effort: remove the cloned checkout from disk (resolve REPOS_ROOT at call
+    # time so it stays patchable/configurable).
+    from app.services.agent import environment
+    checkout = os.path.join(environment.REPOS_ROOT, local_name)
+    try:
+        shutil.rmtree(checkout)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("repo_delete_checkout_cleanup_failed", repo_id=repo_id, error=str(e)[:120])
 
     try:
         from app.services.knowledge.graph import KnowledgeGraph

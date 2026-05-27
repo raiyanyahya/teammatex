@@ -249,6 +249,24 @@ class TestRepoEndpoints:
         resp = await api_client.delete("/api/repos/00000000-0000-0000-0000-000000000000")
         assert resp.status_code == 404
 
+    async def test_delete_repo_removes_cloned_checkout(self, api_client, tmp_path, monkeypatch):
+        """Deleting a repo also removes its cloned checkout from disk, not just
+        its DB rows."""
+        from app.services.agent import environment
+        monkeypatch.setattr(environment, "REPOS_ROOT", str(tmp_path))
+
+        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/checkout.git"})
+        rid = r.json()["repo_id"]
+        local_name = r.json()["local_name"]
+
+        checkout = tmp_path / local_name
+        checkout.mkdir()
+        (checkout / "main.py").write_text("print('hi')")
+
+        resp = await api_client.delete(f"/api/repos/{rid}")
+        assert resp.status_code == 200
+        assert not checkout.exists()
+
 
 class TestIntegrationEndpoints:
     async def test_list_integrations(self, api_client):
