@@ -106,6 +106,20 @@ async def integration_status(db: AsyncSession = Depends(get_db)):
 
 # ─── Provider Actions ────────────────────────────────────
 
+def _map_gh_repo(r: dict) -> dict:
+    """Map a GitHub /user/repos entry to the shape the frontend selector needs.
+    `fork`/`archived` drive the onboarding selector's smart default."""
+    return {
+        "name": r["full_name"],
+        "url": r["clone_url"],
+        "default_branch": r.get("default_branch"),
+        "private": r.get("private", False),
+        "language": r.get("language"),
+        "fork": r.get("fork", False),
+        "archived": r.get("archived", False),
+    }
+
+
 @router.get("/github/repos")
 async def list_github_repos(db: AsyncSession = Depends(get_db)):
     """Fetch repos from GitHub using the saved token, or fall back to the env var."""
@@ -134,11 +148,7 @@ async def list_github_repos(db: AsyncSession = Depends(get_db)):
         ) as client:
             response = await client.get("/user/repos", params={"per_page": 50, "sort": "updated"})
             response.raise_for_status()
-            repos = [
-                {"name": r["full_name"], "url": r["clone_url"], "default_branch": r["default_branch"],
-                 "private": r.get("private", False), "language": r.get("language")}
-                for r in response.json()
-            ]
+            repos = [_map_gh_repo(r) for r in response.json()]
 
     return {"repos": repos}
 

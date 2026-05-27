@@ -113,6 +113,27 @@ class TestRepoEndpoints:
         response = await api_client.post("/api/repos", json=payload)
         assert response.status_code == 409
 
+    async def test_bulk_add_creates_new_and_skips_existing(self, api_client):
+        """POST /api/repos/bulk onboards every new url and skips ones already added."""
+        await api_client.post("/api/repos", json={"github_url": "https://github.com/acme/already.git"})
+
+        response = await api_client.post("/api/repos/bulk", json={"github_urls": [
+            "https://github.com/acme/already.git",     # duplicate -> skipped
+            "https://github.com/acme/fresh-one.git",   # new -> added
+            "https://github.com/acme/fresh-two.git",   # new -> added
+        ]})
+        assert response.status_code in (200, 201)
+        data = response.json()
+
+        added_urls = {a["url"] for a in data["added"]}
+        assert added_urls == {
+            "https://github.com/acme/fresh-one.git",
+            "https://github.com/acme/fresh-two.git",
+        }
+        assert {a["local_name"] for a in data["added"]} == {"fresh-one", "fresh-two"}
+        assert all(a.get("repo_id") for a in data["added"])
+        assert "https://github.com/acme/already.git" in data["skipped"]
+
 
 class TestIntegrationEndpoints:
     async def test_list_integrations(self, api_client):
@@ -127,6 +148,21 @@ class TestIntegrationEndpoints:
         assert "github" in data
         assert "jira" in data
         assert "slack" in data
+
+    async def test_github_repo_mapping_includes_fork_and_archived(self):
+        """The /user/repos mapping surfaces fork + archived so the onboarding
+        selector can apply its smart default (uncheck forks/archived)."""
+        from app.api.integrations import _map_gh_repo
+
+        mapped = _map_gh_repo({
+            "full_name": "acme/widget", "clone_url": "https://github.com/acme/widget.git",
+            "default_branch": "main", "private": True, "language": "Python",
+            "fork": True, "archived": False,
+        })
+        assert mapped["name"] == "acme/widget"
+        assert mapped["url"] == "https://github.com/acme/widget.git"
+        assert mapped["fork"] is True
+        assert mapped["archived"] is False
 
     async def test_github_repos_not_configured(self, api_client):
         response = await api_client.get("/api/integrations/github/repos")

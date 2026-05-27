@@ -23,6 +23,16 @@ class RepoResponse(BaseModel):
     is_active: bool
 
 
+class BulkRepoCreate(BaseModel):
+    github_urls: list[str]
+
+
+def _local_name_from_url(github_url: str) -> str:
+    from urllib.parse import urlparse
+    path = urlparse(github_url).path.strip("/")
+    return path.split("/")[-1].replace(".git", "") if "/" in path else github_url.replace(".git", "")
+
+
 @router.get("", response_model=list[RepoResponse])
 async def list_repos(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Repo).where(Repo.is_active == True))
@@ -102,6 +112,34 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
         "pipeline_id": pipeline_id,
         "status": "onboarding_started",
     }
+
+
+@router.post("/bulk", response_model=dict, status_code=201)
+async def add_repos_bulk(payload: BulkRepoCreate, db: AsyncSession = Depends(get_db)):
+    """Onboard a selected set of repos in one call. Each url that isn't already
+    registered is created and starts the pipeline; duplicates are skipped."""
+    added: list[dict] = []
+    skipped: list[str] = []
+
+    for github_url in payload.github_urls:
+        url = github_url.strip()
+        if not url:
+            continue
+
+        existing = await db.execute(select(Repo).where(Repo.github_url == url))
+        if existing.scalar_one_or_none():
+            skipped.append(url)
+            continue
+
+        local_name = _local_name_from_url(url)
+        repo = Repo(github_url=url, local_name=local_name)
+        db.add(repo)
+        await db.flush()
+        start_onboarding(str(repo.id), url, local_name)
+        added.append({"url": url, "repo_id": str(repo.id), "local_name": local_name})
+
+    await db.commit()
+    return {"added": added, "skipped": skipped}
 
 
 @router.post("/{repo_id}/retry")
