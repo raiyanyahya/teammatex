@@ -3,11 +3,6 @@
 _What's left. Shipped work lives in git history / commit messages._
 
 ## Next up
-- **WS4 — Team from the graph (read-only).** Replace the Team page's login-user list
-  and the register-with-hardcoded-password form with the contributors the knowledge
-  graph already profiles. Backend: `KnowledgeGraph.list_contributors()` +
-  `GET /api/knowledge/contributors` (name, email, files owned, repos, languages).
-  Frontend: read-only contributor list; drop the account-creation form.
 - **Research whim.run.** Review the whim.run website, its offering + docs, and assess
   what we could bring into TeammateX (capabilities, integrations, UX/agent patterns).
   Deliver a short writeup + concrete candidate ideas.
