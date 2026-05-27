@@ -88,6 +88,48 @@ class TestKnowledgeEndpoints:
         assert response.status_code == 200
         assert "notes" in response.json()
 
+    async def test_list_contributors(self, api_client):
+        response = await api_client.get("/api/knowledge/contributors")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["contributors"], list)
+        assert data["count"] == len(data["contributors"])
+
+
+class TestKnowledgeGraphContributors:
+    """KnowledgeGraph.list_contributors aggregates OWNS edges into a per-person
+    profile (files owned, repos, languages). Seeds throwaway nodes in Neo4j and
+    cleans them up — Neo4j has no per-test rollback like the Postgres fixtures."""
+
+    async def test_list_contributors_aggregates_ownership(self):
+        from app.services.knowledge.graph import KnowledgeGraph
+
+        g = KnowledgeGraph()
+        repo_id = "ws4-test-repo"
+        email = "ws4-contributor@example.com"
+        try:
+            await g.ensure_repo_node(repo_id, "ws4-repo")
+            await g.ensure_file_node(repo_id, "a.py", "python", 10)
+            await g.ensure_file_node(repo_id, "b.js", "javascript", 20)
+            await g.ensure_file_node(repo_id, "LICENSE", "", 5)  # no detected language
+            await g.ensure_contributor_node(email, "WS4 Tester")
+            await g.add_ownership(email, repo_id, "a.py")
+            await g.add_ownership(email, repo_id, "b.js")
+            await g.add_ownership(email, repo_id, "LICENSE")
+
+            contributors = await g.list_contributors()
+            mine = next(c for c in contributors if c["email"] == email)
+
+            assert mine["name"] == "WS4 Tester"
+            assert mine["files_owned"] == 3
+            assert mine["repos"] == ["ws4-repo"]
+            # the empty-language file counts toward files_owned but must not
+            # surface as a blank language badge.
+            assert set(mine["languages"]) == {"python", "javascript"}
+        finally:
+            await g.run("MATCH (n) WHERE n.repo_id = $rid DETACH DELETE n", rid=repo_id)
+            await g.run("MATCH (c:Contributor {email: $e}) DETACH DELETE c", e=email)
+
 
 class TestRepoEndpoints:
     async def test_list_repos(self, api_client):

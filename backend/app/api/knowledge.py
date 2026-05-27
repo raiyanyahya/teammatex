@@ -88,6 +88,14 @@ async def search_graph(query: str, limit: int = 20):
     return {"query": query, "results": results}
 
 
+@router.get("/contributors")
+async def list_contributors():
+    """The team, read from the knowledge graph: every profiled contributor with
+    the files/repos/languages they own (built from commit history)."""
+    contributors = await graph.list_contributors()
+    return {"contributors": contributors, "count": len(contributors)}
+
+
 # ─── Notes ───────────────────────────────────────────────
 
 @router.get("/notes")

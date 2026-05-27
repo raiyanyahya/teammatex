@@ -268,6 +268,25 @@ class KnowledgeGraph:
 
         return {"nodes": nodes, "edges": edges}
 
+    async def list_contributors(self, limit: int = 100) -> list[dict]:
+        """Everyone the graph profiles, with the ownership footprint built from
+        commit history: how many files each owns, across which repos and
+        languages. `collect`/`count` skip nulls, so a contributor with no OWNS
+        edges still appears with files_owned=0 and empty repos/languages."""
+        return await self.run("""
+        MATCH (c:Contributor)
+        OPTIONAL MATCH (c)-[:OWNS]->(f:File)
+        OPTIONAL MATCH (r:Repository {repo_id: f.repo_id})
+        WITH c, count(DISTINCT f) AS files_owned,
+             collect(DISTINCT r.name) AS repos,
+             collect(DISTINCT f.language) AS languages
+        RETURN c.name AS name, c.email AS email, files_owned,
+               [x IN repos WHERE x <> ""] AS repos,
+               [x IN languages WHERE x <> ""] AS languages
+        ORDER BY files_owned DESC, name ASC
+        LIMIT $limit
+        """, limit=limit)
+
     async def create_note_node(self, note_id: str, title: str, entity_id: str | None = None) -> None:
         await self.run("""
         CREATE (n:Note {id: $id, title: $title})

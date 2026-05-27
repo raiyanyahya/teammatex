@@ -1,69 +1,99 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Users, Plus } from "lucide-react";
-import { api } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, RefreshCw } from "lucide-react";
+
+type Contributor = {
+  name: string | null;
+  email: string;
+  files_owned: number;
+  repos: string[];
+  languages: string[];
+};
+
+function badge(label: string) {
+  return (
+    <span key={label} className="rounded bg-[#2a2a30] px-1.5 py-0.5 text-[10px] font-medium text-[#8a8a8e]">
+      {label}
+    </span>
+  );
+}
 
 export default function TeamPage() {
-  const [members, setMembers] = useState<any[]>([]);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [github, setGithub] = useState("");
+  const [members, setMembers] = useState<Contributor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
     try {
-      const data = await api.get<any[]>("/auth/users");
-      setMembers(data);
-    } catch {}
-  }
+      const res = await fetch("/api/knowledge/contributors");
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      setMembers(data.contributors ?? []);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  async function addMember(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email || !name) return;
-    try {
-      await api.post("/auth/register", { email, name, password: "changeme123456" });
-      setName(""); setEmail(""); setGithub("");
-      await load();
-    } catch {}
-  }
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-lg font-semibold text-[#cccccc]">Team</h1>
-        <p className="mt-0.5 text-xs text-[#6a6a6e]">People working alongside your teammate</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-[#cccccc]">Team</h1>
+          <p className="mt-0.5 text-xs text-[#6a6a6e]">
+            Contributors your teammate profiled from commit history
+          </p>
+        </div>
+        <button onClick={load} disabled={loading} className="btn-secondary disabled:opacity-50">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          Refresh
+        </button>
       </div>
 
-      <form onSubmit={addMember} className="mb-6 flex gap-2 max-w-xl">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="input flex-1 text-xs" />
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" className="input flex-1 text-xs" />
-        <input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="GitHub (optional)" className="input text-xs w-40" />
-        <button type="submit" className="btn-primary text-xs"><Plus className="h-3.5 w-3.5" /> Add</button>
-      </form>
-
-      <div className="space-y-1 max-w-xl">
-        {members.map((m: any) => (
-          <div key={m.id} className="panel flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#2a2a30] text-xs font-medium text-[#6a6a6e]">
-                {m.name?.[0]?.toUpperCase() || "?"}
+      {error ? (
+        <div className="panel p-6 text-center text-sm text-[#c06060]">
+          Couldn&apos;t load contributors. <button onClick={load} className="underline">Try again</button>.
+        </div>
+      ) : loading && members.length === 0 ? (
+        <div className="flex items-center gap-2 py-12 text-sm text-[#6a6a6e]">
+          <Loader2 className="h-4 w-4 animate-spin" /> Reading the knowledge graph…
+        </div>
+      ) : members.length === 0 ? (
+        <p className="py-12 text-center text-xs text-[#5a5a5e]">
+          No contributors yet — they appear once a repository is onboarded and its history is indexed.
+        </p>
+      ) : (
+        <div className="max-w-2xl space-y-1">
+          {members.map((m) => (
+            <div key={m.email} className="panel flex items-center justify-between gap-4 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#2a2a30] text-xs font-medium text-[#8a8a8e]">
+                  {(m.name || m.email)[0]?.toUpperCase() || "?"}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-[#cccccc]">{m.name || m.email}</p>
+                  <p className="truncate text-[11px] text-[#6a6a6e]">{m.email}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-[#cccccc]">{m.name}</p>
-                <p className="text-[11px] text-[#6a6a6e]">{m.email}</p>
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <span className="text-[11px] text-[#6a6a6e]">
+                  {m.files_owned} {m.files_owned === 1 ? "file" : "files"}
+                </span>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {m.repos.map((r) => badge(r))}
+                  {m.languages.map((l) => badge(l))}
+                </div>
               </div>
             </div>
-            {m.github_username && (
-              <span className="text-[11px] text-[#5a5a5e]">{m.github_username}</span>
-            )}
-          </div>
-        ))}
-        {members.length === 0 && (
-          <p className="py-8 text-center text-xs text-[#5a5a5e]">No team members added yet.</p>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
