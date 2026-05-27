@@ -284,7 +284,10 @@ export default function OnboardingPage() {
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-1">
               {STAGES.map((label, i) => {
-                const status = stages[i];
+                // stages[i] is the stage object {stage, status, error}; read .status
+                // (older shapes stored the raw status string, so fall back to it).
+                const st = stages[i];
+                const status = st?.status ?? st;
                 const isDone = status === "completed";
                 const isRunning = status === "running";
                 const isFailed = status === "failed";
