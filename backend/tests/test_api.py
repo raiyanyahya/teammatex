@@ -121,6 +121,19 @@ class TestKnowledgeEndpoints:
         assert 0 <= row["health"] <= 100
         assert 0 <= row["onboarding_pct"] <= 100
 
+    async def test_concepts_returns_modules_and_notes(self, api_client):
+        """Knowledge-page concept cards: each row must have id/name/cat, with
+        modules carrying a `repos` list and notes flagged with cat="note"."""
+        response = await api_client.get("/api/knowledge/concepts?limit=20")
+        assert response.status_code == 200
+        data = response.json()
+        assert "concepts" in data and isinstance(data["concepts"], list)
+        assert data["count"] == len(data["concepts"])
+        for c in data["concepts"]:
+            assert "id" in c and "name" in c and "cat" in c
+            if c["cat"] in ("module", "stdlib"):
+                assert isinstance(c.get("repos"), list)
+
     async def test_graph_stats_returns_concept_counts(self, api_client):
         response = await api_client.get("/api/knowledge/graph/stats")
         assert response.status_code == 200

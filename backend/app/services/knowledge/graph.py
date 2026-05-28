@@ -268,6 +268,26 @@ class KnowledgeGraph:
 
         return {"nodes": nodes, "edges": edges}
 
+    async def list_concepts(self, limit: int = 200) -> list[dict]:
+        """High-level "concepts" the agent has indexed — Module names grouped
+        across repos, so `pandas` appearing in three repos becomes one card
+        rather than three. `files_seen` counts Files in the same repos as the
+        module (a loose surface-area proxy; we lack File↔Module edges)."""
+        rows = await self.run("""
+        MATCH (m:Module)
+        OPTIONAL MATCH (m)-[:PART_OF]->(r:Repository)
+        WITH m.name AS name, collect(DISTINCT r.name) AS repos, collect(DISTINCT m.repo_id) AS repo_ids
+        OPTIONAL MATCH (f:File) WHERE f.repo_id IN repo_ids
+        WITH name, repos, repo_ids, count(DISTINCT f) AS files_seen
+        RETURN name,
+               [x IN repos WHERE x IS NOT NULL AND x <> ""] AS repos,
+               size(repo_ids) AS repo_count,
+               files_seen
+        ORDER BY size(repo_ids) DESC, name ASC
+        LIMIT $limit
+        """, limit=limit)
+        return rows
+
     async def get_stats(self) -> dict:
         """Counts of code-knowledge nodes across all onboarded repos. The dashboard
         hero sentence shows `concepts` as a single number — the sum of the

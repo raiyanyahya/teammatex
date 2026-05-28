@@ -1,60 +1,74 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { BookOpen, GitBranch, RefreshCw, Search } from "lucide-react";
 
 type Stats = { files: number; modules: number; functions: number; classes: number; concepts: number };
-type Node = { type: string; properties: Record<string, any> };
 
-const CATS = ["all", "File", "Module", "Function", "Class"] as const;
+type Concept = {
+  id: string;
+  name: string;
+  cat: "stdlib" | "module" | "note" | string;
+  repos?: string[];
+  repo_count?: number;
+  files_seen?: number;
+  summary?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+};
+
+const CATS: { id: "all" | Concept["cat"]; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "module", label: "Modules" },
+  { id: "stdlib", label: "Stdlib" },
+  { id: "note", label: "Notes" },
+];
+
 const CAT_COLOR: Record<string, string> = {
-  File: "sky",
-  Module: "plum",
-  Function: "amber",
-  Class: "sage",
+  module: "sky",
+  stdlib: "plum",
+  note: "amber",
 };
 
 export default function KnowledgePage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Node[]>([]);
-  const [cat, setCat] = useState<(typeof CATS)[number]>("all");
-  const [searching, setSearching] = useState(false);
+  const [cat, setCat] = useState<(typeof CATS)[number]["id"]>("all");
 
-  async function loadStats() {
+  async function load() {
+    setLoading(true);
     try {
-      const r = await fetch("/api/knowledge/graph/stats");
-      if (r.ok) setStats(await r.json());
+      const [s, c] = await Promise.all([
+        fetch("/api/knowledge/graph/stats").then((r) => r.json()),
+        fetch("/api/knowledge/concepts?limit=400").then((r) => r.json()),
+      ]);
+      setStats(s);
+      setConcepts(Array.isArray(c?.concepts) ? c.concepts : []);
     } catch {}
+    setLoading(false);
   }
 
   useEffect(() => {
-    loadStats();
+    load();
   }, []);
 
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-    const id = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const r = await fetch(`/api/knowledge/graph/search?query=${encodeURIComponent(query.trim())}&limit=40`);
-        if (r.ok) {
-          const data = await r.json();
-          setResults(data?.results ?? []);
-        }
-      } catch {}
-      setSearching(false);
-    }, 250);
-    return () => clearTimeout(id);
-  }, [query]);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: concepts.length };
+    for (const x of concepts) c[x.cat] = (c[x.cat] || 0) + 1;
+    return c;
+  }, [concepts]);
 
-  const filtered = useMemo(
-    () => (cat === "all" ? results : results.filter((n) => n.type === cat)),
-    [results, cat],
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return concepts.filter((c) => {
+      if (cat !== "all" && c.cat !== cat) return false;
+      if (!q) return true;
+      const hay = `${c.name} ${c.summary || ""} ${c.repos?.join(" ") || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [concepts, query, cat]);
 
   return (
     <div style={{ padding: 40 }}>
@@ -65,12 +79,12 @@ export default function KnowledgePage() {
           </h1>
           <div className="page-sub">
             {stats
-              ? `${stats.concepts.toLocaleString()} concepts · ${stats.files.toLocaleString()} files · ${stats.functions.toLocaleString()} functions`
+              ? `${stats.concepts.toLocaleString()} graph nodes · ${concepts.length} concepts indexed`
               : "loading…"}
           </div>
         </div>
-        <button className="btn" onClick={loadStats}>
-          <RefreshCw size={13} /> Resync graph
+        <button className="btn" onClick={load} disabled={loading}>
+          <RefreshCw size={13} /> Resync
         </button>
       </div>
 
@@ -88,129 +102,160 @@ export default function KnowledgePage() {
           />
           <input
             className="input"
-            placeholder="Search concepts, modules, files, functions…"
+            placeholder="Search concepts, modules, notes…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ paddingLeft: 38, fontSize: 14, fontFamily: "var(--serif)" }}
           />
         </div>
         <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--ink-2)", borderRadius: 6, border: "1px solid var(--line)" }}>
-          {CATS.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCat(c)}
-              className="btn btn-ghost"
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                textTransform: "capitalize",
-                background: cat === c ? "var(--ink-3)" : "transparent",
-              }}
-            >
-              {c === "all" ? "all" : c}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!query.trim() ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-          {(["files", "modules", "functions", "classes"] as const).map((k) => {
-            const accent = CAT_COLOR[k[0].toUpperCase() + k.slice(1, -1)] || "amber";
+          {CATS.map((c) => {
+            const active = cat === c.id;
             return (
-              <div key={k} className="card" style={{ padding: 24 }}>
-                <div className="stat-val" style={{ color: `var(--${accent})` }}>
-                  {(stats?.[k] ?? 0).toLocaleString()}
-                </div>
-                <div className="stat-label">{k}</div>
-              </div>
+              <button
+                key={c.id}
+                onClick={() => setCat(c.id)}
+                className="btn btn-ghost"
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  background: active ? "var(--ink-3)" : "transparent",
+                }}
+              >
+                {c.label}{" "}
+                <span className="font-mono" style={{ color: "var(--paper-4)", marginLeft: 4 }}>
+                  {counts[c.id] ?? 0}
+                </span>
+              </button>
             );
           })}
         </div>
-      ) : searching && results.length === 0 ? (
+      </div>
+
+      {loading ? (
         <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-3)" }}>
-          searching…
+          loading…
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ padding: 60, textAlign: "center" }}>
           <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-4)" }}>
-            No matches for “{query}”.
+            {query ? `No matches for “${query}”.` : "No concepts indexed yet."}
           </div>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-          {filtered.map((n, i) => {
-            const accent = CAT_COLOR[n.type] || "amber";
-            const name = n.properties?.name || n.properties?.path || n.properties?.title || "(unnamed)";
-            const sub =
-              n.properties?.path && n.properties?.name
-                ? n.properties.path
-                : n.properties?.file_path || n.properties?.repo_id || "";
-            return (
-              <div
-                key={i}
-                style={{
-                  background: "var(--ink-1)",
-                  border: "1px solid var(--line)",
-                  borderRadius: 8,
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <span
-                    style={{
-                      fontFamily: "var(--serif)",
-                      fontSize: 22,
-                      color: "var(--paper-0)",
-                      lineHeight: 1.1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: 240,
-                    }}
-                  >
-                    {name}
+          {filtered.map((c) => (
+            <ConceptCard key={c.id} concept={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConceptCard({ concept }: { concept: Concept }) {
+  const accent = CAT_COLOR[concept.cat] || "amber";
+  const isNote = concept.cat === "note";
+  return (
+    <div
+      style={{
+        background: "var(--ink-1)",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        padding: 18,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <span
+          style={{
+            fontFamily: "var(--serif)",
+            fontSize: 22,
+            color: "var(--paper-0)",
+            lineHeight: 1.15,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
+          {concept.name}
+        </span>
+        <span className={`tag tag-${accent}`}>{concept.cat}</span>
+      </div>
+
+      {concept.summary && (
+        <div
+          style={{
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "var(--paper-2)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            minHeight: 40,
+          }}
+        >
+          {concept.summary}
+        </div>
+      )}
+
+      {isNote ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: "auto" }}>
+          <span className="tag" style={{ fontSize: 9 }}>
+            <BookOpen size={9} /> note
+          </span>
+          {concept.entity_type && (
+            <span className="tag" style={{ fontSize: 9 }}>
+              ↳ {concept.entity_type}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+            marginTop: "auto",
+            paddingTop: 12,
+            borderTop: "1px dashed var(--line-strong)",
+          }}
+        >
+          <div>
+            <div className="font-mono" style={{ fontSize: 9, color: "var(--paper-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              REPOS
+            </div>
+            <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-0)", marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {concept.repos && concept.repos.length > 0 ? (
+                concept.repos.slice(0, 3).map((r) => (
+                  <span key={r} className="tag" style={{ fontSize: 9 }}>
+                    <GitBranch size={9} /> {r}
                   </span>
-                  <span className={`tag tag-${accent}`}>{n.type.toLowerCase()}</span>
-                </div>
-                <div
-                  className="font-mono"
-                  style={{
-                    fontSize: 11,
-                    lineHeight: 1.5,
-                    color: "var(--paper-3)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {sub}
-                </div>
-                {(n.properties?.language || n.properties?.lines) && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginTop: 12,
-                      paddingTop: 10,
-                      borderTop: "1px dashed var(--line-strong)",
-                    }}
-                  >
-                    {n.properties?.language && (
-                      <span className="tag" style={{ fontSize: 9 }}>
-                        {n.properties.language}
-                      </span>
-                    )}
-                    {n.properties?.lines != null && (
-                      <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
-                        {n.properties.lines} lines
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                ))
+              ) : (
+                <span style={{ color: "var(--paper-4)" }}>—</span>
+              )}
+              {concept.repos && concept.repos.length > 3 && (
+                <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                  +{concept.repos.length - 3}
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono" style={{ fontSize: 9, color: "var(--paper-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              SURFACE AREA
+            </div>
+            <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-0)", marginTop: 4 }}>
+              {(concept.files_seen || 0).toLocaleString()} files
+            </div>
+          </div>
         </div>
       )}
     </div>
