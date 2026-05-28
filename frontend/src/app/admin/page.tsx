@@ -1,15 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Key, Webhook, Shield, Bot, Check, Loader2, RefreshCw, Github, Unplug, AlertTriangle } from "lucide-react";
-
-const TABS = [
-  { id: "llm", label: "LLM", icon: Key },
-  { id: "integrations", label: "Integrations", icon: Webhook },
-  { id: "update", label: "Updates", icon: RefreshCw },
-  { id: "permissions", label: "Permissions", icon: Shield },
-  { id: "persona", label: "Persona", icon: Bot },
-];
+import { AlertTriangle, Check, Github, Loader2, RefreshCw, Unplug } from "lucide-react";
 
 type Model = { model: string; tier: string; note?: string };
 type Providers = {
@@ -18,34 +10,42 @@ type Providers = {
   active: { provider: string; model: string } | null;
 };
 type GhVerify = {
-  valid: boolean; configured?: boolean; login?: string;
-  token_type?: string; can_push?: boolean | null; note?: string;
+  valid: boolean;
+  configured?: boolean;
+  login?: string;
+  token_type?: string;
+  can_push?: boolean | null;
+  note?: string;
 };
 type Perm = { capability: string; label: string; enabled: boolean };
 
+const SECTIONS = [
+  { id: "model", label: "Model" },
+  { id: "integrations", label: "Integrations" },
+  { id: "permissions", label: "Permissions" },
+  { id: "persona", label: "Persona" },
+  { id: "updates", label: "Updates" },
+];
+
 async function getJSON<T>(path: string): Promise<T | null> {
-  try { const r = await fetch(`/api${path}`); return r.ok ? r.json() : null; } catch { return null; }
+  try {
+    const r = await fetch(`/api${path}`);
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
 }
 async function putConfig(key: string, value: any) {
   await fetch(`/api/config/${key}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key, value }),
   });
 }
 
-function NotWired({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-4 flex items-start gap-2 rounded-md border border-[#3a2a10] bg-[#2a1f10] px-3 py-2">
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#fbbf24]" />
-      <p className="text-[11px] text-[#fbbf24]">{children}</p>
-    </div>
-  );
-}
-
 export default function AdminPage() {
-  const [tab, setTab] = useState("llm");
+  const [section, setSection] = useState<string>("model");
 
-  // LLM
   const [prov, setProv] = useState<Providers | null>(null);
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
@@ -54,35 +54,41 @@ export default function AdminPage() {
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
 
-  // GitHub
   const [gh, setGh] = useState<GhVerify | null>(null);
   const [ghLoading, setGhLoading] = useState(true);
   const [githubToken, setGithubToken] = useState("");
   const [githubSaving, setGithubSaving] = useState(false);
 
-  // Permissions
   const [perms, setPerms] = useState<Perm[]>([]);
-
-  // Persona
   const [persona, setPersona] = useState("senior");
 
   async function loadLLM() {
     const p = await getJSON<Providers>("/config/llm/providers");
     setProv(p);
-    if (p?.active) { setProvider(p.active.provider); setModel(p.active.model); }
+    if (p?.active) {
+      setProvider(p.active.provider);
+      setModel(p.active.model);
+    }
     const cfg = await getJSON<{ config: Record<string, any> }>("/config");
     const llm = cfg?.config?.llm_config;
     if (llm?.api_key) setStoredKey(llm.api_key);
-    if (llm?.provider && !p?.active) { setProvider(llm.provider); setModel(llm.model || ""); }
+    if (llm?.provider && !p?.active) {
+      setProvider(llm.provider);
+      setModel(llm.model || "");
+    }
   }
   async function loadGh() {
     setGhLoading(true);
     try {
       const r = await fetch("/api/config/github_token/verify", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
       });
       setGh(r.ok ? await r.json() : null);
-    } catch { setGh(null); }
+    } catch {
+      setGh(null);
+    }
     setGhLoading(false);
   }
   async function loadPerms() {
@@ -92,7 +98,8 @@ export default function AdminPage() {
   async function togglePermission(capability: string, enabled: boolean) {
     setPerms((ps) => ps.map((p) => (p.capability === capability ? { ...p, enabled } : p)));
     await fetch(`/api/permissions/${capability}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
     });
   }
@@ -104,7 +111,13 @@ export default function AdminPage() {
     setPersona(key);
     await putConfig("persona", { persona: key });
   }
-  useEffect(() => { loadLLM(); loadGh(); loadPerms(); loadPersona(); }, []);
+
+  useEffect(() => {
+    loadLLM();
+    loadGh();
+    loadPerms();
+    loadPersona();
+  }, []);
 
   const providerKeys = prov ? Object.keys(prov.providers) : [];
   const providerModels = (prov && provider && prov.providers[provider]) || [];
@@ -129,7 +142,8 @@ export default function AdminPage() {
     setGithubSaving(true);
     await putConfig("github_token", { token: githubToken });
     await fetch("/api/integrations", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: "github", credentials: { token: githubToken }, enabled: true }),
     });
     setGithubToken("");
@@ -145,186 +159,405 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-lg font-semibold text-[#e4e4e7]">Settings</h1>
-        <p className="mt-0.5 text-xs text-[#a1a1aa]">Configure providers and integrations</p>
+    <div style={{ padding: 40, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 className="page-title">
+          Settings<em>.</em>
+        </h1>
+        <div className="page-sub">Configure the agent · self-hosted</div>
       </div>
 
-      <div className="flex gap-8">
-        <div className="w-44 space-y-0.5">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${tab === t.id ? "bg-[#262626] text-[#e4e4e7]" : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#202020]"}`}>
-              <t.icon className="h-3.5 w-3.5" /> {t.label}
-            </button>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 32 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {SECTIONS.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => setSection(s.id)}
+              style={{
+                padding: "8px 12px",
+                cursor: "pointer",
+                borderRadius: 4,
+                color: section === s.id ? "var(--paper-0)" : "var(--paper-2)",
+                background: section === s.id ? "var(--ink-2)" : "transparent",
+                fontSize: 13,
+                borderLeft: section === s.id ? "2px solid var(--amber)" : "2px solid transparent",
+                marginLeft: section === s.id ? 0 : 2,
+              }}
+            >
+              {s.label}
+            </div>
           ))}
         </div>
 
-        <div className="flex-1 max-w-lg">
-          {tab === "llm" && (
-            <div className="panel space-y-4 p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-[#a1a1aa]">The provider your teammate thinks with.</p>
-                {prov?.active ? (
-                  <span className="badge border-[#1a3a26] bg-[#142a1d] text-[#4ade80]">
-                    Active: {prov.active.provider} · {prov.active.model}
-                  </span>
-                ) : (
-                  <span className="badge">Not configured</span>
-                )}
-              </div>
-
-              <select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setLlmSaved(false); }} className="input">
-                <option value="">Select provider...</option>
-                {providerKeys.map((p) => <option key={p} value={p}>{p}{p === prov?.default_provider ? " (default)" : ""}</option>)}
-              </select>
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {section === "model" && (
+            <Section title="Model" desc="The provider your teammate thinks with.">
+              <Field label="Provider">
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    setProvider(e.target.value);
+                    setModel("");
+                    setLlmSaved(false);
+                  }}
+                  className="input"
+                >
+                  <option value="">Select provider…</option>
+                  {providerKeys.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                      {p === prov?.default_provider ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
               {provider && (
                 <>
-                  <select value={model} onChange={(e) => { setModel(e.target.value); setLlmSaved(false); }} className="input text-xs">
-                    <option value="">Select model...</option>
-                    {providerModels.map((m) => <option key={m.model} value={m.model}>{m.model} — {m.tier}</option>)}
-                  </select>
-                  {model && providerModels.find((m) => m.model === model)?.note && (
-                    <p className="text-[10px] text-[#a1a1aa]">{providerModels.find((m) => m.model === model)?.note}</p>
-                  )}
-                  <input
-                    type="password" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setLlmSaved(false); }}
-                    placeholder={reuseKey ? "Using saved key — leave blank to keep it" : "API key (sk-...)"}
-                    className="input text-xs"
-                  />
-                  <button onClick={saveLLM} disabled={!canSaveLLM || llmSaving} className="btn-primary text-xs disabled:opacity-50">
-                    {llmSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : llmSaved ? <Check className="h-3.5 w-3.5" /> : null}
-                    {llmSaving ? "Saving..." : llmSaved ? "Saved" : "Save configuration"}
-                  </button>
+                  <Field label="Model" hint="Bigger model = better reasoning, slower + costlier">
+                    <select
+                      value={model}
+                      onChange={(e) => {
+                        setModel(e.target.value);
+                        setLlmSaved(false);
+                      }}
+                      className="input"
+                    >
+                      <option value="">Select model…</option>
+                      {providerModels.map((m) => (
+                        <option key={m.model} value={m.model}>
+                          {m.model} — {m.tier}
+                        </option>
+                      ))}
+                    </select>
+                    {model && providerModels.find((m) => m.model === model)?.note && (
+                      <div className="font-mono" style={{ fontSize: 10, marginTop: 6, color: "var(--paper-4)" }}>
+                        {providerModels.find((m) => m.model === model)?.note}
+                      </div>
+                    )}
+                  </Field>
+                  <Field label="API key" hint={reuseKey ? "Saved key in use — leave blank to keep it" : "Plaintext from the provider"}>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => {
+                        setApiKey(e.target.value);
+                        setLlmSaved(false);
+                      }}
+                      placeholder={reuseKey ? "Using saved key" : "sk-…"}
+                      className="input"
+                    />
+                  </Field>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
+                    {prov?.active && (
+                      <span className="tag tag-sage" style={{ fontSize: 10 }}>
+                        Active: {prov.active.provider} · {prov.active.model}
+                      </span>
+                    )}
+                    <button onClick={saveLLM} disabled={!canSaveLLM || llmSaving} className="btn btn-primary">
+                      {llmSaving ? <Loader2 size={12} className="animate-spin" /> : llmSaved ? <Check size={12} /> : null}
+                      {llmSaving ? "Saving…" : llmSaved ? "Saved" : "Save"}
+                    </button>
+                  </div>
                 </>
               )}
-              <p className="text-[10px] text-[#71717a]">Fallback order: Anthropic → OpenAI → DeepSeek → Groq → Ollama</p>
-            </div>
+
+              <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                Fallback order: Anthropic → OpenAI → DeepSeek → Groq → Ollama
+              </div>
+            </Section>
           )}
 
-          {tab === "integrations" && (
-            <div className="panel space-y-5 p-5">
-              <div>
-                <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[#a1a1aa]"><Github className="h-3.5 w-3.5" /> GitHub</label>
+          {section === "integrations" && (
+            <>
+              <Section title="GitHub" desc="Required to clone repos and open PRs.">
                 {ghLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-[#a1a1aa]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…</div>
+                  <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-3)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <Loader2 size={12} className="animate-spin" /> Checking…
+                  </div>
                 ) : gh?.valid ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-md border border-[#1a3a26] bg-[#142a1d] px-3 py-2">
-                      <span className="text-xs text-[#e4e4e7]">
-                        Connected as <span className="font-mono text-[#4ade80]">{gh.login}</span>
-                        {gh.token_type ? <span className="ml-2 text-[10px] text-[#a1a1aa]">{gh.token_type}</span> : null}
-                      </span>
-                      <button onClick={disconnectGithub} disabled={githubSaving} className="btn-ghost text-[11px]">
-                        <Unplug className="h-3 w-3" /> Disconnect
-                      </button>
-                    </div>
-                    <p className={`text-[10px] ${gh.can_push === false ? "text-[#fbbf24]" : "text-[#a1a1aa]"}`}>
-                      {gh.can_push === true ? "Push access: yes — can open PRs."
-                        : gh.can_push === false ? "Push access: no — this is read-only, so pushes/PRs will 403."
-                        : gh.note}
-                    </p>
-                    <details className="text-[10px] text-[#a1a1aa]">
-                      <summary className="cursor-pointer">Replace token</summary>
-                      <div className="mt-2 flex gap-2">
-                        <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="input text-xs" />
-                        <button onClick={saveGithub} disabled={!githubToken || githubSaving} className="btn-primary text-xs disabled:opacity-50">Save</button>
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "12px 14px",
+                        border: "1px solid rgba(138, 171, 142, 0.3)",
+                        background: "rgba(138, 171, 142, 0.06)",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 13, color: "var(--paper-0)" }}>
+                          Connected as <span className="font-mono" style={{ color: "var(--sage)" }}>{gh.login}</span>
+                          {gh.token_type && (
+                            <span className="font-mono" style={{ marginLeft: 8, fontSize: 10, color: "var(--paper-4)" }}>
+                              {gh.token_type}
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-mono" style={{ fontSize: 10, marginTop: 4, color: gh.can_push === false ? "var(--amber)" : "var(--paper-4)" }}>
+                          {gh.can_push === true
+                            ? "Push access: yes — can open PRs."
+                            : gh.can_push === false
+                              ? "Push access: no — read-only token; pushes/PRs will 403."
+                              : gh.note}
+                        </div>
                       </div>
-                    </details>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {gh?.note && <p className="text-[10px] text-[#fbbf24]">{gh.note}</p>}
-                    <div className="flex gap-2">
-                      <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="input text-xs" />
-                      <button onClick={saveGithub} disabled={!githubToken || githubSaving} className="btn-primary text-xs disabled:opacity-50">
-                        {githubSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Connect
+                      <button onClick={disconnectGithub} disabled={githubSaving} className="btn btn-ghost">
+                        <Unplug size={11} /> Disconnect
                       </button>
                     </div>
-                    <p className="text-[10px] text-[#a1a1aa]">Create at github.com/settings/tokens — needs Contents + Pull requests write to open PRs.</p>
+                    <Field label="Replace token" hint="Leave blank to keep the existing token.">
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="password"
+                          value={githubToken}
+                          onChange={(e) => setGithubToken(e.target.value)}
+                          placeholder="github_pat_…"
+                          className="input"
+                          style={{ fontFamily: "var(--mono)" }}
+                        />
+                        <button onClick={saveGithub} disabled={!githubToken || githubSaving} className="btn btn-primary">
+                          Save
+                        </button>
+                      </div>
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    {gh?.note && (
+                      <div className="font-mono" style={{ fontSize: 11, color: "var(--amber)" }}>
+                        {gh.note}
+                      </div>
+                    )}
+                    <Field label="GitHub token" hint="Needs Contents + Pull requests (write) to open PRs">
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="password"
+                          value={githubToken}
+                          onChange={(e) => setGithubToken(e.target.value)}
+                          placeholder="github_pat_…"
+                          className="input"
+                          style={{ fontFamily: "var(--mono)" }}
+                        />
+                        <button onClick={saveGithub} disabled={!githubToken || githubSaving} className="btn btn-primary">
+                          {githubSaving ? <Loader2 size={12} className="animate-spin" /> : <Github size={12} />} Connect
+                        </button>
+                      </div>
+                    </Field>
+                  </>
+                )}
+              </Section>
+
+              <Section title="Other integrations" desc="Slack and Jira are not wired up yet — these inputs are disabled until the integrations are built.">
+                <NotWired>Slack and Jira aren&rsquo;t wired up yet — these inputs are disabled until the integrations are built.</NotWired>
+                <Field label="Slack Bot Token">
+                  <input type="password" disabled placeholder="xoxb-…" className="input" />
+                </Field>
+                <Field label="Jira API Token">
+                  <input type="password" disabled placeholder="Token" className="input" />
+                </Field>
+              </Section>
+            </>
+          )}
+
+          {section === "permissions" && (
+            <Section title="Permissions" desc="What the agent is allowed to do without human approval. Disabling a capability blocks its tools at runtime.">
+              {perms.length === 0 ? (
+                <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>
+                  Loading…
+                </div>
+              ) : (
+                perms.map((p) => (
+                  <div
+                    key={p.capability}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "8px 0",
+                      borderBottom: "1px dashed var(--line)",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: "var(--paper-0)" }}>{p.label}</div>
+                      <div className="font-mono" style={{ fontSize: 10, marginTop: 2, color: "var(--paper-4)" }}>
+                        capability · {p.capability}
+                      </div>
+                    </div>
+                    <Toggle value={p.enabled} onChange={(v) => togglePermission(p.capability, v)} />
                   </div>
-                )}
-              </div>
-
-              <div className="border-t border-[#2b2b2e] pt-4">
-                <NotWired>Slack and Jira aren&apos;t wired up yet — these inputs are disabled until the integrations are built.</NotWired>
-                <label className="mb-1.5 block text-xs font-medium text-[#71717a]">Slack Bot Token</label>
-                <input type="password" disabled placeholder="xoxb-..." className="input text-xs opacity-50" />
-                <label className="mb-1.5 mt-3 block text-xs font-medium text-[#71717a]">Jira API Token</label>
-                <input type="password" disabled placeholder="Token" className="input text-xs opacity-50" />
-              </div>
-            </div>
+                ))
+              )}
+            </Section>
           )}
 
-          {tab === "update" && (
-            <div className="panel p-5">
-              <NotWired>Auto-sync currently runs on a fixed schedule. Configurable scheduling and GitHub-webhook triggers aren&apos;t wired up yet.</NotWired>
-              <div className="space-y-3 opacity-50 pointer-events-none">
-                <label className="flex items-center gap-3 rounded bg-[#202020] px-3 py-2.5">
-                  <input type="radio" name="update" defaultChecked disabled className="h-3.5 w-3.5 accent-[#3b82f6]" />
-                  <span className="text-sm text-[#e4e4e7]">Git pull on schedule</span>
-                </label>
-                <label className="flex items-center gap-3 rounded px-3 py-2.5">
-                  <input type="radio" name="update" disabled className="h-3.5 w-3.5 accent-[#3b82f6]" />
-                  <span className="text-sm text-[#e4e4e7]">GitHub webhooks</span>
-                </label>
-              </div>
-            </div>
+          {section === "persona" && (
+            <Section title="Persona" desc="How the agent works. The choice is woven into its system prompt — shifts tone and emphasis without changing what it's allowed to do.">
+              {[
+                { key: "senior", label: "Senior", desc: "Thorough and pedagogical" },
+                { key: "junior", label: "Junior", desc: "Enthusiastic, asks for clarification" },
+                { key: "reviewer", label: "Reviewer", desc: "Strict about types and tests" },
+                { key: "pragmatic", label: "Pragmatic", desc: "Favors shipping over perfection" },
+                { key: "architect", label: "Architect", desc: "Thinks in systems and diagrams" },
+              ].map((p) => {
+                const active = persona === p.key;
+                return (
+                  <div
+                    key={p.key}
+                    onClick={() => savePersona(p.key)}
+                    style={{
+                      padding: "10px 14px",
+                      border: "1px solid " + (active ? "var(--amber-dim)" : "var(--line)"),
+                      background: active ? "rgba(212, 165, 116, 0.06)" : "transparent",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        border: "1.5px solid " + (active ? "var(--amber)" : "var(--line-strong)"),
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      {active && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--amber)" }} />}
+                    </span>
+                    <span style={{ fontSize: 13, color: "var(--paper-0)" }}>{p.label}</span>
+                    <span className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)", marginLeft: "auto" }}>
+                      {p.desc}
+                    </span>
+                  </div>
+                );
+              })}
+            </Section>
           )}
 
-          {tab === "permissions" && (
-            <div className="panel p-5">
-              <p className="mb-4 text-xs text-[#a1a1aa]">
-                What your teammate is allowed to do. Disabling a capability blocks its tools
-                (read/write code, PRs); the agent gets a permission error if it tries.
-              </p>
-              <div className="space-y-1">
-                {perms.map((p) => (
-                  <label key={p.capability} className="flex cursor-pointer items-center justify-between rounded px-3 py-2.5 hover:bg-[#202020]">
-                    <span className="text-sm text-[#e4e4e7]">{p.label}</span>
-                    <input
-                      type="checkbox" checked={p.enabled}
-                      onChange={(e) => togglePermission(p.capability, e.target.checked)}
-                      className="h-3.5 w-3.5 accent-[#3b82f6]"
-                    />
-                  </label>
-                ))}
-                {perms.length === 0 && (
-                  <p className="px-3 py-6 text-center text-xs text-[#71717a]">Loading…</p>
-                )}
+          {section === "updates" && (
+            <Section title="Updates" desc="How fresh the agent's view of your repos stays.">
+              <NotWired>Auto-sync currently runs on a fixed schedule. Configurable scheduling and GitHub-webhook triggers aren&rsquo;t wired up yet.</NotWired>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: 0.6, pointerEvents: "none" }}>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    border: "1px solid var(--line)",
+                    background: "var(--ink-2)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "var(--paper-0)" }}>Git pull on schedule</div>
+                  <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", marginTop: 4 }}>
+                    every 6 hours
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    border: "1px solid var(--line)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "var(--paper-0)" }}>GitHub webhooks</div>
+                  <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", marginTop: 4 }}>
+                    react to push/PR events
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-
-          {tab === "persona" && (
-            <div className="panel p-5">
-              <p className="mb-4 text-xs text-[#a1a1aa]">
-                How your teammate works. The choice is woven into its system prompt — it
-                shifts tone and emphasis without changing what it&apos;s allowed to do.
-              </p>
-              <div className="space-y-1">
-                {[
-                  { key: "senior", label: "Senior", desc: "Thorough and pedagogical" },
-                  { key: "junior", label: "Junior", desc: "Enthusiastic, asks for clarification" },
-                  { key: "reviewer", label: "Reviewer", desc: "Strict about types and tests" },
-                  { key: "pragmatic", label: "Pragmatic", desc: "Favors shipping over perfection" },
-                  { key: "architect", label: "Architect", desc: "Thinks in systems and diagrams" },
-                ].map((p) => (
-                  <label key={p.key} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2.5 hover:bg-[#202020]">
-                    <input
-                      type="radio" name="persona" checked={persona === p.key}
-                      onChange={() => savePersona(p.key)}
-                      className="h-3.5 w-3.5 accent-[#3b82f6]"
-                    />
-                    <div><span className="text-sm text-[#e4e4e7]">{p.label}</span><span className="ml-2 text-[11px] text-[#a1a1aa]">{p.desc}</span></div>
-                  </label>
-                ))}
-              </div>
-            </div>
+            </Section>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <div className="card" style={{ padding: 24 }}>
+      <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 24, color: "var(--paper-0)" }}>{title}</div>
+        {desc && (
+          <div className="font-mono" style={{ fontSize: 12, marginTop: 4, color: "var(--paper-4)" }}>
+            {desc}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24, alignItems: "start" }}>
+      <div>
+        <div style={{ fontSize: 13, color: "var(--paper-0)" }}>{label}</div>
+        {hint && (
+          <div className="font-mono" style={{ fontSize: 10, marginTop: 4, color: "var(--paper-4)", letterSpacing: "0.04em" }}>
+            {hint}
+          </div>
+        )}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!value)}
+      style={{
+        width: 36,
+        height: 20,
+        borderRadius: 10,
+        background: value ? "var(--amber)" : "var(--ink-3)",
+        border: "1px solid " + (value ? "var(--amber)" : "var(--line-strong)"),
+        cursor: "pointer",
+        position: "relative",
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 1,
+          left: value ? 17 : 1,
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          background: value ? "var(--ink-0)" : "var(--paper-1)",
+          transition: "left 0.15s",
+        }}
+      />
+    </button>
+  );
+}
+
+function NotWired({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        padding: "10px 12px",
+        border: "1px solid rgba(212, 165, 116, 0.3)",
+        background: "rgba(212, 165, 116, 0.06)",
+        borderRadius: 6,
+        fontSize: 11,
+        color: "var(--amber)",
+      }}
+    >
+      <AlertTriangle size={12} style={{ marginTop: 2, flexShrink: 0 }} />
+      <span>{children}</span>
     </div>
   );
 }

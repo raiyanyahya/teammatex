@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Key, ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,19 +15,16 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.detail || "Login failed");
       }
-
       const data = await res.json();
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
@@ -39,16 +36,63 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#1a1a1a]">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-lg font-semibold text-[#e4e4e7]">TeammateX</h1>
-          <p className="mt-1 text-xs text-[#a1a1aa]">Sign in to your workspace</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--ink-0)",
+        padding: 24,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 20% 0%, rgba(212, 165, 116, 0.06), transparent 50%), radial-gradient(ellipse at 80% 100%, rgba(168, 136, 181, 0.04), transparent 50%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div style={{ width: "100%", maxWidth: 360, position: "relative" }}>
+        <div style={{ marginBottom: 28, textAlign: "center" }}>
+          <div
+            style={{
+              fontFamily: "var(--serif)",
+              fontSize: 40,
+              lineHeight: 1,
+              color: "var(--paper-0)",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            teammate<em style={{ color: "var(--amber)", fontStyle: "italic" }}>X</em>
+          </div>
+          <div
+            className="font-mono"
+            style={{
+              fontSize: 11,
+              color: "var(--paper-3)",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              marginTop: 12,
+            }}
+          >
+            sign in to your workspace
+          </div>
         </div>
 
-        <form onSubmit={login} className="panel p-6 space-y-4">
+        <form
+          onSubmit={login}
+          className="card"
+          style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}
+        >
           <div>
-            <label className="block mb-1.5 text-[11px] font-semibold text-[#a1a1aa] uppercase tracking-wide">Email</label>
+            <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
+              Email
+            </div>
             <input
               type="email"
               value={email}
@@ -61,30 +105,45 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block mb-1.5 text-[11px] font-semibold text-[#a1a1aa] uppercase tracking-wide">Password</label>
+            <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
+              Password
+            </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
+              placeholder="••••••••"
               className="input"
               required
             />
           </div>
 
           {error && (
-            <div className="rounded border border-[#3a1818] bg-[#1f1010] px-3 py-2 text-xs text-[#f87171]">
+            <div
+              style={{
+                padding: "8px 12px",
+                border: "1px solid rgba(194, 116, 95, 0.3)",
+                background: "rgba(194, 116, 95, 0.06)",
+                borderRadius: 6,
+                fontSize: 12,
+                color: "var(--rust)",
+              }}
+            >
               {error}
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
-            {loading ? "Signing in..." : "Sign in"} <ArrowRight className="h-3.5 w-3.5" />
+          <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }}>
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-[11px] text-[#71717a]">
-          First time? The default password is shown in the terminal when the server starts.
+        <p
+          className="font-mono"
+          style={{ marginTop: 16, textAlign: "center", fontSize: 10, color: "var(--paper-4)" }}
+        >
+          First time? The default password prints in the terminal when the server starts.
         </p>
       </div>
     </div>

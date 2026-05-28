@@ -1,234 +1,379 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, Check, GitBranch, Github, Loader2, Pause, Plus, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
-import { CheckCircle2, Loader2, AlertCircle, GitBranch, Plus, RefreshCw, Github } from "lucide-react";
 import RepoSelector from "@/components/RepoSelector";
 
-const STAGES = [
-  "Repository Discovery",
-  "History Mining",
-  "Code Analysis",
-  "People Profiling",
-  "Feature Extraction",
-  "Graph Building",
-  "Vector Embeddings",
-  "Knowledge Synthesis",
-  "Tech Debt Scan",
-  "Style Learning",
-  "Dependency Scan",
-  "Introduction Report",
+type Repo = { id: string; local_name: string; github_url?: string };
+type StageRow = { stage: string; status: string; error?: string };
+
+const STAGES: { label: string; desc: string }[] = [
+  { label: "Repository Discovery", desc: "Cloning, language detect, build-system inference" },
+  { label: "History Mining", desc: "Walking commits across branches" },
+  { label: "Code Analysis", desc: "AST parsing, symbol graph, callsite extraction" },
+  { label: "People Profiling", desc: "Authorship patterns, expertise mapping" },
+  { label: "Feature Extraction", desc: "Inferring product surfaces from code + commits" },
+  { label: "Graph Building", desc: "Linking code ↔ people ↔ concepts ↔ history" },
+  { label: "Vector Embeddings", desc: "Semantic indexing for retrieval" },
+  { label: "Knowledge Synthesis", desc: "Generating module summaries & cross-refs" },
+  { label: "Tech Debt Scan", desc: "Hotspots, churn, brittle areas" },
+  { label: "Style Learning", desc: "Code conventions, PR voice, naming patterns" },
+  { label: "Dependency Scan", desc: "Vuln check, license audit, version drift" },
+  { label: "Introduction Report", desc: "First written summary for the team" },
 ];
 
+function statusFor(row: any): "completed" | "running" | "failed" | "pending" {
+  const status = row?.status ?? row;
+  if (status === "completed") return "completed";
+  if (status === "running") return "running";
+  if (status === "failed") return "failed";
+  return "pending";
+}
+
 export default function OnboardingPage() {
-  const [repos, setRepos] = useState<{ id: string; local_name: string; github_url?: string }[]>([]);
+  const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [stages, setStages] = useState<Record<number, any>>({});
+  const [stages, setStages] = useState<Record<number, StageRow>>({});
   const [url, setUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [retrying, setRetrying] = useState(false);
-
   const [browsing, setBrowsing] = useState(false);
 
   const loadRepos = useCallback(async () => {
     try {
-      const data = await api.get<{ id: string; local_name: string; github_url: string }[]>("/repos");
+      const data = await api.get<Repo[]>("/repos");
       setRepos(data);
       if (data.length > 0 && !selectedId) {
-        // Deep-link: /onboarding?repo=<id> selects that repo (from the Repos page).
         const wanted = new URLSearchParams(window.location.search).get("repo");
         const match = wanted && data.find((r) => r.id === wanted);
-        setSelectedId(match ? wanted : data[0].id);
+        setSelectedId(match ? wanted! : data[0].id);
       }
     } catch {}
   }, [selectedId]);
 
-  const loadStages = useCallback(async (repoId: string) => {
+  const loadStages = useCallback(async (id: string) => {
     try {
-      const data = await api.get<{ stages: { stage: string; status: string; error?: string }[] }>(`/repos/${repoId}/onboarding`);
-      const map: Record<number, any> = {};
-      data.stages.forEach((s: any, i: number) => { map[i] = s; });
+      const data = await api.get<{ stages: StageRow[] }>(`/repos/${id}/onboarding`);
+      const map: Record<number, StageRow> = {};
+      data.stages.forEach((s, i) => {
+        map[i] = s;
+      });
       setStages(map);
     } catch {}
   }, []);
 
-  useEffect(() => { loadRepos(); }, [loadRepos]);
   useEffect(() => {
-    if (selectedId) {
-      loadStages(selectedId);
-      const i = setInterval(() => loadStages(selectedId), 3000);
-      return () => clearInterval(i);
-    }
+    loadRepos();
+  }, [loadRepos]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    loadStages(selectedId);
+    const id = setInterval(() => loadStages(selectedId), 3000);
+    return () => clearInterval(id);
   }, [selectedId, loadStages]);
 
   async function addRepo() {
     if (!url.trim()) return;
     setAdding(true);
+    setError("");
     try {
-      const data = await api.post<{ repo_id: string }>("/repos", { github_url: url.trim() });
+      const d = await api.post<{ repo_id: string }>("/repos", { github_url: url.trim() });
       setUrl("");
       await loadRepos();
-      setSelectedId(data.repo_id);
+      setSelectedId(d.repo_id);
     } catch (e: any) {
       setError(e.message || "Failed");
     }
     setAdding(false);
   }
 
-  async function retryPipeline() {
+  async function retry() {
     if (!selectedId) return;
     setRetrying(true);
     try {
       await api.post(`/repos/${selectedId}/retry`, {});
       setStages({});
       await loadStages(selectedId);
-      // The selectedId effect already polls loadStages every 3s with unmount
-      // cleanup, so no separate interval here (the old one leaked on unmount).
     } catch (e: any) {
       setError(e.message || "Retry failed");
     }
     setRetrying(false);
   }
 
-  const completed = Object.values(stages).filter((s: any) => s?.status === "completed" || s === "completed").length;
-  const failed = Object.values(stages).filter((s: any) => s?.status === "failed").length;
-  const pct = Object.keys(stages).length > 0 ? Math.round((completed / 12) * 100) : 0;
+  const completedCount = Object.values(stages).filter((s) => statusFor(s) === "completed").length;
+  const failedCount = Object.values(stages).filter((s) => statusFor(s) === "failed").length;
+  const pct = STAGES.length ? Math.round((completedCount / STAGES.length) * 100) : 0;
   const activeRepo = repos.find((r) => r.id === selectedId);
-  const errors = Object.entries(stages).filter(([_, s]: any) => s?.error).map(([i, s]: any) => ({ stage: parseInt(i), error: s.error }));
+  const repoStatus = failedCount > 0 ? "failed" : pct === 100 ? "complete" : pct > 0 ? "running" : "queued";
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-start justify-between">
+    <div style={{ padding: 40 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28 }}>
         <div>
-          <h1 className="text-lg font-semibold text-[#e4e4e7]">Onboarding Pipeline</h1>
-          <p className="mt-0.5 text-xs text-[#a1a1aa]">Repository analysis progress</p>
+          <h1 className="page-title">
+            Onboarding<em>.</em>
+          </h1>
+          <div className="page-sub">Pipeline · ingesting your team&rsquo;s history into the agent&rsquo;s brain</div>
         </div>
-        {!browsing && repos.length > 0 && (
-          <button onClick={() => setBrowsing(true)} className="btn-secondary">
-            <Github className="h-3.5 w-3.5" /> Browse my repositories
+        <div style={{ display: "flex", gap: 8 }}>
+          {!browsing && (
+            <button className="btn" onClick={() => setBrowsing(true)}>
+              <Github size={13} /> Browse my repos
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => document.getElementById("onb-url-input")?.focus()}>
+            <Plus size={13} /> Add repository
           </button>
-        )}
+        </div>
       </div>
 
       {browsing ? (
         <RepoSelector
           existing={repos}
-          onDone={() => { setBrowsing(false); loadRepos(); }}
+          onDone={() => {
+            setBrowsing(false);
+            loadRepos();
+          }}
           onCancel={() => setBrowsing(false)}
         />
       ) : repos.length === 0 ? (
-        <div className="panel p-12 text-center max-w-lg mx-auto">
-          <GitBranch className="h-8 w-8 text-[#71717a] mx-auto mb-4" />
-          <h2 className="text-sm font-semibold text-[#e4e4e7] mb-1">No repositories</h2>
-          <p className="text-xs text-[#a1a1aa] mb-6">Pick from your GitHub account, or add a repository by URL.</p>
-          <button onClick={() => setBrowsing(true)} className="btn-primary mx-auto mb-5">
-            <Github className="h-3.5 w-3.5" /> Browse my repositories
-          </button>
-          <div className="flex items-center gap-3 max-w-sm mx-auto mb-4 text-[10px] uppercase tracking-wider text-[#71717a]">
-            <span className="h-px flex-1 bg-[#2b2b2e]" /> or by url <span className="h-px flex-1 bg-[#2b2b2e]" />
+        <div className="card" style={{ padding: 48, textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
+          <GitBranch size={32} style={{ color: "var(--paper-4)", margin: "0 auto 12px" }} />
+          <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--paper-0)", marginBottom: 8 }}>
+            No repositories yet
           </div>
-          <div className="flex gap-2 max-w-sm mx-auto">
-            <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="https://github.com/owner/repo" className="input flex-1" />
-            <button onClick={addRepo} disabled={adding} className="btn-secondary">
-              <Plus className="h-3.5 w-3.5" /> Add
+          <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-3)", marginBottom: 16 }}>
+            Pick from your GitHub account, or add a repository by URL.
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <input
+              id="onb-url-input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addRepo()}
+              placeholder="https://github.com/owner/repo"
+              className="input"
+              style={{ maxWidth: 280, fontFamily: "var(--mono)" }}
+            />
+            <button onClick={addRepo} disabled={adding} className="btn btn-primary">
+              {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
             </button>
           </div>
-          {error && <p className="mt-3 text-xs text-[#f87171]">{error}</p>}
+          {error && (
+            <div className="font-mono" style={{ marginTop: 10, fontSize: 11, color: "var(--rust)" }}>
+              {error}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-6">
-          <div className="space-y-1">
-            <p className="text-[10px] font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-2">Repos</p>
-            {repos.map((repo) => (
-              <button
-                key={repo.id}
-                onClick={() => setSelectedId(repo.id)}
-                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  selectedId === repo.id
-                    ? "bg-[#262626] text-[#e4e4e7]"
-                    : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#202020]"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <GitBranch className="h-3 w-3 shrink-0" />
-                  <span className="font-mono text-xs truncate">{repo.local_name}</span>
-                </div>
-              </button>
-            ))}
-            <div className="pt-3 px-1">
-              <div className="flex gap-1.5">
-                <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="URL..." className="input flex-1 text-xs py-1.5" />
-                <button onClick={addRepo} disabled={adding} className="btn-primary text-xs px-2 py-1.5"><Plus className="h-3 w-3" /></button>
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 24 }}>
+          <div>
+            <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.12em", marginBottom: 8 }}>
+              REPOSITORIES · {repos.length}
             </div>
-            {errors.length > 0 && (
-              <div className="mt-6 panel p-4">
-                <h3 className="text-xs font-semibold text-[#f87171] mb-2">Errors ({errors.length})</h3>
-                <div className="space-y-1.5">
-                  {errors.map((e: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2 rounded p-2 bg-[#1f1010] border border-[#3a1818]">
-                      <AlertCircle className="h-3.5 w-3.5 text-[#f87171] mt-0.5 shrink-0" />
-                      <div>
-                        <span className="text-xs text-[#f87171] font-medium">{STAGES.length > e.stage ? STAGES[e.stage] : `Stage ${e.stage + 1}`}</span>
-                        <p className="text-[11px] text-[#fb7185] mt-0.5 font-mono">{e.error}</p>
-                      </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {repos.map((r) => {
+                const active = selectedId === r.id;
+                return (
+                  <div
+                    key={r.id}
+                    onClick={() => setSelectedId(r.id)}
+                    style={{
+                      padding: "12px 14px",
+                      background: active ? "var(--ink-2)" : "var(--ink-1)",
+                      border: "1px solid " + (active ? "var(--line-strong)" : "var(--line)"),
+                      borderRadius: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <GitBranch size={12} style={{ color: "var(--paper-3)" }} />
+                      <span className="font-mono" style={{ fontSize: 13, color: "var(--paper-0)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.local_name}
+                      </span>
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.12em", marginBottom: 8 }}>
+                QUICK ADD
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  className="input"
+                  placeholder="https://github.com/org/repo"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addRepo()}
+                  style={{ flex: 1, fontFamily: "var(--mono)", fontSize: 12 }}
+                />
+                <button className="btn btn-primary" style={{ padding: "6px 10px" }} onClick={addRepo} disabled={adding}>
+                  {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                </button>
+              </div>
+              {error && (
+                <div className="font-mono" style={{ marginTop: 8, fontSize: 11, color: "var(--rust)" }}>
+                  {error}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <GitBranch size={16} style={{ color: "var(--paper-2)" }} />
+                    <span style={{ fontFamily: "var(--serif)", fontSize: 24, color: "var(--paper-0)" }}>
+                      {activeRepo?.local_name || "Select a repo"}
+                    </span>
+                    <span
+                      className={`tag ${
+                        repoStatus === "complete" ? "tag-sage" : repoStatus === "failed" ? "tag-rust" : repoStatus === "running" ? "tag-amber" : ""
+                      }`}
+                    >
+                      {repoStatus}
+                    </span>
+                  </div>
+                  <div
+                    className="font-mono"
+                    style={{ fontSize: 11, marginTop: 6, color: "var(--paper-4)", letterSpacing: "0.04em" }}
+                  >
+                    {completedCount}/{STAGES.length} stages complete
+                    {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                  <div className="stat-val" style={{ fontSize: 32 }}>
+                    {pct}
+                    <span className="unit">%</span>
+                  </div>
+                  {(failedCount > 0 || (completedCount === 0 && Object.keys(stages).length === 0)) && (
+                    <button className="btn btn-primary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={retry} disabled={retrying}>
+                      {retrying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                      {failedCount > 0 ? "Retry" : "Start"}
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-          </div>
 
-          <div className="col-span-3 panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-sm font-semibold text-[#e4e4e7]">{activeRepo?.local_name || "Select a repo"}</h2>
-                <p className="text-xs text-[#a1a1aa]">{completed}/12 stages complete</p>
+              <div
+                style={{
+                  marginTop: 18,
+                  height: 6,
+                  background: "var(--ink-3)",
+                  borderRadius: 3,
+                  overflow: "hidden",
+                  position: "relative",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${pct}%`,
+                    background: "linear-gradient(90deg, var(--amber), var(--paper-1))",
+                    borderRadius: 3,
+                  }}
+                />
               </div>
-              <span className={`badge ${pct === 100 ? "border-[#16a34a] bg-[#16341e] text-[#4ade80]" : "border-[#1e3a5c] bg-[#1a2438] text-[#60a5fa]"}`}>
-                {pct === 100 ? "Complete" : `${pct}%`}
-              </span>
-              {failed > 0 || (completed === 0 && Object.keys(stages).length === 0) ? (
-                <button onClick={retryPipeline} disabled={retrying} className="btn-primary text-xs flex items-center gap-1">
-                  {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  {failed > 0 ? "Retry pipeline" : "Start pipeline"}
-                </button>
-              ) : null}
             </div>
 
-            <div className="mb-6 h-1.5 w-full rounded-sm bg-[#262626] overflow-hidden">
-              <div className="h-1.5 rounded-sm bg-[#3b82f6] transition-all duration-1000" style={{ width: `${pct}%` }} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-              {STAGES.map((label, i) => {
-                // stages[i] is the stage object {stage, status, error}; read .status
-                // (older shapes stored the raw status string, so fall back to it).
-                const st = stages[i];
-                const status = st?.status ?? st;
+            <div>
+              {STAGES.map((s, i) => {
+                const status = statusFor(stages[i]);
                 const isDone = status === "completed";
                 const isRunning = status === "running";
                 const isFailed = status === "failed";
-
                 return (
-                  <div key={i} className="flex items-center gap-2.5 py-1.5">
+                  <div
+                    key={i}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "28px 24px 1fr auto",
+                      gap: 14,
+                      alignItems: "center",
+                      padding: "14px 24px",
+                      borderBottom: "1px solid var(--line)",
+                      background: isRunning ? "rgba(212, 165, 116, 0.04)" : "transparent",
+                    }}
+                  >
+                    <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
                     {isDone ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#4ade80] shrink-0" />
+                      <Check size={14} style={{ color: "var(--sage)" }} />
                     ) : isRunning ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#60a5fa] shrink-0" />
+                      <span
+                        style={{
+                          width: 12,
+                          height: 12,
+                          border: "1.5px solid var(--amber)",
+                          borderTopColor: "transparent",
+                          borderRadius: "50%",
+                          display: "inline-block",
+                          animation: "spin 0.8s linear infinite",
+                        }}
+                      />
                     ) : isFailed ? (
-                      <AlertCircle className="h-3.5 w-3.5 text-[#f87171] shrink-0" />
+                      <AlertCircle size={14} style={{ color: "var(--rust)" }} />
                     ) : (
-                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#262626] text-[9px] text-[#71717a] font-mono shrink-0">{i + 1}</span>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "var(--ink-4)",
+                          display: "inline-block",
+                          marginLeft: 3,
+                        }}
+                      />
                     )}
-                    <span className={`text-xs ${isDone ? "text-[#a1a1aa]" : isRunning ? "text-[#e4e4e7]" : isFailed ? "text-[#f87171]" : "text-[#71717a]"}`}>
-                      {label}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: isDone || isRunning ? "var(--paper-0)" : isFailed ? "var(--rust)" : "var(--paper-4)",
+                        }}
+                      >
+                        {s.label}
+                      </div>
+                      <div className="font-mono" style={{ fontSize: 10, marginTop: 2, color: "var(--paper-4)" }}>
+                        {stages[i]?.error || s.desc}
+                      </div>
+                    </div>
+                    <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                      {isDone ? "done" : isRunning ? "…" : isFailed ? "error" : ""}
                     </span>
                   </div>
                 );
               })}
             </div>
+
+            {repoStatus === "running" && (
+              <div
+                style={{
+                  padding: "16px 24px",
+                  borderTop: "1px solid var(--line)",
+                  background: "var(--ink-0)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>
+                  <span style={{ color: "var(--amber)" }}>●</span> indexing · stage {completedCount + 1} of {STAGES.length}
+                </div>
+                <button className="btn btn-ghost" disabled>
+                  <Pause size={12} /> Pause
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

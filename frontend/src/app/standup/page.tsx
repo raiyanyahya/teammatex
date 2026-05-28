@@ -1,160 +1,312 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  GitPullRequest, ListTodo, AlertTriangle, CheckCircle2,
-  RefreshCw, Loader2,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, GitPullRequest, Play, RefreshCw } from "lucide-react";
 
-type PR = { title: string; status: string; branch: string };
-type Task = { title: string; status: string; priority: string };
+type PR = { title: string; status: string; branch: string; who?: string };
+type Task = { title: string; status: string; priority: string; who?: string; progress?: number };
 type Blocker = { question: string; created_at: string | null };
 
 type Standup = {
   name: string;
   date: string;
+  yesterday: string;
+  today: string;
   prs: PR[];
   tasks: Task[];
   blockers_list: Blocker[];
 };
+
+const GREETING_BY_HOUR = (h: number) =>
+  h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 17 ? "Afternoon" : h < 21 ? "Good evening" : "Evening";
+
+const ROW_COLORS = ["var(--sage)", "var(--sky)", "var(--plum)", "var(--amber)"];
 
 function relativeAge(iso: string | null): string {
   if (!iso) return "";
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
   const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `${mins}m elapsed`;
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
-const STATUS_TONE: Record<string, string> = {
-  open: "bg-[#0c2818] text-[#4ade80]",
-  merged: "bg-[#2a1d3a] text-[#c084fc]",
-  closed: "bg-[#2e1818] text-[#fb7185]",
-  in_progress: "bg-[#3a2a10] text-[#fbbf24]",
-};
-
-function pill(label: string) {
-  const tone = STATUS_TONE[label] ?? "bg-[#262626] text-[#a1a1aa]";
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${tone}`}>
-      {label}
-    </span>
-  );
+  if (hours < 24) return `${hours}h elapsed`;
+  return `${Math.round(hours / 24)}d elapsed`;
 }
 
 export default function StandupPage() {
   const [data, setData] = useState<Standup | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(false);
     try {
-      const res = await fetch("/api/features/standup");
-      if (!res.ok) throw new Error(String(res.status));
-      setData(await res.json());
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
+      const r = await fetch("/api/features/standup");
+      if (r.ok) setData(await r.json());
+    } catch {}
+    setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const now = new Date();
+  const dateLine = useMemo(() => {
+    const day = now.toLocaleDateString([], { weekday: "long" });
+    const date = now.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    return `${day} · ${date} · ${time}`;
+  }, [now]);
+
+  const greeting = GREETING_BY_HOUR(now.getHours());
+  const prs = data?.prs ?? [];
+  const tasks = data?.tasks ?? [];
+  const blockers = data?.blockers_list ?? [];
+  const blockerLead = blockers[0]?.question;
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-start justify-between">
+    <div style={{ padding: 40, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28 }}>
         <div>
-          <h1 className="text-lg font-semibold text-[#e4e4e7]">Standup</h1>
-          <p className="mt-0.5 text-xs text-[#a1a1aa]">
-            {data?.name ? `${data.name} · ` : ""}{data?.date ?? "Daily summary of recent activity"}
-          </p>
+          <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-3)", letterSpacing: "0.12em" }}>
+            {dateLine.toUpperCase()}
+          </div>
+          <h1 className="page-title" style={{ marginTop: 6 }}>
+            {greeting}<em>.</em>
+          </h1>
+          <div
+            style={{
+              fontFamily: "var(--serif)",
+              fontSize: 18,
+              color: "var(--paper-2)",
+              marginTop: 6,
+              maxWidth: 720,
+              lineHeight: 1.5,
+            }}
+          >
+            {blockers.length === 0 && tasks.length === 0 && prs.length === 0 ? (
+              <>The team is quiet — no recent PRs, tasks, or blockers landed yet.</>
+            ) : (
+              <>
+                {prs.length} {prs.length === 1 ? "PR" : "PRs"} shipped, {tasks.length} in flight
+                {blockerLead ? (
+                  <>
+                    , and one thing keeping us{" "}
+                    <em style={{ color: "var(--rust)", fontStyle: "italic" }}>blocked</em>.
+                  </>
+                ) : (
+                  "."
+                )}
+              </>
+            )}
+          </div>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary disabled:opacity-50">
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          Refresh
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn" disabled>
+            Post to #team
+          </button>
+          <button className="btn btn-primary" onClick={load} disabled={loading}>
+            <RefreshCw size={13} /> Regenerate
+          </button>
+        </div>
       </div>
 
-      {error ? (
-        <div className="panel p-6 text-center text-sm text-[#fb7185]">
-          Couldn&apos;t load the standup. <button onClick={load} className="underline">Try again</button>.
-        </div>
-      ) : loading && !data ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-[#a1a1aa]">
-          <Loader2 className="h-4 w-4 animate-spin" /> Gathering activity…
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Section icon={<GitPullRequest className="h-3.5 w-3.5" />} title="Yesterday" count={data?.prs.length ?? 0}>
-            {data && data.prs.length > 0 ? (
-              data.prs.map((p, i) => (
-                <Row key={i} title={p.title} sub={p.branch}>{pill(p.status)}</Row>
-              ))
-            ) : (
-              <Empty>No PR activity.</Empty>
-            )}
-          </Section>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+          overflow: "hidden",
+          marginBottom: 28,
+        }}
+      >
+        {[
+          { label: "PRs", val: prs.length },
+          { label: "Tasks", val: tasks.length },
+          { label: "Blockers", val: blockers.length, accent: blockers.length ? "var(--rust)" : undefined },
+          { label: "Repos", val: new Set(prs.map((p) => p.branch?.split("/")[0])).size || "—" },
+        ].map((m, i) => (
+          <div
+            key={i}
+            style={{
+              padding: "16px 20px",
+              borderRight: i < 3 ? "1px solid var(--line)" : "none",
+              background: "var(--ink-1)",
+            }}
+          >
+            <div
+              className="font-mono"
+              style={{
+                fontSize: 10,
+                color: m.accent || "var(--paper-3)",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+              }}
+            >
+              {m.label}
+            </div>
+            <div style={{ fontFamily: "var(--serif)", fontSize: 32, lineHeight: 1, color: "var(--paper-0)", marginTop: 6 }}>
+              {m.val}
+            </div>
+          </div>
+        ))}
+      </div>
 
-          <Section icon={<ListTodo className="h-3.5 w-3.5" />} title="Today" count={data?.tasks.length ?? 0}>
-            {data && data.tasks.length > 0 ? (
-              data.tasks.map((t, i) => (
-                <Row key={i} title={t.title} sub={t.priority}>{pill(t.status)}</Row>
-              ))
-            ) : (
-              <Empty>Monitoring for new tasks.</Empty>
-            )}
-          </Section>
-
-          <Section icon={<AlertTriangle className="h-3.5 w-3.5" />} title="Blockers" count={data?.blockers_list.length ?? 0}>
-            {data && data.blockers_list.length > 0 ? (
-              data.blockers_list.map((b, i) => (
-                <Row key={i} title={b.question} sub={relativeAge(b.created_at)} />
-              ))
-            ) : (
-              <div className="flex items-center gap-2 px-4 py-6 text-xs text-[#4ade80]">
-                <CheckCircle2 className="h-3.5 w-3.5" /> All clear — nothing blocked.
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 32 }}>
+        <div className="card">
+          <div className="card-head">
+            <div className="card-title">Yesterday</div>
+            <GitPullRequest size={12} style={{ color: "var(--sage)" }} />
+          </div>
+          <div>
+            {prs.length === 0 ? (
+              <div style={{ padding: "20px 16px" }}>
+                <p className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>
+                  No PR activity in the last 24h.
+                </p>
               </div>
+            ) : (
+              prs.slice(0, 6).map((p, i) => (
+                <div key={i} style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span className="font-mono" style={{ fontSize: 11, color: "var(--sage)" }}>{p.status}</span>
+                    {p.branch && (
+                      <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>{p.branch}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, marginTop: 4, color: "var(--paper-0)" }}>{p.title}</div>
+                  {p.who && (
+                    <div className="font-mono" style={{ fontSize: 10, marginTop: 4, color: "var(--paper-4)" }}>
+                      @{p.who}
+                    </div>
+                  )}
+                </div>
+              ))
             )}
-          </Section>
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-function Section({ icon, title, count, children }: {
-  icon: React.ReactNode; title: string; count: number; children: React.ReactNode;
-}) {
-  return (
-    <div className="panel">
-      <div className="flex items-center gap-2 border-b border-[#2b2b2e] px-4 py-2.5 text-[#a1a1aa]">
-        {icon}
-        <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
-        <span className="ml-auto text-[10px] text-[#71717a]">{count}</span>
+        <div className="card">
+          <div className="card-head">
+            <div className="card-title">Today</div>
+            <Play size={11} style={{ color: "var(--amber)" }} />
+          </div>
+          <div>
+            {tasks.length === 0 ? (
+              <div style={{ padding: "20px 16px" }}>
+                <p className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>
+                  Monitoring for new tasks.
+                </p>
+              </div>
+            ) : (
+              tasks.slice(0, 6).map((t, i) => {
+                const color = ROW_COLORS[i % ROW_COLORS.length];
+                const pct = t.progress ?? 0;
+                return (
+                  <div key={i} style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span className="font-mono" style={{ fontSize: 11, color: "var(--paper-3)" }}>
+                        @{t.who || "unassigned"}
+                      </span>
+                      <span className="font-mono" style={{ fontSize: 11, color: "var(--amber)" }}>{pct}%</span>
+                    </div>
+                    <div style={{ fontSize: 13, marginTop: 4, color: "var(--paper-0)" }}>{t.title}</div>
+                    <div style={{ marginTop: 8, height: 2, background: "var(--ink-3)", borderRadius: 1 }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 1 }} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div className="card-title" style={{ color: blockers.length ? "var(--rust)" : undefined }}>
+              Blockers
+            </div>
+            <AlertTriangle size={12} style={{ color: blockers.length ? "var(--rust)" : "var(--paper-4)" }} />
+          </div>
+          <div style={{ padding: 16 }}>
+            {blockers.length === 0 ? (
+              <div
+                style={{
+                  padding: 14,
+                  border: "1px solid var(--line)",
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <CheckCircle2 size={14} style={{ color: "var(--sage)" }} />
+                <span className="font-mono" style={{ fontSize: 11, color: "var(--sage)" }}>
+                  NO OPEN BLOCKERS
+                </span>
+              </div>
+            ) : (
+              blockers.slice(0, 3).map((b, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: 14,
+                    marginBottom: 10,
+                    border: "1px solid rgba(194, 116, 95, 0.3)",
+                    background: "rgba(194, 116, 95, 0.05)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span className="tag tag-rust" style={{ fontSize: 9 }}>blocked</span>
+                    {b.created_at && (
+                      <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                        {relativeAge(b.created_at)}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: "var(--serif)", fontSize: 16, lineHeight: 1.4, color: "var(--paper-0)" }}>
+                    {b.question}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
-      <div className="divide-y divide-[#2b2b2e]">{children}</div>
-    </div>
-  );
-}
 
-function Row({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) {
-  return (
-    <div className="px-4 py-2.5">
-      <p className="text-sm text-[#e4e4e7]">{title}</p>
-      <div className="mt-1.5 flex items-center gap-2">
-        {children}
-        {sub ? <span className="text-[10px] text-[#71717a]">{sub}</span> : null}
+      <div
+        className="card"
+        style={{
+          padding: "28px 32px",
+          background: "linear-gradient(180deg, rgba(212, 165, 116, 0.04), transparent)",
+        }}
+      >
+        <div className="font-mono" style={{ fontSize: 10, color: "var(--amber)", letterSpacing: "0.12em" }}>
+          {(data?.name || "YUJI").toUpperCase()}&rsquo;S TAKE
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--serif)",
+            fontSize: 19,
+            lineHeight: 1.55,
+            color: "var(--paper-0)",
+            marginTop: 12,
+            maxWidth: 780,
+          }}
+        >
+          {data?.yesterday && data.yesterday !== "No PR activity."
+            ? data.yesterday
+            : "Quiet day on the activity feed. I'll keep watching for new PRs and tasks, and surface anything that looks urgent."}
+          {data?.today && data.today !== "Monitoring for new tasks." && (
+            <>
+              {" "}
+              <em style={{ color: "var(--amber)", fontStyle: "italic" }}>{data.today}</em>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-4 py-6 text-center text-xs text-[#71717a]">{children}</p>;
 }

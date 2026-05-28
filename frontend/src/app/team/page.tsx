@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { MessageSquare, RefreshCw } from "lucide-react";
 
 type Contributor = {
   name: string | null;
@@ -11,89 +11,287 @@ type Contributor = {
   languages: string[];
 };
 
-function badge(label: string) {
-  return (
-    <span key={label} className="rounded bg-[#262626] px-1.5 py-0.5 text-[10px] font-medium text-[#a1a1aa]">
-      {label}
-    </span>
-  );
-}
+type Member = {
+  id: string;
+  name: string;
+  role: string;
+  status: "online" | "offline";
+  activity: string;
+  isAgent: boolean;
+  stats: Record<string, number>;
+  expertise: string[];
+  email?: string;
+};
+
+const AGENT_MEMBER: Member = {
+  id: "yuji",
+  name: "Yuji",
+  role: "AI Teammate",
+  status: "online",
+  activity: "watching the knowledge graph",
+  isAgent: true,
+  stats: { repos: 0, files: 0, expertise: 0 },
+  expertise: ["all surfaces"],
+};
 
 export default function TeamPage() {
-  const [members, setMembers] = useState<Contributor[]>([]);
+  const [contributors, setContributors] = useState<Contributor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>("yuji");
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
-    setError(false);
     try {
-      const res = await fetch("/api/knowledge/contributors");
-      if (!res.ok) throw new Error(String(res.status));
-      const data = await res.json();
-      setMembers(data.contributors ?? []);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
+      const r = await fetch("/api/knowledge/contributors");
+      const data = await r.json();
+      setContributors(data?.contributors ?? []);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const members: Member[] = useMemo(() => {
+    const human: Member[] = contributors.map((c) => ({
+      id: c.email,
+      name: c.name || c.email,
+      role: c.languages[0] ? `Engineer · ${c.languages[0]}` : "Engineer",
+      status: "online",
+      activity:
+        c.files_owned === 0
+          ? "no owned files yet"
+          : `owns ${c.files_owned.toLocaleString()} ${c.files_owned === 1 ? "file" : "files"}`,
+      isAgent: false,
+      stats: {
+        files: c.files_owned,
+        repos: c.repos.length,
+        languages: c.languages.length,
+      },
+      expertise: [...c.languages, ...c.repos],
+      email: c.email,
+    }));
+    // Agent first, then contributors by file count.
+    const agent = {
+      ...AGENT_MEMBER,
+      stats: {
+        repos: new Set(contributors.flatMap((c) => c.repos)).size,
+        contributors: contributors.length,
+        files: contributors.reduce((s, c) => s + c.files_owned, 0),
+      },
+    };
+    return [agent, ...human];
+  }, [contributors]);
+
+  const onlineCount = members.filter((m) => m.status === "online").length;
+  const selected = members.find((m) => m.id === selectedId) || members[0];
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-start justify-between">
+    <div style={{ padding: 40 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28 }}>
         <div>
-          <h1 className="text-lg font-semibold text-[#e4e4e7]">Team</h1>
-          <p className="mt-0.5 text-xs text-[#a1a1aa]">
-            Contributors your teammate profiled from commit history
-          </p>
+          <h1 className="page-title">
+            Team<em>.</em>
+          </h1>
+          <div className="page-sub">
+            {members.length} {members.length === 1 ? "member" : "members"} · 1 AI · {onlineCount} online
+          </div>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary disabled:opacity-50">
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          Refresh
+        <button className="btn" onClick={load} disabled={loading}>
+          <RefreshCw size={13} /> Refresh
         </button>
       </div>
 
-      {error ? (
-        <div className="panel p-6 text-center text-sm text-[#fb7185]">
-          Couldn&apos;t load contributors. <button onClick={load} className="underline">Try again</button>.
-        </div>
-      ) : loading && members.length === 0 ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-[#a1a1aa]">
-          <Loader2 className="h-4 w-4 animate-spin" /> Reading the knowledge graph…
-        </div>
-      ) : members.length === 0 ? (
-        <p className="py-12 text-center text-xs text-[#71717a]">
-          No contributors yet — they appear once a repository is onboarded and its history is indexed.
-        </p>
-      ) : (
-        <div className="max-w-2xl space-y-1">
-          {members.map((m) => (
-            <div key={m.email} className="panel flex items-center justify-between gap-4 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#262626] text-xs font-medium text-[#a1a1aa]">
-                  {(m.name || m.email)[0]?.toUpperCase() || "?"}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-[#e4e4e7]">{m.name || m.email}</p>
-                  <p className="truncate text-[11px] text-[#a1a1aa]">{m.email}</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className="text-[11px] text-[#a1a1aa]">
-                  {m.files_owned} {m.files_owned === 1 ? "file" : "files"}
-                </span>
-                <div className="flex flex-wrap justify-end gap-1">
-                  {m.repos.map((r) => badge(r))}
-                  {m.languages.map((l) => badge(l))}
-                </div>
-              </div>
-            </div>
-          ))}
+      {members.length === 1 && contributors.length === 0 && (
+        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+          <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-3)", letterSpacing: "0.1em", marginBottom: 8 }}>
+            STILL INDEXING
+          </div>
+          <div style={{ fontFamily: "var(--serif)", fontSize: 18, color: "var(--paper-1)" }}>
+            Contributors appear once a repository is onboarded and its git history is indexed.
+          </div>
         </div>
       )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {members.map((m) => {
+            const active = selectedId === m.id;
+            return (
+              <div
+                key={m.id}
+                onClick={() => setSelectedId(m.id)}
+                style={{
+                  padding: 14,
+                  background: active ? "var(--ink-2)" : "var(--ink-1)",
+                  border: "1px solid " + (active ? "var(--line-strong)" : "var(--line)"),
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <MemberAvatar member={m} cardBg={active ? "var(--ink-2)" : "var(--ink-1)"} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--paper-0)" }}>{m.name}</span>
+                    {m.isAgent && <span className="tag tag-amber" style={{ fontSize: 9 }}>AI</span>}
+                  </div>
+                  <div
+                    className="font-mono"
+                    style={{ fontSize: 10, marginTop: 2, color: "var(--paper-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {m.activity}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {selected && (
+          <div className="card">
+            <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "flex-start", gap: 20 }}>
+              <MemberAvatar member={selected} cardBg="var(--ink-1)" size={72} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "var(--serif)", fontSize: 32, color: "var(--paper-0)" }}>{selected.name}</span>
+                  {selected.isAgent && <span className="tag tag-amber">AI TEAMMATE</span>}
+                  <span className="tag tag-sage">
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--sage)", display: "inline-block" }} />
+                    {selected.status}
+                  </span>
+                </div>
+                <div className="font-mono" style={{ fontSize: 12, color: "var(--paper-3)", marginTop: 6, letterSpacing: "0.04em" }}>
+                  {selected.role}
+                </div>
+                {selected.email && !selected.isAgent && (
+                  <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)", marginTop: 4 }}>
+                    {selected.email}
+                  </div>
+                )}
+                <div style={{ fontFamily: "var(--serif)", fontSize: 15, color: "var(--paper-1)", marginTop: 10, fontStyle: "italic" }}>
+                  Currently · {selected.activity}
+                </div>
+              </div>
+              {!selected.isAgent && (
+                <button className="btn" disabled>
+                  <MessageSquare size={12} /> Message
+                </button>
+              )}
+            </div>
+
+            <div
+              style={{
+                padding: 24,
+                display: "grid",
+                gridTemplateColumns: `repeat(${Object.keys(selected.stats).length}, 1fr)`,
+                borderBottom: "1px solid var(--line)",
+              }}
+            >
+              {Object.entries(selected.stats).map(([k, v], i, arr) => (
+                <div
+                  key={k}
+                  style={{
+                    borderRight: i < arr.length - 1 ? "1px solid var(--line)" : "none",
+                    paddingLeft: i === 0 ? 0 : 20,
+                  }}
+                >
+                  <div style={{ fontFamily: "var(--serif)", fontSize: 30, color: "var(--paper-0)", lineHeight: 1 }}>
+                    {v.toLocaleString()}
+                  </div>
+                  <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 6 }}>
+                    {k}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: 24 }}>
+              <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-3)", letterSpacing: "0.1em", marginBottom: 10 }}>
+                EXPERTISE · INFERRED FROM HISTORY
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {selected.expertise.length === 0 ? (
+                  <span className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>—</span>
+                ) : (
+                  selected.expertise.map((e) => (
+                    <span key={e} className="tag tag-plum">
+                      {e}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemberAvatar({ member, cardBg, size = 32 }: { member: Member; cardBg: string; size?: number }) {
+  if (member.isAgent) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          flexShrink: 0,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 30% 30%, var(--amber), var(--amber-dim) 60%, var(--ink-3))",
+          boxShadow: "0 0 0 1px var(--line-strong), 0 0 12px rgba(212, 165, 116, 0.2)",
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            bottom: -1,
+            right: -1,
+            width: size > 40 ? 12 : 8,
+            height: size > 40 ? 12 : 8,
+            borderRadius: "50%",
+            background: "var(--sage)",
+            border: `2px solid ${cardBg}`,
+          }}
+        />
+      </div>
+    );
+  }
+  const initial = (member.name || "?").trim().charAt(0).toUpperCase();
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        borderRadius: "50%",
+        background: "var(--ink-3)",
+        border: "1px solid var(--line-strong)",
+        display: "grid",
+        placeItems: "center",
+        fontFamily: "var(--serif)",
+        fontSize: size > 40 ? 32 : 14,
+        color: "var(--paper-0)",
+        position: "relative",
+      }}
+    >
+      {initial}
+      <span
+        style={{
+          position: "absolute",
+          bottom: -1,
+          right: -1,
+          width: size > 40 ? 12 : 8,
+          height: size > 40 ? 12 : 8,
+          borderRadius: "50%",
+          background: member.status === "online" ? "var(--sage)" : "var(--paper-5)",
+          border: `2px solid ${cardBg}`,
+        }}
+      />
     </div>
   );
 }
