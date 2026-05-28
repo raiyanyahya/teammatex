@@ -186,7 +186,7 @@ export default function DashboardPage() {
       <div className="page-head" style={{ padding: 0, paddingBottom: 24, marginBottom: 28 }}>
         <div>
           <h1 className="page-title">
-            Let's <em>onboard</em> them.
+            Let&rsquo;s <em>onboard</em> them.
           </h1>
           <div className="page-sub">
             {done < 4 ? `Step ${done} of 4` : `${name || "Your teammate"} is ready`}

@@ -152,7 +152,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
                 {name.toUpperCase()} · KNOWLEDGE GRAPH
               </div>
               <div className="mt-1.5 font-serif text-[24px] leading-[1.1]">
-                I've indexed{" "}
+                I&rsquo;ve indexed{" "}
                 <em className="italic" style={{ color: "var(--amber)" }}>
                   {repoCount} {repoCount === 1 ? "repo" : "repos"}
                 </em>
@@ -375,7 +375,7 @@ function TodayCard({ standup }: { standup: Standup | null }) {
   return (
     <div className="card">
       <div className="card-head">
-        <div className="card-title">Today's standup</div>
+        <div className="card-title">Today&rsquo;s standup</div>
         <span className="font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>auto · 9:00</span>
       </div>
       <div>
