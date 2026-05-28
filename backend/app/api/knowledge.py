@@ -89,61 +89,57 @@ async def search_graph(query: str, limit: int = 20):
 
 
 @router.get("/concepts")
-async def list_concepts(db: AsyncSession = Depends(get_db), limit: int = 60):
-    """Concept cards for the Knowledge page.
-
-    The earlier version of this endpoint surfaced every `Module` graph node —
-    that pulled in every imported symbol the parser saw (`os`, `fs`,
-    `BrowserWindow`, destructure-noise like `{`) and drowned the meaningful
-    concepts. That's plumbing, not knowledge.
-
-    Two real sources instead:
-
-    - **Subsystems**: directories of code in the indexed repos that hold ≥2
-      files. These are the user's own surfaces — `services`, `agent`,
-      `models`, `modules` — not third-party imports. Umbrella roots (`src`,
-      `lib`, `app`, `pkg`, `cmd`, `internal`) and boilerplate
-      (`.github`, `node_modules`, `dist`, `tests`) are filtered out in
-      graph.list_subsystems so only directories that name a domain area land
-      here.
-    - **Notes**: anything the team or the agent has written down. Those carry
-      real prose summaries, so they get a `summary` field on the card.
-    """
-    from app.models.note import Note
+async def list_concepts(db: AsyncSession = Depends(get_db)):
+    """Concept cards for the Knowledge page. Reads from the `concepts` table
+    that `ConceptExtractor` writes — each row has a real LLM-authored
+    summary, file count, ref count, and an experts list resolved to actual
+    contributors. Empty when no repo has been processed yet; the frontend
+    surfaces a "Generate concepts" CTA in that case."""
+    from app.models.concept import Concept
+    from app.models.repo import Repo
     from sqlalchemy import select as sa_select
 
-    subsystems = await graph.list_subsystems(limit=limit)
-    items = [
-        {
-            "id": f"sub:{s['name']}",
-            "name": s["name"],
-            "cat": "subsystem",
-            "repos": s.get("repos") or [],
-            "repo_count": s.get("repo_count", 0),
-            "files_seen": s.get("files", 0),
-            "summary": None,
-        }
-        for s in subsystems
-    ]
+    rows = (
+        await db.execute(
+            sa_select(Concept, Repo.local_name)
+            .join(Repo, Repo.id == Concept.repo_id, isouter=True)
+            .order_by(Concept.cat.asc(), Concept.files.desc(), Concept.name.asc())
+        )
+    ).all()
 
-    notes_q = await db.execute(
-        sa_select(Note).order_by(Note.updated_at.desc().nulls_last()).limit(50)
-    )
-    note_rows = notes_q.scalars().all()
-    notes = [
-        {
-            "id": f"note:{n.id}",
-            "name": n.title,
-            "cat": "note",
-            "summary": (n.content or "")[:160],
-            "entity_type": n.entity_type,
-            "entity_id": n.entity_id,
-            "updated_at": str(n.updated_at) if n.updated_at else None,
-        }
-        for n in note_rows
-    ]
+    concepts = []
+    for c, repo_name in rows:
+        concepts.append({
+            "id": str(c.id),
+            "name": c.name,
+            "cat": c.cat,
+            "summary": c.summary,
+            "files": c.files,
+            "refs": c.refs,
+            "experts": c.experts or [],
+            "repo": repo_name,
+            "repo_id": c.repo_id,
+            "generated_at": str(c.generated_at) if c.generated_at else None,
+        })
 
-    return {"concepts": items + notes, "count": len(items) + len(notes)}
+    return {"concepts": concepts, "count": len(concepts)}
+
+
+@router.post("/concepts/generate")
+async def generate_concepts(
+    db: AsyncSession = Depends(get_db), repo_id: str | None = None
+):
+    """Run the LLM concept extractor. Pass `?repo_id=<id>` to scope to one
+    repo, omit to process every active repo. Returns per-repo counts."""
+    from app.services.agent.concept_extractor import ConceptExtractor
+
+    extractor = ConceptExtractor(graph)
+    if repo_id:
+        produced = await extractor.extract_for_repo(db, repo_id)
+        return {"repo_id": repo_id, "count": len(produced), "concepts": produced}
+    summary = await extractor.extract_for_all(db)
+    total = sum(summary.values())
+    return {"by_repo": summary, "count": total}
 
 
 @router.get("/graph/stats")

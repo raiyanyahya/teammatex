@@ -5,6 +5,7 @@ from app.models.task import Task
 from app.models.pr import PR
 from app.models.conversation import Conversation, Message
 from app.models.note import Note
+from app.models.concept import Concept
 from app.models.integration import Integration
 from app.models.audit import AuditLog, Feedback, CostLog
 from app.models.tech_debt import TechDebtItem
@@ -34,6 +35,7 @@ __all__ = [
     "Conversation",
     "Message",
     "Note",
+    "Concept",
     "Integration",
     "AuditLog",
     "Feedback",
