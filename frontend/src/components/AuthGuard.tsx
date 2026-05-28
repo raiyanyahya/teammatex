@@ -39,8 +39,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!ready && pathname !== "/login") {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#1a1a1a]">
-        <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#3b82f6] border-t-transparent" />
+      <div
+        className="flex h-screen items-center justify-center"
+        style={{ background: "var(--ink-0)" }}
+      >
+        <div
+          className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
+          style={{ borderColor: "var(--amber)", borderTopColor: "transparent" }}
+        />
       </div>
     );
   }

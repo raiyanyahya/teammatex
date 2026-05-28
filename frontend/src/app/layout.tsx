@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import ShellLayout from "@/components/ShellLayout";
 import AuthGuard from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
@@ -11,10 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className="flex h-screen overflow-hidden bg-[#1a1a1a]">
+      <body className="overflow-hidden">
         <AuthGuard>
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          <ShellLayout>{children}</ShellLayout>
         </AuthGuard>
       </body>
     </html>

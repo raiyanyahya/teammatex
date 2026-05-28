@@ -2,59 +2,287 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;450;500;600&family=Geist+Mono:wght@400;500&display=swap");
 
-/* Cursor-IDE-inspired dark theme: deep layered near-black backgrounds
-   (#161616 sidebar / #1a1a1a canvas / #202020 panels), thin low-contrast
-   borders, refined text, a clean blue accent, 8px radius. */
+/* TeammateX — warm ink + cream design tokens.
+   Dark, literate, terminal-grade. Amber for live/AI, sage for ok,
+   rust for warning, sky for code/link, plum for knowledge. */
+:root {
+  --ink-0: #0a0908;
+  --ink-1: #100e0c;
+  --ink-2: #161412;
+  --ink-3: #1d1a17;
+  --ink-4: #26221e;
+  --ink-5: #322d28;
+  --ink-6: #46403a;
+
+  --paper-0: #f4ede0;
+  --paper-1: #e8e0d2;
+  --paper-2: #c9bfae;
+  --paper-3: #9b9384;
+  --paper-4: #6c6558;
+  --paper-5: #4a443a;
+
+  --amber: #d4a574;
+  --amber-dim: #8a6c4c;
+  --amber-bg: rgba(212, 165, 116, 0.08);
+  --sage: #8aab8e;
+  --sage-dim: #5a7060;
+  --rust: #c2745f;
+  --rust-dim: #7a4738;
+  --sky: #7fa6c9;
+  --sky-dim: #4e6e8a;
+  --plum: #a888b5;
+
+  --line: rgba(244, 237, 224, 0.06);
+  --line-strong: rgba(244, 237, 224, 0.12);
+
+  --serif: "Instrument Serif", "Cormorant Garamond", Georgia, serif;
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+
 @layer base {
-  * {
-    @apply border-[#2b2b2e];
+  * { @apply border-[color:var(--line)]; }
+  html, body {
+    background: var(--ink-0);
+    color: var(--paper-0);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "ss03", "cv11";
   }
   body {
-    @apply bg-[#1a1a1a] text-[#e4e4e7] antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
-      system-ui, sans-serif;
+    overflow: hidden;
   }
-  ::selection {
-    @apply bg-[#3b82f6]/30;
+  /* Subtle warm/cool wash behind the app */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(212, 165, 116, 0.05), transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(168, 136, 181, 0.03), transparent 50%);
+    pointer-events: none;
+    z-index: 0;
   }
+  ::selection { background: rgba(212, 165, 116, 0.3); color: var(--paper-0); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-[#3a3a3c] rounded-full hover:bg-[#4a4a4d]; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--ink-3);
+    border-radius: 5px;
+    border: 2px solid var(--ink-0);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 }
 
 @layer components {
-  /* An elevated surface: slightly lighter than the canvas, thin border, soft
-     shadow — Cursor-style layered depth. */
-  .panel {
-    @apply bg-[#202020] border border-[#2b2b2e] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.4)];
-  }
-  .input {
-    @apply w-full rounded-lg border border-[#3a3a3c] bg-[#1f1f1f] px-3 py-2 text-sm text-[#e4e4e7] outline-none placeholder:text-[#71717a]
-    focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/30;
-  }
-  .btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors;
-  }
-  .btn-primary {
-    @apply btn bg-[#3b82f6] text-white hover:bg-[#3574e0] active:bg-[#2f68cc];
-  }
-  .btn-secondary {
-    @apply btn bg-[#262626] text-[#e4e4e7] border border-[#3a3a3c] hover:bg-[#2e2e2e] active:bg-[#222222];
-  }
-  .btn-ghost {
-    @apply btn text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#262626];
-  }
-  .badge {
-    @apply inline-flex items-center rounded-md border border-[#2e2e2e] bg-[#262626] px-2 py-0.5 text-xs text-[#a1a1aa];
+  /* App shell */
+  .shell {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    height: 100vh;
+    position: relative;
+    z-index: 1;
   }
 
-  /* Colored icon tiles — a touch of color on the dark surface. */
-  .tile { @apply flex items-center justify-center rounded-lg; }
-  .tile-blue   { @apply bg-[#3b82f626] text-[#60a5fa]; }
-  .tile-green  { @apply bg-[#22c55e26] text-[#4ade80]; }
-  .tile-purple { @apply bg-[#a855f726] text-[#c084fc]; }
-  .tile-orange { @apply bg-[#f59e0b26] text-[#fbbf24]; }
-  .tile-pink   { @apply bg-[#ec489926] text-[#f472b6]; }
+  /* Card surface */
+  .card {
+    background: var(--ink-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 14px 16px 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .card-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--paper-3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .card-body { padding: 16px; }
+
+  /* Page header */
+  .page-head {
+    padding: 36px 40px 24px 40px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .page-title {
+    font-family: var(--serif);
+    font-size: 44px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--paper-0);
+  }
+  .page-title em { font-style: italic; color: var(--amber); }
+  .page-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--paper-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--ink-2);
+    color: var(--paper-0);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 450;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: var(--ink-3); border-color: var(--paper-5); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--amber);
+    color: var(--ink-0);
+    border-color: var(--amber);
+    font-weight: 500;
+  }
+  .btn-primary:hover { background: #e0b384; border-color: #e0b384; }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--paper-2);
+  }
+  .btn-ghost:hover { background: var(--ink-2); color: var(--paper-0); }
+
+  /* Inputs */
+  .input {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 8px 12px;
+    border: 1px solid var(--line-strong);
+    background: var(--ink-1);
+    color: var(--paper-0);
+    border-radius: var(--radius);
+    outline: none;
+    width: 100%;
+  }
+  .input:focus { border-color: var(--amber-dim); }
+  .input::placeholder { color: var(--paper-4); }
+  .textarea {
+    @apply input;
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  /* Tags / chips */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--ink-3);
+    color: var(--paper-2);
+    border: 1px solid var(--line-strong);
+  }
+  .tag-amber { color: var(--amber); border-color: rgba(212, 165, 116, 0.3); background: var(--amber-bg); }
+  .tag-sage  { color: var(--sage);  border-color: rgba(138, 171, 142, 0.3); background: rgba(138, 171, 142, 0.08); }
+  .tag-rust  { color: var(--rust);  border-color: rgba(194, 116, 95, 0.3);  background: rgba(194, 116, 95, 0.08); }
+  .tag-sky   { color: var(--sky);   border-color: rgba(127, 166, 201, 0.3); background: rgba(127, 166, 201, 0.08); }
+  .tag-plum  { color: var(--plum);  border-color: rgba(168, 136, 181, 0.3); background: rgba(168, 136, 181, 0.08); }
+
+  /* Stats */
+  .stat-val {
+    font-family: var(--serif);
+    font-size: 48px;
+    line-height: 1;
+    color: var(--paper-0);
+    letter-spacing: -0.02em;
+  }
+  .stat-val .unit {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--paper-3);
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--paper-3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 8px;
+  }
+
+  /* Back-compat shims: pages not yet rewritten still use these. */
+  .panel {
+    background: var(--ink-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .btn-secondary {
+    @apply btn;
+  }
+  .badge {
+    @apply tag;
+  }
+  .tile {
+    @apply flex items-center justify-center rounded-md;
+  }
+  .tile-blue   { background: rgba(127, 166, 201, 0.12); color: var(--sky); }
+  .tile-green  { background: rgba(138, 171, 142, 0.12); color: var(--sage); }
+  .tile-purple { background: rgba(168, 136, 181, 0.12); color: var(--plum); }
+  .tile-orange { background: rgba(212, 165, 116, 0.12); color: var(--amber); }
+  .tile-pink   { background: rgba(194, 116, 95, 0.12); color: var(--rust); }
 }
+
+@layer utilities {
+  .font-serif { font-family: var(--serif); }
+  .font-sans  { font-family: var(--sans); }
+  .font-mono  { font-family: var(--mono); }
+}
+
+/* Pulse used by status dots */
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(138, 171, 142, 0.6); }
+  50%      { opacity: 0.8; box-shadow: 0 0 0 4px rgba(138, 171, 142, 0); }
+}
+
+/* Loading dots */
+.thinking::after {
+  content: "...";
+  display: inline-block;
+  animation: blink 1.4s infinite;
+  letter-spacing: 0.1em;
+}
+@keyframes blink {
+  0%, 20%     { content: "."; }
+  40%         { content: ".."; }
+  60%, 100%   { content: "..."; }
+}
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

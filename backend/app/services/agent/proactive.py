@@ -10,6 +10,22 @@ from app.services.llm.provider import LLMProvider
 logger = get_logger(__name__)
 
 
+def _progress_for_status(status: str | None) -> int:
+    return {"in_progress": 50, "review": 80, "blocked": 25, "open": 10, "completed": 100}.get(status or "open", 10)
+
+
+def _who_from_branch(branch: str | None) -> str:
+    """Best-effort author from a branch name like `feat/raiyan/x` or
+    `users/jin/fix-y` — many teams encode the author as the second segment.
+    Falls back to empty string when no convention matches."""
+    if not branch:
+        return ""
+    parts = [p for p in branch.split("/") if p]
+    if len(parts) >= 3 and parts[0] in {"feat", "fix", "chore", "users", "user", "wip"}:
+        return parts[1]
+    return ""
+
+
 class StandupGenerator:
     async def generate(self, db: AsyncSession) -> dict:
         yesterday = await self._get_prs_since(db, hours=24)
@@ -37,7 +53,12 @@ class StandupGenerator:
         )
         prs = result.scalars().all()
         return [
-            {"title": p.title, "status": p.status or "open", "branch": p.branch}
+            {
+                "title": p.title,
+                "status": p.status or "open",
+                "branch": p.branch,
+                "who": _who_from_branch(p.branch),
+            }
             for p in prs
         ]
 
@@ -50,7 +71,13 @@ class StandupGenerator:
         )
         tasks = result.scalars().all()
         return [
-            {"title": t.title, "status": t.status, "priority": t.priority or "normal"}
+            {
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority or "normal",
+                "who": t.assigned_to or "unassigned",
+                "progress": _progress_for_status(t.status),
+            }
             for t in tasks
         ]
 

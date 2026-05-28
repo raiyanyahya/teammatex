@@ -268,6 +268,29 @@ class KnowledgeGraph:
 
         return {"nodes": nodes, "edges": edges}
 
+    async def get_stats(self) -> dict:
+        """Counts of code-knowledge nodes across all onboarded repos. The dashboard
+        hero sentence shows `concepts` as a single number — the sum of the
+        structural code-knowledge node types (File + Module + Function + Class)."""
+        record = await self.run_single("""
+        OPTIONAL MATCH (f:File) WITH count(f) AS files
+        OPTIONAL MATCH (m:Module) WITH files, count(m) AS modules
+        OPTIONAL MATCH (fn:Function) WITH files, modules, count(fn) AS functions
+        OPTIONAL MATCH (c:Class) WITH files, modules, functions, count(c) AS classes
+        RETURN files, modules, functions, classes
+        """)
+        files = (record or {}).get("files", 0) or 0
+        modules = (record or {}).get("modules", 0) or 0
+        functions = (record or {}).get("functions", 0) or 0
+        classes = (record or {}).get("classes", 0) or 0
+        return {
+            "files": files,
+            "modules": modules,
+            "functions": functions,
+            "classes": classes,
+            "concepts": files + modules + functions + classes,
+        }
+
     async def list_contributors(self, limit: int = 100) -> list[dict]:
         """Everyone the graph profiles, with the ownership footprint built from
         commit history: how many files each owns, across which repos and

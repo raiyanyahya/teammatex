@@ -88,6 +88,13 @@ async def search_graph(query: str, limit: int = 20):
     return {"query": query, "results": results}
 
 
+@router.get("/graph/stats")
+async def get_graph_stats():
+    """Aggregate node counts across the knowledge graph. The dashboard uses
+    `concepts` (sum of File + Module + Function + Class) for the hero sentence."""
+    return await graph.get_stats()
+
+
 @router.get("/contributors")
 async def list_contributors():
     """The team, read from the knowledge graph: every profiled contributor with

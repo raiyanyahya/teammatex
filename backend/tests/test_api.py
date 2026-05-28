@@ -20,6 +20,14 @@ class TestHealthEndpoint:
         assert data["status"] == "ok"
         assert data["service"] == "teammatex-api"
 
+    async def test_health_includes_uptime_seconds(self, api_client):
+        """Sidebar reads `uptime_seconds` from /api/health to render `uptime`.
+        Must be a non-negative integer so the formatter can render m/h/d."""
+        response = await api_client.get("/api/health")
+        data = response.json()
+        assert isinstance(data["uptime_seconds"], int)
+        assert data["uptime_seconds"] >= 0
+
 
 class TestAgentEndpoints:
     async def test_list_tools(self, api_client):
@@ -94,6 +102,33 @@ class TestKnowledgeEndpoints:
         data = response.json()
         assert isinstance(data["contributors"], list)
         assert data["count"] == len(data["contributors"])
+
+    async def test_list_repos_includes_health_fields(self, api_client, api_db):
+        """The dashboard Repository-health card reads `files`/`open_prs`/`health`
+        from /api/repos. Each row must carry the four computed integers so the
+        card renders real numbers instead of falling back to mocked content."""
+        from app.models.repo import Repo
+        api_db.add(Repo(github_url="https://x/y", local_name="health-test"))
+        await api_db.flush()
+
+        response = await api_client.get("/api/repos")
+        assert response.status_code == 200
+        body = response.json()
+        row = next(r for r in body if r["local_name"] == "health-test")
+        for key in ("files", "open_prs", "onboarding_pct", "health"):
+            assert key in row, f"missing {key}"
+            assert isinstance(row[key], int)
+        assert 0 <= row["health"] <= 100
+        assert 0 <= row["onboarding_pct"] <= 100
+
+    async def test_graph_stats_returns_concept_counts(self, api_client):
+        response = await api_client.get("/api/knowledge/graph/stats")
+        assert response.status_code == 200
+        data = response.json()
+        for key in ("files", "modules", "functions", "classes", "concepts"):
+            assert key in data
+            assert isinstance(data[key], int)
+        assert data["concepts"] == data["files"] + data["modules"] + data["functions"] + data["classes"]
 
 
 class TestKnowledgeGraphContributors:

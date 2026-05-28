@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter
 
 from app.api.auth_endpoints import router as auth_router
@@ -30,6 +32,13 @@ api_router.include_router(permissions_router)
 api_router.include_router(logs_router)
 api_router.include_router(reports_router)
 
+_API_STARTED_AT = time.monotonic()
+
+
 @api_router.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "teammatex-api"}
+    return {
+        "status": "ok",
+        "service": "teammatex-api",
+        "uptime_seconds": int(time.monotonic() - _API_STARTED_AT),
+    }

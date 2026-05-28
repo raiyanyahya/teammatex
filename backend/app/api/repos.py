@@ -24,6 +24,10 @@ class RepoResponse(BaseModel):
     local_name: str
     default_branch: str
     is_active: bool
+    files: int = 0
+    open_prs: int = 0
+    onboarding_pct: int = 0
+    health: int = 0
 
 
 class BulkRepoCreate(BaseModel):
@@ -38,18 +42,70 @@ def _local_name_from_url(github_url: str) -> str:
 
 @router.get("", response_model=list[RepoResponse])
 async def list_repos(db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    from app.models.pr import PR
+    from app.models.repo import RepoOnboardingState
+
     result = await db.execute(select(Repo).where(Repo.is_active == True))
     repos = result.scalars().all()
-    return [
-        RepoResponse(
+    if not repos:
+        return []
+
+    repo_ids = [r.id for r in repos]
+
+    pr_rows = (await db.execute(
+        select(PR.repo_id, func.count(PR.id))
+        .where(PR.repo_id.in_(repo_ids), PR.status.notin_(["merged", "closed"]))
+        .group_by(PR.repo_id)
+    )).all()
+    open_prs_by_repo = {repo_id: int(c) for repo_id, c in pr_rows}
+
+    onb_rows = (await db.execute(
+        select(RepoOnboardingState.repo_id, RepoOnboardingState.status)
+        .where(RepoOnboardingState.repo_id.in_(repo_ids))
+    )).all()
+    onb_total: dict[str, int] = {}
+    onb_done: dict[str, int] = {}
+    for repo_id, status in onb_rows:
+        onb_total[repo_id] = onb_total.get(repo_id, 0) + 1
+        if status == "completed":
+            onb_done[repo_id] = onb_done.get(repo_id, 0) + 1
+
+    # File counts come from the knowledge graph; a fresh repo with no graph yet
+    # still renders (count=0). Failures are swallowed so a Neo4j blip can't kill
+    # the dashboard.
+    files_by_repo: dict[str, int] = {}
+    try:
+        from app.services.knowledge.graph import KnowledgeGraph
+        kg = KnowledgeGraph()
+        for row in await kg.run(
+            "MATCH (f:File) WHERE f.repo_id IN $ids RETURN f.repo_id AS repo_id, count(f) AS c",
+            ids=repo_ids,
+        ):
+            files_by_repo[row["repo_id"]] = int(row["c"] or 0)
+    except Exception as e:
+        logger.warning("repo_file_count_failed", error=str(e)[:120])
+
+    out: list[RepoResponse] = []
+    for r in repos:
+        open_prs = open_prs_by_repo.get(r.id, 0)
+        total = onb_total.get(r.id, 0)
+        done = onb_done.get(r.id, 0)
+        onboarding_pct = round(100 * done / total) if total else (100 if files_by_repo.get(r.id, 0) > 0 else 0)
+        health = onboarding_pct - min(40, open_prs * 5)
+        health = max(0, min(100, health))
+        out.append(RepoResponse(
             id=r.id,
             github_url=r.github_url,
             local_name=r.local_name,
             default_branch=r.default_branch,
             is_active=r.is_active,
-        )
-        for r in repos
-    ]
+            files=files_by_repo.get(r.id, 0),
+            open_prs=open_prs,
+            onboarding_pct=onboarding_pct,
+            health=health,
+        ))
+    return out
 
 
 @router.post("", response_model=dict, status_code=201)
