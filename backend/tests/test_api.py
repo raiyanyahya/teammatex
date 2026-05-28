@@ -121,18 +121,23 @@ class TestKnowledgeEndpoints:
         assert 0 <= row["health"] <= 100
         assert 0 <= row["onboarding_pct"] <= 100
 
-    async def test_concepts_returns_modules_and_notes(self, api_client):
-        """Knowledge-page concept cards: each row must have id/name/cat, with
-        modules carrying a `repos` list and notes flagged with cat="note"."""
-        response = await api_client.get("/api/knowledge/concepts?limit=20")
+    async def test_concepts_skip_third_party_imports(self, api_client):
+        """The endpoint must NOT surface raw Module nodes — those include every
+        imported symbol the parser saw (stdlib `os`/`fs`, framework symbols
+        like `BrowserWindow`, destructure-noise like `{`). Knowledge cards
+        come from source-tree subsystems + curated Notes only."""
+        response = await api_client.get("/api/knowledge/concepts?limit=60")
         assert response.status_code == 200
         data = response.json()
-        assert "concepts" in data and isinstance(data["concepts"], list)
+        assert isinstance(data["concepts"], list)
         assert data["count"] == len(data["concepts"])
-        for c in data["concepts"]:
-            assert "id" in c and "name" in c and "cat" in c
-            if c["cat"] in ("module", "stdlib"):
-                assert isinstance(c.get("repos"), list)
+        cats = {c["cat"] for c in data["concepts"]}
+        # Whatever shows up must be either a real source surface or a note.
+        assert cats.issubset({"subsystem", "note"})
+        # Common framework/stdlib names that previously leaked through.
+        names = {c["name"] for c in data["concepts"]}
+        for noise in ("os", "fs", "path", "BrowserWindow", "ipcMain", "dialog", "{"):
+            assert noise not in names, f"{noise!r} should not appear as a concept"
 
     async def test_graph_stats_returns_concept_counts(self, api_client):
         response = await api_client.get("/api/knowledge/graph/stats")

@@ -8,7 +8,7 @@ type Stats = { files: number; modules: number; functions: number; classes: numbe
 type Concept = {
   id: string;
   name: string;
-  cat: "stdlib" | "module" | "note" | string;
+  cat: "subsystem" | "note" | string;
   repos?: string[];
   repo_count?: number;
   files_seen?: number;
@@ -19,14 +19,12 @@ type Concept = {
 
 const CATS: { id: "all" | Concept["cat"]; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "module", label: "Modules" },
-  { id: "stdlib", label: "Stdlib" },
+  { id: "subsystem", label: "Subsystems" },
   { id: "note", label: "Notes" },
 ];
 
 const CAT_COLOR: Record<string, string> = {
-  module: "sky",
-  stdlib: "plum",
+  subsystem: "sky",
   note: "amber",
 };
 

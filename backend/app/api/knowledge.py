@@ -89,39 +89,42 @@ async def search_graph(query: str, limit: int = 20):
 
 
 @router.get("/concepts")
-async def list_concepts(db: AsyncSession = Depends(get_db), limit: int = 200):
-    """Concept cards for the Knowledge page: Modules (third-party + stdlib deps
-    grouped across repos) alongside curated Notes. Modules with a known stdlib
-    name are tagged `stdlib`; everything else is `module`."""
+async def list_concepts(db: AsyncSession = Depends(get_db), limit: int = 60):
+    """Concept cards for the Knowledge page.
+
+    The earlier version of this endpoint surfaced every `Module` graph node —
+    that pulled in every imported symbol the parser saw (`os`, `fs`,
+    `BrowserWindow`, destructure-noise like `{`) and drowned the meaningful
+    concepts. That's plumbing, not knowledge.
+
+    Two real sources instead:
+
+    - **Subsystems**: directories of code in the indexed repos that hold ≥2
+      files. These are the user's own surfaces — `services`, `agent`,
+      `models`, `modules` — not third-party imports. Umbrella roots (`src`,
+      `lib`, `app`, `pkg`, `cmd`, `internal`) and boilerplate
+      (`.github`, `node_modules`, `dist`, `tests`) are filtered out in
+      graph.list_subsystems so only directories that name a domain area land
+      here.
+    - **Notes**: anything the team or the agent has written down. Those carry
+      real prose summaries, so they get a `summary` field on the card.
+    """
     from app.models.note import Note
     from sqlalchemy import select as sa_select
 
-    STDLIB = {
-        "sys", "os", "io", "re", "json", "math", "time", "datetime", "logging",
-        "typing", "asyncio", "collections", "itertools", "functools", "pathlib",
-        "subprocess", "threading", "uuid", "hashlib", "base64", "textwrap",
-        "argparse", "shutil", "tempfile", "warnings", "traceback", "inspect",
-        "copy", "csv", "random", "string", "struct", "socket", "urllib",
-        "http", "email", "ssl", "select", "signal", "errno", "stat",
-        "fmt", "context", "errors", "strings", "strconv", "bytes", "bufio",
-        "encoding/json", "net/http", "io/ioutil",
-    }
-
-    modules = await graph.list_concepts(limit=limit)
-    items = []
-    for m in modules:
-        name = (m.get("name") or "").strip()
-        if not name:
-            continue
-        items.append({
-            "id": f"mod:{name}",
-            "name": name,
-            "cat": "stdlib" if name in STDLIB else "module",
-            "repos": m.get("repos") or [],
-            "repo_count": m.get("repo_count", 0),
-            "files_seen": m.get("files_seen", 0),
+    subsystems = await graph.list_subsystems(limit=limit)
+    items = [
+        {
+            "id": f"sub:{s['name']}",
+            "name": s["name"],
+            "cat": "subsystem",
+            "repos": s.get("repos") or [],
+            "repo_count": s.get("repo_count", 0),
+            "files_seen": s.get("files", 0),
             "summary": None,
-        })
+        }
+        for s in subsystems
+    ]
 
     notes_q = await db.execute(
         sa_select(Note).order_by(Note.updated_at.desc().nulls_last()).limit(50)

@@ -268,25 +268,37 @@ class KnowledgeGraph:
 
         return {"nodes": nodes, "edges": edges}
 
-    async def list_concepts(self, limit: int = 200) -> list[dict]:
-        """High-level "concepts" the agent has indexed — Module names grouped
-        across repos, so `pandas` appearing in three repos becomes one card
-        rather than three. `files_seen` counts Files in the same repos as the
-        module (a loose surface-area proxy; we lack File↔Module edges)."""
-        rows = await self.run("""
-        MATCH (m:Module)
-        OPTIONAL MATCH (m)-[:PART_OF]->(r:Repository)
-        WITH m.name AS name, collect(DISTINCT r.name) AS repos, collect(DISTINCT m.repo_id) AS repo_ids
-        OPTIONAL MATCH (f:File) WHERE f.repo_id IN repo_ids
-        WITH name, repos, repo_ids, count(DISTINCT f) AS files_seen
-        RETURN name,
-               [x IN repos WHERE x IS NOT NULL AND x <> ""] AS repos,
-               size(repo_ids) AS repo_count,
-               files_seen
-        ORDER BY size(repo_ids) DESC, name ASC
+    async def list_subsystems(self, limit: int = 60) -> list[dict]:
+        """Concept-like surfaces derived from the actual source tree: directories
+        of code that contain at least a couple of files. These are the
+        meaningful "subsystems" the team has written, not the third-party
+        imports the parser also tracks. Boilerplate dirs (.github, dist,
+        node_modules) and umbrella roots (src, lib, app) are filtered out so
+        the Knowledge page surfaces real domain surface, not plumbing."""
+        return await self.run("""
+        MATCH (f:File)-[:PART_OF]->(r:Repository)
+        WHERE f.language IN ['python','typescript','javascript','tsx','go','rust','java','ruby','swift','c','cpp','kotlin','scala']
+          AND NOT f.path CONTAINS 'node_modules'
+          AND NOT f.path CONTAINS '__pycache__'
+          AND NOT f.path CONTAINS '/vendor/'
+          AND NOT f.path CONTAINS '/dist/'
+          AND NOT f.path CONTAINS '/build/'
+          AND NOT f.path CONTAINS '/.next/'
+        WITH f, r, split(f.path, '/') AS parts
+        WHERE size(parts) >= 2
+        WITH parts[size(parts) - 2] AS dir, r.name AS repo, f.id AS fid
+        WHERE NOT dir IN ['', 'src', 'lib', 'app', 'pkg', 'cmd', 'internal', 'public',
+                          'test', 'tests', '__tests__', 'spec', 'specs', 'mocks',
+                          'fixtures', 'assets', 'static', 'docs', 'examples',
+                          'scripts', 'types', '@types', 'public', 'dist', 'build']
+          AND NOT dir STARTS WITH '.'
+          AND size(dir) >= 2
+        WITH dir, collect(DISTINCT repo) AS repos, count(DISTINCT fid) AS files
+        WHERE files >= 2
+        RETURN dir AS name, repos, size(repos) AS repo_count, files
+        ORDER BY files DESC, name ASC
         LIMIT $limit
         """, limit=limit)
-        return rows
 
     async def get_stats(self) -> dict:
         """Counts of code-knowledge nodes across all onboarded repos. The dashboard
