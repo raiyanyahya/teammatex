@@ -54,40 +54,38 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   const inProgress = repoCount - onboarded;
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-center gap-2">
+    <div className="mx-auto max-w-5xl p-8">
+      <div className="mb-6 flex items-center gap-2">
         {editing ? (
           <>
-            <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} className="input w-48" />
-            <button onClick={saveName} className="btn-primary text-xs"><Check className="h-3.5 w-3.5" /> Save</button>
+            <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} className="input w-56" />
+            <button onClick={saveName} className="btn-primary text-sm"><Check className="h-4 w-4" /> Save</button>
           </>
         ) : (
           <>
-            <h1 className="text-lg font-semibold text-[#cccccc]">{name || "Your teammate"}</h1>
-            <button onClick={() => { setDraft(name); setEditing(true); }} className="text-[#5a5a5e] transition-colors hover:text-[#8a8a8e]" aria-label="Rename teammate">
-              <Pencil className="h-3.5 w-3.5" />
+            <h1 className="text-2xl font-semibold tracking-tight text-[#e4e4e7]">{name || "Your teammate"}</h1>
+            <button onClick={() => { setDraft(name); setEditing(true); }} className="ml-1 text-[#52525b] transition-colors hover:text-[#a1a1aa]" aria-label="Rename teammate">
+              <Pencil className="h-4 w-4" />
             </button>
-            <span className="ml-1 text-xs text-[#6a6a6e]">is watching {repoCount} {repoCount === 1 ? "repository" : "repositories"}</span>
+            <span className="ml-2 text-sm text-[#a1a1aa]">is watching {repoCount} {repoCount === 1 ? "repository" : "repositories"}</span>
           </>
         )}
       </div>
 
-      <div className="mb-6 flex max-w-2xl gap-2">
-        <input value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitAsk()} placeholder={`Ask ${name || "your teammate"} about your code…`} className="input flex-1" />
-        <button onClick={submitAsk} className="btn-primary"><Send className="h-3.5 w-3.5" /> Ask</button>
+      <div className="mb-6 flex gap-2">
+        <input value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitAsk()} placeholder={`Ask ${name || "your teammate"} about your code…`} className="input flex-1 py-2 text-[15px]" />
+        <button onClick={submitAsk} className="btn-primary px-4"><Send className="h-4 w-4" /> Ask</button>
       </div>
 
-      <div className="grid max-w-4xl grid-cols-1 gap-4 md:grid-cols-2">
-        <Card title="Repositories" icon={<GitBranch className="h-3.5 w-3.5" />} onClick={() => router.push("/repos")}>
-          <div className="flex items-end gap-5">
-            <Stat big={repoCount} label="connected" />
-          </div>
-          <p className="mt-2 text-xs text-[#6a6a6e]">{onboarded} fully onboarded{inProgress > 0 ? ` · ${inProgress} in progress` : ""}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card title="Repositories" tile="tile-blue" icon={<GitBranch className="h-[18px] w-[18px]" />} onClick={() => router.push("/repos")}>
+          <Stat big={repoCount} label="connected" />
+          <p className="mt-2.5 text-[13px] text-[#a1a1aa]">{onboarded} fully onboarded{inProgress > 0 ? ` · ${inProgress} in progress` : ""}</p>
         </Card>
 
-        <Card title="Today's standup" icon={<ListChecks className="h-3.5 w-3.5" />} onClick={() => router.push("/standup")}>
+        <Card title="Today's standup" tile="tile-green" icon={<ListChecks className="h-[18px] w-[18px]" />} onClick={() => router.push("/standup")}>
           {standup ? (
-            <div className="flex gap-6">
+            <div className="flex gap-8">
               <Stat big={standup.prs.length} label="PRs" />
               <Stat big={standup.tasks.length} label="tasks" />
               <Stat big={standup.blockers_list.length} label="blockers" />
@@ -95,25 +93,25 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
           ) : <Skeleton />}
         </Card>
 
-        <Card title="Recent activity" icon={<ScrollText className="h-3.5 w-3.5" />} onClick={() => router.push("/audit")}>
+        <Card title="Recent activity" tile="tile-purple" icon={<ScrollText className="h-[18px] w-[18px]" />} onClick={() => router.push("/audit")}>
           {audit.length > 0 ? (
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {audit.slice(0, 5).map((a, i) => (
-                <li key={i} className="flex items-center gap-2 text-xs">
-                  <span className={a.status === "success" ? "text-[#6aaa6a]" : a.status === "failed" ? "text-[#e06060]" : "text-[#6a6a6e]"}>
+                <li key={i} className="flex items-center gap-2 text-[13px]">
+                  <span className={a.status === "success" ? "text-[#4ade80]" : a.status === "failed" ? "text-[#f87171]" : "text-[#71717a]"}>
                     {a.status === "success" ? "✓" : a.status === "failed" ? "✗" : "·"}
                   </span>
-                  <span className="font-mono text-[#8a8a8e]">{a.action}</span>
-                  <span className="truncate text-[#6a6a6e]">{a.summary}</span>
+                  <span className="font-mono text-[12px] text-[#a1a1aa]">{a.action}</span>
+                  <span className="truncate text-[#71717a]">{a.summary}</span>
                 </li>
               ))}
             </ul>
-          ) : <p className="text-xs text-[#5a5a5e]">No activity yet.</p>}
+          ) : <p className="text-[13px] text-[#71717a]">No activity yet.</p>}
         </Card>
 
-        <Card title="Usage" icon={<BarChart3 className="h-3.5 w-3.5" />} onClick={() => router.push("/costs")}>
+        <Card title="Usage" tile="tile-orange" icon={<BarChart3 className="h-[18px] w-[18px]" />} onClick={() => router.push("/costs")}>
           {cost ? (
-            <div className="flex gap-6">
+            <div className="flex gap-8">
               <Stat big={(cost.total_tokens ?? 0).toLocaleString()} label="tokens" />
               <Stat big={`$${((cost.total_cost_cents ?? 0) / 100).toFixed(2)}`} label="spent" />
             </div>
@@ -124,13 +122,13 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   );
 }
 
-function Card({ title, icon, onClick, children }: { title: string; icon: React.ReactNode; onClick: () => void; children: React.ReactNode }) {
+function Card({ title, icon, tile, onClick, children }: { title: string; icon: React.ReactNode; tile: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="panel group p-4 text-left transition-colors hover:border-[#3a3a42]">
-      <div className="mb-3 flex items-center gap-2 text-[#8a8a8e]">
-        {icon}
-        <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
-        <ArrowRight className="ml-auto h-3.5 w-3.5 text-[#3a3a42] transition-colors group-hover:text-[#8a8a8e]" />
+    <button onClick={onClick} className="panel group p-4 text-left transition-colors hover:border-[#3a3a3c]">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className={`tile h-8 w-8 ${tile}`}>{icon}</span>
+        <span className="text-[14px] font-semibold text-[#e4e4e7]">{title}</span>
+        <ArrowRight className="ml-auto h-4 w-4 text-[#52525b] transition-colors group-hover:text-[#a1a1aa]" />
       </div>
       {children}
     </button>
@@ -140,12 +138,12 @@ function Card({ title, icon, onClick, children }: { title: string; icon: React.R
 function Stat({ big, label }: { big: number | string; label: string }) {
   return (
     <div>
-      <div className="text-xl font-semibold text-[#cccccc]">{big}</div>
-      <div className="text-[10px] uppercase tracking-wide text-[#6a6a6e]">{label}</div>
+      <div className="text-2xl font-semibold tracking-tight text-[#e4e4e7]">{big}</div>
+      <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-[#71717a]">{label}</div>
     </div>
   );
 }
 
 function Skeleton() {
-  return <div className="h-6 w-28 animate-pulse rounded bg-[#2a2a30]" />;
+  return <div className="h-7 w-28 animate-pulse rounded-md bg-[#2a2a2a]" />;
 }

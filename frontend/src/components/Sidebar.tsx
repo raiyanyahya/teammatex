@@ -23,21 +23,21 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
 
   if (HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
     <aside
-      className={`flex flex-col border-r border-[#2a2a2e] bg-[#212127] transition-all duration-200 ${collapsed ? "w-[48px]" : "w-[208px]"}`}
+      className={`flex flex-col border-r border-[#262626] bg-[#161616] transition-all duration-200 ${collapsed ? "w-[52px]" : "w-[216px]"}`}
     >
-      <div className="flex h-10 items-center border-b border-[#2a2a2e] px-3">
+      <div className="flex h-12 items-center border-b border-[#262626] px-3.5">
         {!collapsed && (
-          <span className="text-xs font-semibold tracking-wide text-[#8a8a8e] uppercase">TeammateX</span>
+          <span className="text-[13px] font-semibold tracking-tight text-[#e4e4e7]">TeammateX</span>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`ml-auto rounded p-0.5 text-[#5a5a5e] hover:text-[#8a8a8e] hover:bg-[#2a2a30] ${collapsed ? "mx-auto" : ""}`}
+          className={`ml-auto rounded-md p-1 text-[#71717a] hover:text-[#e4e4e7] hover:bg-[#262626] ${collapsed ? "mx-auto" : ""}`}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`transition-transform ${collapsed ? "rotate-180" : ""}`}>
             <path d="M9 3L5 7L9 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -45,30 +45,30 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-1.5">
+      <nav className="flex-1 space-y-0.5 p-2">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
           return (
             <button
               key={item.href}
               onClick={() => router.push(item.href)}
-              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors
+              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors
                 ${active
-                  ? "bg-[#2a2a30] text-[#cccccc]"
-                  : "text-[#6a6a6e] hover:text-[#cccccc] hover:bg-[#25252b]"
+                  ? "bg-[#262626] text-[#e4e4e7] font-medium"
+                  : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#212121]"
                 }
                 ${collapsed ? "justify-center px-0" : ""}`}
             >
-              <item.icon className="h-3.5 w-3.5 shrink-0" />
+              <item.icon className={`h-[18px] w-[18px] shrink-0 ${active ? "text-[#60a5fa]" : "text-[#71717a]"}`} />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           );
         })}
       </nav>
 
-      <div className="border-t border-[#2a2a2e] p-1.5">
-        <div className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-[10px] text-[#5a5a5e] ${collapsed ? "justify-center" : ""}`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-[#4a9e4a]" />
+      <div className="border-t border-[#262626] p-2">
+        <div className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-[11px] text-[#71717a] ${collapsed ? "justify-center" : ""}`}>
+          <span className="h-2 w-2 rounded-full bg-[#22c55e]" />
           {!collapsed && <span>Online</span>}
         </div>
       </div>

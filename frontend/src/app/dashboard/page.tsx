@@ -157,7 +157,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-[#6a6a6e]" />
+        <Loader2 className="h-5 w-5 animate-spin text-[#a1a1aa]" />
       </div>
     );
   }
@@ -169,70 +169,70 @@ export default function DashboardPage() {
   return (
     <div className="p-8">
       <div className="mb-10">
-        <h1 className="text-lg font-semibold text-[#cccccc]">Dashboard</h1>
-        <p className="mt-0.5 text-xs text-[#6a6a6e]">{done < 4 ? "Get started" : `${name || "Your teammate"} is ready`}</p>
+        <h1 className="text-lg font-semibold text-[#e4e4e7]">Dashboard</h1>
+        <p className="mt-0.5 text-xs text-[#a1a1aa]">{done < 4 ? "Get started" : `${name || "Your teammate"} is ready`}</p>
       </div>
 
       <div className="mb-6 flex items-center gap-3">
-        <div className="h-1 flex-1 rounded-sm bg-[#2a2a30] overflow-hidden">
-          <div className="h-1 rounded-sm bg-[#264f78] transition-all" style={{ width: `${(done/4)*100}%` }} />
+        <div className="h-1 flex-1 rounded-sm bg-[#262626] overflow-hidden">
+          <div className="h-1 rounded-sm bg-[#3b82f6] transition-all" style={{ width: `${(done/4)*100}%` }} />
         </div>
-        <span className="text-xs text-[#6a6a6e] font-mono">{done}/4</span>
+        <span className="text-xs text-[#a1a1aa] font-mono">{done}/4</span>
       </div>
 
       <div className="space-y-1 max-w-xl">
         {/* Step 1: Name */}
-        <div className={`rounded-md px-4 py-3.5 border ${nameSaved ? "bg-[#2a2a30] border-[#2a2a2e]" : "bg-[#222229] border-[#2a2a2e]"}`}>
+        <div className={`rounded-md px-4 py-3.5 border ${nameSaved ? "bg-[#262626] border-[#2b2b2e]" : "bg-[#1f1f1f] border-[#2b2b2e]"}`}>
           <div className="flex items-center gap-3">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${nameSaved ? "bg-[#2a3a2a] text-[#6aaa6a]" : "bg-[#223040] text-[#7a9ec8]"}`}>
+            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${nameSaved ? "bg-[#16341e] text-[#4ade80]" : "bg-[#1a2438] text-[#60a5fa]"}`}>
               {nameSaved ? <Check className="h-4 w-4" /> : <User className="h-4 w-4" />}
             </div>
             <div className="flex-1">
-              <span className="text-sm text-[#cccccc]">
+              <span className="text-sm text-[#e4e4e7]">
                 {nameSaved ? name : "Name your teammate"}
               </span>
             </div>
             {!nameSaved ? (
               <div className="flex gap-1.5">
-                <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} placeholder="e.g. Alex" className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-24 outline-none" />
-                <button onClick={saveName} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">Save</button>
+                <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} placeholder="e.g. Alex" className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-24 outline-none" />
+                <button onClick={saveName} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">Save</button>
               </div>
             ) : (
-              <span className="text-xs text-[#6a6a6e]">Done</span>
+              <span className="text-xs text-[#a1a1aa]">Done</span>
             )}
           </div>
         </div>
 
         {/* Step 2: LLM */}
-        <div className={`rounded-md px-4 py-3.5 border ${hasLLM ? "bg-[#2a2a30] border-[#2a2a2e]" : "bg-[#222229] border-[#2a2a2e]"}`}>
+        <div className={`rounded-md px-4 py-3.5 border ${hasLLM ? "bg-[#262626] border-[#2b2b2e]" : "bg-[#1f1f1f] border-[#2b2b2e]"}`}>
           <div className="flex items-center gap-3">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${hasLLM ? "bg-[#2a3a2a] text-[#6aaa6a]" : "bg-[#223040] text-[#7a9ec8]"}`}>
+            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${hasLLM ? "bg-[#16341e] text-[#4ade80]" : "bg-[#1a2438] text-[#60a5fa]"}`}>
               {hasLLM ? <Check className="h-4 w-4" /> : <Key className="h-4 w-4" />}
             </div>
             <div className="flex-1">
-              <span className="text-sm text-[#cccccc]">{hasLLM ? "Brain connected" : "Give them a brain"}</span>
+              <span className="text-sm text-[#e4e4e7]">{hasLLM ? "Brain connected" : "Give them a brain"}</span>
             </div>
             {!hasLLM ? (
-              <button onClick={() => setShowLLM(!showLLM)} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">Configure</button>
+              <button onClick={() => setShowLLM(!showLLM)} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">Configure</button>
             ) : (
-              <span className="text-xs text-[#6a6a6e]">Done</span>
+              <span className="text-xs text-[#a1a1aa]">Done</span>
             )}
           </div>
           {showLLM && (
             <div className="mt-3 pl-10 space-y-2">
-              <select value={llmProvider} onChange={(e) => setLlmProvider(e.target.value)} className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-full">
+              <select value={llmProvider} onChange={(e) => setLlmProvider(e.target.value)} className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-full">
                 <option value="deepseek">DeepSeek</option>
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
               </select>
-              <input type="password" value={llmKey} onChange={(e) => setLlmKey(e.target.value)} placeholder="sk-..." className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-full" />
-              <select value={llmModel} onChange={(e) => setLlmModel(e.target.value)} className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-full">
+              <input type="password" value={llmKey} onChange={(e) => setLlmKey(e.target.value)} placeholder="sk-..." className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-full" />
+              <select value={llmModel} onChange={(e) => setLlmModel(e.target.value)} className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-full">
                 <option value="deepseek-v4-flash">deepseek-v4-flash</option>
                 <option value="deepseek-v4-pro">deepseek-v4-pro</option>
               </select>
               <div className="flex gap-2">
-                <button onClick={saveLLM} disabled={llmSaving} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">{llmSaving ? "..." : "Save"}</button>
-                <button onClick={testLLM} disabled={llmTesting} className={`rounded px-2 py-1 text-xs border ${llmTestResult === true ? "border-[#3a6a3a] text-[#6aaa6a]" : llmTestResult === false ? "border-[#4a2020] text-[#e06060]" : "border-[#2a2a2e] text-[#8a8a8e]"}`}>
+                <button onClick={saveLLM} disabled={llmSaving} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">{llmSaving ? "..." : "Save"}</button>
+                <button onClick={testLLM} disabled={llmTesting} className={`rounded px-2 py-1 text-xs border ${llmTestResult === true ? "border-[#16a34a] text-[#4ade80]" : llmTestResult === false ? "border-[#3a1818] text-[#f87171]" : "border-[#2b2b2e] text-[#a1a1aa]"}`}>
                   {llmTesting ? "..." : llmTestResult === true ? "✓ Connected" : llmTestResult === false ? "✗ Failed" : "Verify"}
                 </button>
               </div>
@@ -241,26 +241,26 @@ export default function DashboardPage() {
         </div>
 
         {/* Step 3: GitHub */}
-        <div className={`rounded-md px-4 py-3.5 border ${hasGithub ? "bg-[#2a2a30] border-[#2a2a2e]" : "bg-[#222229] border-[#2a2a2e]"}`}>
+        <div className={`rounded-md px-4 py-3.5 border ${hasGithub ? "bg-[#262626] border-[#2b2b2e]" : "bg-[#1f1f1f] border-[#2b2b2e]"}`}>
           <div className="flex items-center gap-3">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${hasGithub ? "bg-[#2a3a2a] text-[#6aaa6a]" : "bg-[#223040] text-[#7a9ec8]"}`}>
+            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${hasGithub ? "bg-[#16341e] text-[#4ade80]" : "bg-[#1a2438] text-[#60a5fa]"}`}>
               {hasGithub ? <Check className="h-4 w-4" /> : <Code2 className="h-4 w-4" />}
             </div>
             <div className="flex-1">
-              <span className="text-sm text-[#cccccc]">{hasGithub ? "GitHub connected" : "Connect GitHub"}</span>
+              <span className="text-sm text-[#e4e4e7]">{hasGithub ? "GitHub connected" : "Connect GitHub"}</span>
             </div>
             {!hasGithub ? (
-              <button onClick={() => setShowGithub(!showGithub)} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">Configure</button>
+              <button onClick={() => setShowGithub(!showGithub)} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">Configure</button>
             ) : (
-              <span className="text-xs text-[#6a6a6e]">Done</span>
+              <span className="text-xs text-[#a1a1aa]">Done</span>
             )}
           </div>
           {showGithub && (
             <div className="mt-3 pl-10 space-y-2">
-              <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-full" />
+              <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-full" />
               <div className="flex gap-2">
-                <button onClick={saveGithub} disabled={githubSaving} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">{githubSaving ? "..." : "Save"}</button>
-                <button onClick={testGithub} disabled={githubTesting} className={`rounded px-2 py-1 text-xs border ${githubTestResult === true ? "border-[#3a6a3a] text-[#6aaa6a]" : githubTestResult === false ? "border-[#4a2020] text-[#e06060]" : "border-[#2a2a2e] text-[#8a8a8e]"}`}>
+                <button onClick={saveGithub} disabled={githubSaving} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">{githubSaving ? "..." : "Save"}</button>
+                <button onClick={testGithub} disabled={githubTesting} className={`rounded px-2 py-1 text-xs border ${githubTestResult === true ? "border-[#16a34a] text-[#4ade80]" : githubTestResult === false ? "border-[#3a1818] text-[#f87171]" : "border-[#2b2b2e] text-[#a1a1aa]"}`}>
                   {githubTesting ? "..." : githubTestResult === true ? "✓ Connected" : githubTestResult === false ? "✗ Failed" : "Verify"}
                 </button>
               </div>
@@ -268,7 +268,7 @@ export default function DashboardPage() {
                 <div className="max-h-36 overflow-y-auto space-y-0.5 mt-2">
                   {ghRepos.map((r: any) => (
                     <button key={r.full_name} onClick={() => addGhRepo(r.full_name)} disabled={r.added}
-                      className={`w-full text-left rounded px-2 py-1 text-xs ${r.added ? "text-[#6aaa6a] bg-[#2a3a2a]" : "text-[#cccccc] hover:bg-[#25252b]"}`}>
+                      className={`w-full text-left rounded px-2 py-1 text-xs ${r.added ? "text-[#4ade80] bg-[#16341e]" : "text-[#e4e4e7] hover:bg-[#202020]"}`}>
                       {r.added ? "✓ " : ""}{r.full_name}
                     </button>
                   ))}
@@ -279,21 +279,21 @@ export default function DashboardPage() {
         </div>
 
         {/* Step 4: Repos */}
-        <div className={`rounded-md px-4 py-3.5 border ${repos > 0 ? "bg-[#2a2a30] border-[#2a2a2e]" : "bg-[#222229] border-[#2a2a2e]"}`}>
+        <div className={`rounded-md px-4 py-3.5 border ${repos > 0 ? "bg-[#262626] border-[#2b2b2e]" : "bg-[#1f1f1f] border-[#2b2b2e]"}`}>
           <div className="flex items-center gap-3">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${repos > 0 ? "bg-[#2a3a2a] text-[#6aaa6a]" : "bg-[#223040] text-[#7a9ec8]"}`}>
+            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${repos > 0 ? "bg-[#16341e] text-[#4ade80]" : "bg-[#1a2438] text-[#60a5fa]"}`}>
               {repos > 0 ? <Check className="h-4 w-4" /> : <GitBranch className="h-4 w-4" />}
             </div>
             <div className="flex-1">
-              <span className="text-sm text-[#cccccc]">{repos > 0 ? `${repos} repos added` : "Add repositories"}</span>
+              <span className="text-sm text-[#e4e4e7]">{repos > 0 ? `${repos} repos added` : "Add repositories"}</span>
             </div>
-            <button onClick={() => setShowRepo(!showRepo)} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">{repos > 0 ? "+ Add more" : "Add repo"}</button>
+            <button onClick={() => setShowRepo(!showRepo)} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">{repos > 0 ? "+ Add more" : "Add repo"}</button>
           </div>
           {showRepo && (
             <div className="mt-3 pl-10 space-y-2">
-              <input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="github.com/owner/repo or org name" className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] w-full" />
-              <button onClick={addRepo} disabled={repoAdding || !repoUrl.trim()} className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">{repoAdding ? "Adding..." : "Add"}</button>
-              {repoResult && <p className="text-xs text-[#6a6a6e]">{repoResult}</p>}
+              <input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="github.com/owner/repo or org name" className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] w-full" />
+              <button onClick={addRepo} disabled={repoAdding || !repoUrl.trim()} className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">{repoAdding ? "Adding..." : "Add"}</button>
+              {repoResult && <p className="text-xs text-[#a1a1aa]">{repoResult}</p>}
             </div>
           )}
         </div>
@@ -302,8 +302,8 @@ export default function DashboardPage() {
       {done === 4 && (
         <div className="mt-8 panel p-6 max-w-xl animate-fade-in">
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#2a3a2a]"><Check className="h-4 w-4 text-[#6aaa6a]" /></div>
-            <div><h3 className="text-sm font-semibold text-[#cccccc]">All set</h3><p className="text-xs text-[#6a6a6e]">{name || "Your teammate"} is configured.</p></div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#16341e]"><Check className="h-4 w-4 text-[#4ade80]" /></div>
+            <div><h3 className="text-sm font-semibold text-[#e4e4e7]">All set</h3><p className="text-xs text-[#a1a1aa]">{name || "Your teammate"} is configured.</p></div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => router.push("/chat")} className="btn-primary text-xs">Start chatting</button>
@@ -315,15 +315,15 @@ export default function DashboardPage() {
       {/* Optional: Slack & Jira */}
       {done === 4 && (
         <div className="mt-4 panel p-4 max-w-xl">
-          <p className="text-xs font-medium text-[#8a8a8e] mb-3">Optional integrations</p>
+          <p className="text-xs font-medium text-[#a1a1aa] mb-3">Optional integrations</p>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <input type="password" placeholder="Slack bot token (xoxb-...)" className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] flex-1" />
-              <button className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">Save</button>
+              <input type="password" placeholder="Slack bot token (xoxb-...)" className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] flex-1" />
+              <button className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">Save</button>
             </div>
             <div className="flex items-center gap-2">
-              <input type="password" placeholder="Jira API token" className="bg-[#1e1e24] border border-[#2a2a2e] rounded px-2 py-1 text-xs text-[#cccccc] flex-1" />
-              <button className="bg-[#264f78] text-white rounded px-2 py-1 text-xs">Save</button>
+              <input type="password" placeholder="Jira API token" className="bg-[#1a1a1a] border border-[#2b2b2e] rounded px-2 py-1 text-xs text-[#e4e4e7] flex-1" />
+              <button className="bg-[#3b82f6] text-white rounded px-2 py-1 text-xs">Save</button>
             </div>
           </div>
         </div>

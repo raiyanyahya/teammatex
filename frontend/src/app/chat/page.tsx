@@ -187,8 +187,8 @@ export default function ChatPage() {
           {messages.length === 0 && !streaming && (
             <div className="mt-20">
               <div className="text-center">
-                <h1 className="text-lg font-semibold text-[#cccccc]">TeammateX</h1>
-                <p className="mt-1 text-sm text-[#6a6a6e]">
+                <h1 className="text-lg font-semibold text-[#e4e4e7]">TeammateX</h1>
+                <p className="mt-1 text-sm text-[#a1a1aa]">
                   An AI teammate that knows your codebase. Here&apos;s what you can ask — click one to start.
                 </p>
               </div>
@@ -197,13 +197,13 @@ export default function ChatPage() {
                   <button
                     key={c.label}
                     onClick={() => { setInput(c.example); inputRef.current?.focus(); }}
-                    className="rounded-md border border-[#2a2a30] bg-[#1e1e24] px-3 py-2.5 text-left transition-colors hover:border-[#264f78] hover:bg-[#25252b]"
+                    className="rounded-md border border-[#262626] bg-[#1a1a1a] px-3 py-2.5 text-left transition-colors hover:border-[#3b82f6] hover:bg-[#202020]"
                   >
-                    <div className="flex items-center gap-2 text-[13px] font-medium text-[#cccccc]">
-                      <c.icon className="h-3.5 w-3.5 text-[#7a9ec8]" />
+                    <div className="flex items-center gap-2 text-[13px] font-medium text-[#e4e4e7]">
+                      <c.icon className="h-3.5 w-3.5 text-[#60a5fa]" />
                       {c.label}
                     </div>
-                    <div className="mt-1 text-xs text-[#6a6a6e]">&ldquo;{c.example}&rdquo;</div>
+                    <div className="mt-1 text-xs text-[#a1a1aa]">&ldquo;{c.example}&rdquo;</div>
                   </button>
                 ))}
               </div>
@@ -219,12 +219,12 @@ export default function ChatPage() {
               return (
                 <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
                   <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-medium ${
-                    msg.role === "assistant" ? "bg-[#2a2a30] text-[#8a8a8e]" : "bg-[#264f78]/30 text-[#7a9ec8]"
+                    msg.role === "assistant" ? "bg-[#262626] text-[#a1a1aa]" : "bg-[#3b82f6]/30 text-[#60a5fa]"
                   }`}>
                     {msg.role === "assistant" ? "T" : "U"}
                   </div>
                   <div className={`max-w-[80%] rounded-md px-4 py-2.5 text-sm leading-relaxed ${
-                    msg.role === "assistant" ? "bg-[#25252b] text-[#cccccc]" : "bg-[#264f78]/15 text-[#b8c8d8]"
+                    msg.role === "assistant" ? "bg-[#202020] text-[#e4e4e7]" : "bg-[#3b82f6]/15 text-[#bfdbfe]"
                   }`}>
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   </div>
@@ -234,7 +234,7 @@ export default function ChatPage() {
 
             {streaming && activeTool && (
               <div className="flex justify-center">
-                <div className="rounded-full border border-[#2a2a30] bg-[#19191f] px-3 py-1 text-[11px] text-[#5a5a5e]">
+                <div className="rounded-full border border-[#262626] bg-[#141414] px-3 py-1 text-[11px] text-[#71717a]">
                   <span className="inline-flex items-center gap-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     <span className="font-medium">{activeTool}</span>
@@ -246,11 +246,11 @@ export default function ChatPage() {
 
             {streaming && streamContent && (
               <div className="flex gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#2a2a30] text-xs font-medium text-[#8a8a8e]">T</div>
-                <div className="max-w-[80%] rounded-md bg-[#25252b] px-4 py-2.5 text-sm leading-relaxed text-[#cccccc]">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#262626] text-xs font-medium text-[#a1a1aa]">T</div>
+                <div className="max-w-[80%] rounded-md bg-[#202020] px-4 py-2.5 text-sm leading-relaxed text-[#e4e4e7]">
                   <div className="whitespace-pre-wrap">
                     {streamContent}
-                    <span className="ml-0.5 inline-block h-4 w-1 animate-pulse rounded-sm bg-[#6a6a6e]" />
+                    <span className="ml-0.5 inline-block h-4 w-1 animate-pulse rounded-sm bg-[#a1a1aa]" />
                   </div>
                 </div>
               </div>
@@ -258,10 +258,10 @@ export default function ChatPage() {
 
             {streaming && !streamContent && !activeTool && (
               <div className="flex gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#2a2a30] text-xs font-medium text-[#8a8a8e]">T</div>
-                <div className="flex items-center gap-1 rounded-md bg-[#25252b] px-4 py-2.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6a6a6e]" />
-                  <span className="text-xs text-[#6a6a6e]">Thinking</span>
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#262626] text-xs font-medium text-[#a1a1aa]">T</div>
+                <div className="flex items-center gap-1 rounded-md bg-[#202020] px-4 py-2.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#a1a1aa]" />
+                  <span className="text-xs text-[#a1a1aa]">Thinking</span>
                 </div>
               </div>
             )}
@@ -271,7 +271,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div className="border-t border-[#2a2a2e] bg-[#212127]">
+      <div className="border-t border-[#2b2b2e] bg-[#161616]">
         <div className="mx-auto max-w-2xl px-6 py-3">
           <div className="flex items-center gap-2">
             <input
@@ -281,12 +281,12 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about your codebase..."
               disabled={streaming}
-              className="flex-1 rounded-md border border-[#2a2a2e] bg-[#1e1e24] px-3 py-2 text-sm text-[#cccccc] outline-none placeholder:text-[#5a5a5e] focus:border-[#264f78]"
+              className="flex-1 rounded-md border border-[#2b2b2e] bg-[#1a1a1a] px-3 py-2 text-sm text-[#e4e4e7] outline-none placeholder:text-[#71717a] focus:border-[#3b82f6]"
             />
             {messages.length > 0 && (
               <button
                 onClick={clearHistory}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#2a2a2e] bg-transparent text-[#6a6a6e] hover:text-[#cc4444] hover:border-[#cc4444]/30 transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#2b2b2e] bg-transparent text-[#a1a1aa] hover:text-[#f87171] hover:border-[#f87171]/30 transition-colors"
                 title="Clear chat"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -295,7 +295,7 @@ export default function ChatPage() {
             <button
               onClick={() => send()}
               disabled={streaming || !input.trim()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#264f78] text-white hover:bg-[#2d5a88] disabled:opacity-30 transition-colors"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#3b82f6] text-white hover:bg-[#3574e0] disabled:opacity-30 transition-colors"
             >
               <Send className="h-3.5 w-3.5" />
             </button>

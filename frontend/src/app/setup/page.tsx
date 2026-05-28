@@ -174,7 +174,7 @@ export default function SetupPage() {
           <button onClick={handleSaveName} disabled={!name.trim()} className="btn-primary text-xs">
             {nameSaved ? <><Check className="h-3.5 w-3.5" /> Saved</> : "Save name"}
           </button>
-          {nameSaved && <p className="text-xs text-[#6a6a6e]">{name} — got it.</p>}
+          {nameSaved && <p className="text-xs text-[#a1a1aa]">{name} — got it.</p>}
         </div>
       ),
     },
@@ -201,14 +201,14 @@ export default function SetupPage() {
                 </button>
                 {llmSaved && (
                   <button onClick={handleTestLLM} disabled={llmTesting} className="btn-secondary text-xs flex items-center gap-1.5">
-                    {llmTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : llmTestResult === true ? <Wifi className="h-3 w-3 text-[#6aaa6a]" /> : llmTestResult === false ? <WifiOff className="h-3 w-3 text-[#e06060]" /> : <Wifi className="h-3 w-3" />}
+                    {llmTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : llmTestResult === true ? <Wifi className="h-3 w-3 text-[#4ade80]" /> : llmTestResult === false ? <WifiOff className="h-3 w-3 text-[#f87171]" /> : <Wifi className="h-3 w-3" />}
                     {llmTesting ? "Testing..." : llmTestResult === true ? "Connected" : llmTestResult === false ? "Failed" : "Test connection"}
                   </button>
                 )}
               </div>
             </>
           )}
-          <p className="text-[11px] text-[#6a6a6e]">You can add more providers later in Settings.</p>
+          <p className="text-[11px] text-[#a1a1aa]">You can add more providers later in Settings.</p>
         </div>
       ),
     },
@@ -225,37 +225,37 @@ export default function SetupPage() {
             </button>
             {githubSaved && (
               <button onClick={handleTestGithub} disabled={githubTesting} className="btn-secondary text-xs flex items-center gap-1.5">
-                {githubTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : githubTestResult === true ? <Wifi className="h-3 w-3 text-[#6aaa6a]" /> : githubTestResult === false ? <WifiOff className="h-3 w-3 text-[#e06060]" /> : <Wifi className="h-3 w-3" />}
+                {githubTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : githubTestResult === true ? <Wifi className="h-3 w-3 text-[#4ade80]" /> : githubTestResult === false ? <WifiOff className="h-3 w-3 text-[#f87171]" /> : <Wifi className="h-3 w-3" />}
                 {githubTesting ? "Testing..." : githubTestResult === true ? "Connected" : githubTestResult === false ? "Failed" : "Test connection"}
               </button>
             )}
           </div>
           {githubVerify && githubVerify.valid && (
-            <p className={`text-[11px] ${githubVerify.can_push === false ? "text-[#e0a060]" : githubVerify.can_push === true ? "text-[#6aaa6a]" : "text-[#9a9a6e]"}`}>
+            <p className={`text-[11px] ${githubVerify.can_push === false ? "text-[#fbbf24]" : githubVerify.can_push === true ? "text-[#4ade80]" : "text-[#d4d4aa]"}`}>
               {githubVerify.login ? `@${githubVerify.login} · ` : ""}{githubVerify.token_type}
               {" · "}
               {githubVerify.can_push === true ? "can push & open PRs ✓" : githubVerify.can_push === false ? "READ-ONLY — pushes will 403 ✗" : "push rights unknown ⚠"}
               <br />{githubVerify.note}
             </p>
           )}
-          <p className="text-[11px] text-[#6a6a6e]">Create at github.com/settings/tokens — needs repo scope (classic) or Contents+PR write (fine-grained).</p>
+          <p className="text-[11px] text-[#a1a1aa]">Create at github.com/settings/tokens — needs repo scope (classic) or Contents+PR write (fine-grained).</p>
           {ghRepos.length > 0 && (
             <div className="mt-3 max-h-48 overflow-y-auto space-y-1">
-              <p className="text-[10px] text-[#6a6a6e] mb-1">Your repositories — click to add:</p>
+              <p className="text-[10px] text-[#a1a1aa] mb-1">Your repositories — click to add:</p>
               {ghRepos.map((r: any) => (
                 <button key={r.name} onClick={() => addGhRepo(r.name)} disabled={r.added}
                   className={`w-full flex items-center gap-2 rounded px-3 py-2 text-xs transition-colors ${
-                    r.added ? "bg-[#2a3a2a] text-[#6aaa6a]" : "hover:bg-[#25252b] text-[#cccccc]"
+                    r.added ? "bg-[#16341e] text-[#4ade80]" : "hover:bg-[#202020] text-[#e4e4e7]"
                   }`}>
                   {r.added ? <Check className="h-3 w-3" /> : <span className="h-3 w-3" />}
                   <span className="truncate">{r.name}</span>
-                  {r.private && <span className="text-[10px] text-[#5a5a5e] ml-auto">private</span>}
+                  {r.private && <span className="text-[10px] text-[#71717a] ml-auto">private</span>}
                 </button>
               ))}
             </div>
           )}
           {ghReposLoading && (
-            <div className="flex items-center gap-2 text-xs text-[#6a6a6e]">
+            <div className="flex items-center gap-2 text-xs text-[#a1a1aa]">
               <Loader2 className="h-3 w-3 animate-spin" /> Loading repositories...
             </div>
           )}
@@ -271,8 +271,8 @@ export default function SetupPage() {
             <input value={repoUrl} onChange={(e) => { setRepoUrl(e.target.value); setRepoAdded(false); }} onKeyDown={(e) => { if (e.key === "Enter") handleAddRepo(); }} placeholder="https://github.com/your-team/your-repo" className="input flex-1 text-xs" />
             <button onClick={handleAddRepo} disabled={!repoUrl.trim() || repoAdded} className="btn-primary text-xs">{repoAdded ? <><Check className="h-3.5 w-3.5" /> Added</> : "Add repo"}</button>
           </div>
-          {repoAdded && <p className="text-xs text-[#6a6a6e]">Added! The pipeline clones and analyzes it immediately.</p>}
-          {repoError && <p className="text-xs text-[#e06060]">{repoError}</p>}
+          {repoAdded && <p className="text-xs text-[#a1a1aa]">Added! The pipeline clones and analyzes it immediately.</p>}
+          {repoError && <p className="text-xs text-[#f87171]">{repoError}</p>}
         </div>
       ),
     },
@@ -280,9 +280,9 @@ export default function SetupPage() {
       title: "All set.",
       subtitle: `${nameSaved ? name : "They"} are ready.`,
       content: (
-        <div className="flex items-center gap-3 rounded-md border border-[#2a3a2a] bg-[#1e2a1e] px-4 py-3">
-          <Check className="h-5 w-5 text-[#6aaa6a]" />
-          <div><p className="text-sm text-[#cccccc]">{nameSaved ? name : "Your teammate"} is ready</p><p className="text-xs text-[#6a6a6e]">Repos will start onboarding immediately.</p></div>
+        <div className="flex items-center gap-3 rounded-md border border-[#16341e] bg-[#142a1d] px-4 py-3">
+          <Check className="h-5 w-5 text-[#4ade80]" />
+          <div><p className="text-sm text-[#e4e4e7]">{nameSaved ? name : "Your teammate"} is ready</p><p className="text-xs text-[#a1a1aa]">Repos will start onboarding immediately.</p></div>
         </div>
       ),
     },
@@ -293,9 +293,9 @@ export default function SetupPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#2a3a2a]"><Check className="h-6 w-6 text-[#6aaa6a]" /></div>
-          <h1 className="text-lg font-semibold text-[#cccccc]">All set</h1>
-          <p className="mt-1 text-xs text-[#6a6a6e]">{nameSaved ? name : "They"} are ready to work.</p>
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#16341e]"><Check className="h-6 w-6 text-[#4ade80]" /></div>
+          <h1 className="text-lg font-semibold text-[#e4e4e7]">All set</h1>
+          <p className="mt-1 text-xs text-[#a1a1aa]">{nameSaved ? name : "They"} are ready to work.</p>
           <button onClick={() => router.push("/dashboard")} className="btn-primary mt-6">Go to Dashboard</button>
         </div>
       </div>
@@ -306,10 +306,10 @@ export default function SetupPage() {
     <div className="flex h-full items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="mb-6 flex gap-1.5 justify-center">
-          {steps.map((_, i) => <div key={i} className={`h-1 w-6 rounded-sm transition-colors ${i <= step ? "bg-[#264f78]" : "bg-[#2a2a30]"}`} />)}
+          {steps.map((_, i) => <div key={i} className={`h-1 w-6 rounded-sm transition-colors ${i <= step ? "bg-[#3b82f6]" : "bg-[#262626]"}`} />)}
         </div>
         <div className="panel p-6">
-          <div className="mb-5"><h1 className="text-base font-semibold text-[#cccccc]">{steps[step].title}</h1><p className="mt-1 text-xs text-[#6a6a6e]">{steps[step].subtitle}</p></div>
+          <div className="mb-5"><h1 className="text-base font-semibold text-[#e4e4e7]">{steps[step].title}</h1><p className="mt-1 text-xs text-[#a1a1aa]">{steps[step].subtitle}</p></div>
           {steps[step].content}
         </div>
         <div className="mt-4 flex justify-between">

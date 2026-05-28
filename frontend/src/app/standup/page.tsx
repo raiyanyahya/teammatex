@@ -30,14 +30,14 @@ function relativeAge(iso: string | null): string {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  open: "bg-[#13301f] text-[#5fb87f]",
-  merged: "bg-[#2a1f3a] text-[#a585d0]",
-  closed: "bg-[#3a2020] text-[#c06060]",
-  in_progress: "bg-[#3a3010] text-[#c0a040]",
+  open: "bg-[#0c2818] text-[#4ade80]",
+  merged: "bg-[#2a1d3a] text-[#c084fc]",
+  closed: "bg-[#2e1818] text-[#fb7185]",
+  in_progress: "bg-[#3a2a10] text-[#fbbf24]",
 };
 
 function pill(label: string) {
-  const tone = STATUS_TONE[label] ?? "bg-[#2a2a30] text-[#8a8a8e]";
+  const tone = STATUS_TONE[label] ?? "bg-[#262626] text-[#a1a1aa]";
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${tone}`}>
       {label}
@@ -70,8 +70,8 @@ export default function StandupPage() {
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[#cccccc]">Standup</h1>
-          <p className="mt-0.5 text-xs text-[#6a6a6e]">
+          <h1 className="text-lg font-semibold text-[#e4e4e7]">Standup</h1>
+          <p className="mt-0.5 text-xs text-[#a1a1aa]">
             {data?.name ? `${data.name} · ` : ""}{data?.date ?? "Daily summary of recent activity"}
           </p>
         </div>
@@ -82,11 +82,11 @@ export default function StandupPage() {
       </div>
 
       {error ? (
-        <div className="panel p-6 text-center text-sm text-[#c06060]">
+        <div className="panel p-6 text-center text-sm text-[#fb7185]">
           Couldn&apos;t load the standup. <button onClick={load} className="underline">Try again</button>.
         </div>
       ) : loading && !data ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-[#6a6a6e]">
+        <div className="flex items-center gap-2 py-12 text-sm text-[#a1a1aa]">
           <Loader2 className="h-4 w-4 animate-spin" /> Gathering activity…
         </div>
       ) : (
@@ -117,7 +117,7 @@ export default function StandupPage() {
                 <Row key={i} title={b.question} sub={relativeAge(b.created_at)} />
               ))
             ) : (
-              <div className="flex items-center gap-2 px-4 py-6 text-xs text-[#5fb87f]">
+              <div className="flex items-center gap-2 px-4 py-6 text-xs text-[#4ade80]">
                 <CheckCircle2 className="h-3.5 w-3.5" /> All clear — nothing blocked.
               </div>
             )}
@@ -133,12 +133,12 @@ function Section({ icon, title, count, children }: {
 }) {
   return (
     <div className="panel">
-      <div className="flex items-center gap-2 border-b border-[#2a2a2e] px-4 py-2.5 text-[#8a8a8e]">
+      <div className="flex items-center gap-2 border-b border-[#2b2b2e] px-4 py-2.5 text-[#a1a1aa]">
         {icon}
         <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
-        <span className="ml-auto text-[10px] text-[#5a5a5e]">{count}</span>
+        <span className="ml-auto text-[10px] text-[#71717a]">{count}</span>
       </div>
-      <div className="divide-y divide-[#2a2a2e]">{children}</div>
+      <div className="divide-y divide-[#2b2b2e]">{children}</div>
     </div>
   );
 }
@@ -146,15 +146,15 @@ function Section({ icon, title, count, children }: {
 function Row({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) {
   return (
     <div className="px-4 py-2.5">
-      <p className="text-sm text-[#cccccc]">{title}</p>
+      <p className="text-sm text-[#e4e4e7]">{title}</p>
       <div className="mt-1.5 flex items-center gap-2">
         {children}
-        {sub ? <span className="text-[10px] text-[#5a5a5e]">{sub}</span> : null}
+        {sub ? <span className="text-[10px] text-[#71717a]">{sub}</span> : null}
       </div>
     </div>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-4 py-6 text-center text-xs text-[#5a5a5e]">{children}</p>;
+  return <p className="px-4 py-6 text-center text-xs text-[#71717a]">{children}</p>;
 }

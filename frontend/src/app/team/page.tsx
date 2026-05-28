@@ -13,7 +13,7 @@ type Contributor = {
 
 function badge(label: string) {
   return (
-    <span key={label} className="rounded bg-[#2a2a30] px-1.5 py-0.5 text-[10px] font-medium text-[#8a8a8e]">
+    <span key={label} className="rounded bg-[#262626] px-1.5 py-0.5 text-[10px] font-medium text-[#a1a1aa]">
       {label}
     </span>
   );
@@ -45,8 +45,8 @@ export default function TeamPage() {
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[#cccccc]">Team</h1>
-          <p className="mt-0.5 text-xs text-[#6a6a6e]">
+          <h1 className="text-lg font-semibold text-[#e4e4e7]">Team</h1>
+          <p className="mt-0.5 text-xs text-[#a1a1aa]">
             Contributors your teammate profiled from commit history
           </p>
         </div>
@@ -57,15 +57,15 @@ export default function TeamPage() {
       </div>
 
       {error ? (
-        <div className="panel p-6 text-center text-sm text-[#c06060]">
+        <div className="panel p-6 text-center text-sm text-[#fb7185]">
           Couldn&apos;t load contributors. <button onClick={load} className="underline">Try again</button>.
         </div>
       ) : loading && members.length === 0 ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-[#6a6a6e]">
+        <div className="flex items-center gap-2 py-12 text-sm text-[#a1a1aa]">
           <Loader2 className="h-4 w-4 animate-spin" /> Reading the knowledge graph…
         </div>
       ) : members.length === 0 ? (
-        <p className="py-12 text-center text-xs text-[#5a5a5e]">
+        <p className="py-12 text-center text-xs text-[#71717a]">
           No contributors yet — they appear once a repository is onboarded and its history is indexed.
         </p>
       ) : (
@@ -73,16 +73,16 @@ export default function TeamPage() {
           {members.map((m) => (
             <div key={m.email} className="panel flex items-center justify-between gap-4 px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#2a2a30] text-xs font-medium text-[#8a8a8e]">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#262626] text-xs font-medium text-[#a1a1aa]">
                   {(m.name || m.email)[0]?.toUpperCase() || "?"}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-[#cccccc]">{m.name || m.email}</p>
-                  <p className="truncate text-[11px] text-[#6a6a6e]">{m.email}</p>
+                  <p className="truncate text-sm text-[#e4e4e7]">{m.name || m.email}</p>
+                  <p className="truncate text-[11px] text-[#a1a1aa]">{m.email}</p>
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className="text-[11px] text-[#6a6a6e]">
+                <span className="text-[11px] text-[#a1a1aa]">
                   {m.files_owned} {m.files_owned === 1 ? "file" : "files"}
                 </span>
                 <div className="flex flex-wrap justify-end gap-1">

@@ -2,44 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
+/* Cursor-IDE-inspired dark theme: deep layered near-black backgrounds
+   (#161616 sidebar / #1a1a1a canvas / #202020 panels), thin low-contrast
+   borders, refined text, a clean blue accent, 8px radius. */
 @layer base {
   * {
-    @apply border-[#2a2a2e];
+    @apply border-[#2b2b2e];
   }
   body {
-    @apply bg-[#1e1e24] text-[#cccccc] antialiased;
+    @apply bg-[#1a1a1a] text-[#e4e4e7] antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+      system-ui, sans-serif;
   }
   ::selection {
-    @apply bg-[#264f78]/60 text-white;
+    @apply bg-[#3b82f6]/30;
   }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-[#3e3e44] rounded-sm hover:bg-[#4e4e54]; }
+  ::-webkit-scrollbar-thumb { @apply bg-[#3a3a3c] rounded-full hover:bg-[#4a4a4d]; }
 }
 
 @layer components {
+  /* An elevated surface: slightly lighter than the canvas, thin border, soft
+     shadow — Cursor-style layered depth. */
   .panel {
-    @apply bg-[#25252b] border border-[#2a2a2e] rounded-md;
+    @apply bg-[#202020] border border-[#2b2b2e] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.4)];
   }
   .input {
-    @apply w-full rounded-md border border-[#2a2a2e] bg-[#1e1e24] px-3 py-2 text-sm text-[#cccccc] outline-none placeholder:text-[#5a5a5e]
-    focus:border-[#264f78] focus:ring-1 focus:ring-[#264f78]/30;
+    @apply w-full rounded-lg border border-[#3a3a3c] bg-[#1f1f1f] px-3 py-2 text-sm text-[#e4e4e7] outline-none placeholder:text-[#71717a]
+    focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/30;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors;
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors;
   }
   .btn-primary {
-    @apply btn bg-[#264f78] text-white hover:bg-[#2d5a88] active:bg-[#1f4468];
+    @apply btn bg-[#3b82f6] text-white hover:bg-[#3574e0] active:bg-[#2f68cc];
   }
   .btn-secondary {
-    @apply btn bg-[#33333a] text-[#cccccc] hover:bg-[#3a3a42] active:bg-[#2a2a30];
+    @apply btn bg-[#262626] text-[#e4e4e7] border border-[#3a3a3c] hover:bg-[#2e2e2e] active:bg-[#222222];
   }
   .btn-ghost {
-    @apply btn text-[#8a8a8e] hover:text-[#cccccc] hover:bg-[#2a2a30];
+    @apply btn text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#262626];
   }
   .badge {
-    @apply inline-flex items-center rounded-md border border-[#2a2a2e] bg-[#2a2a30] px-2 py-0.5 text-xs text-[#8a8a8e];
+    @apply inline-flex items-center rounded-md border border-[#2e2e2e] bg-[#262626] px-2 py-0.5 text-xs text-[#a1a1aa];
   }
+
+  /* Colored icon tiles — a touch of color on the dark surface. */
+  .tile { @apply flex items-center justify-center rounded-lg; }
+  .tile-blue   { @apply bg-[#3b82f626] text-[#60a5fa]; }
+  .tile-green  { @apply bg-[#22c55e26] text-[#4ade80]; }
+  .tile-purple { @apply bg-[#a855f726] text-[#c084fc]; }
+  .tile-orange { @apply bg-[#f59e0b26] text-[#fbbf24]; }
+  .tile-pink   { @apply bg-[#ec489926] text-[#f472b6]; }
 }

@@ -101,8 +101,8 @@ export default function OnboardingPage() {
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[#cccccc]">Onboarding Pipeline</h1>
-          <p className="mt-0.5 text-xs text-[#6a6a6e]">Repository analysis progress</p>
+          <h1 className="text-lg font-semibold text-[#e4e4e7]">Onboarding Pipeline</h1>
+          <p className="mt-0.5 text-xs text-[#a1a1aa]">Repository analysis progress</p>
         </div>
         {!browsing && repos.length > 0 && (
           <button onClick={() => setBrowsing(true)} className="btn-secondary">
@@ -119,14 +119,14 @@ export default function OnboardingPage() {
         />
       ) : repos.length === 0 ? (
         <div className="panel p-12 text-center max-w-lg mx-auto">
-          <GitBranch className="h-8 w-8 text-[#5a5a5e] mx-auto mb-4" />
-          <h2 className="text-sm font-semibold text-[#cccccc] mb-1">No repositories</h2>
-          <p className="text-xs text-[#6a6a6e] mb-6">Pick from your GitHub account, or add a repository by URL.</p>
+          <GitBranch className="h-8 w-8 text-[#71717a] mx-auto mb-4" />
+          <h2 className="text-sm font-semibold text-[#e4e4e7] mb-1">No repositories</h2>
+          <p className="text-xs text-[#a1a1aa] mb-6">Pick from your GitHub account, or add a repository by URL.</p>
           <button onClick={() => setBrowsing(true)} className="btn-primary mx-auto mb-5">
             <Github className="h-3.5 w-3.5" /> Browse my repositories
           </button>
-          <div className="flex items-center gap-3 max-w-sm mx-auto mb-4 text-[10px] uppercase tracking-wider text-[#5a5a5e]">
-            <span className="h-px flex-1 bg-[#2a2a2e]" /> or by url <span className="h-px flex-1 bg-[#2a2a2e]" />
+          <div className="flex items-center gap-3 max-w-sm mx-auto mb-4 text-[10px] uppercase tracking-wider text-[#71717a]">
+            <span className="h-px flex-1 bg-[#2b2b2e]" /> or by url <span className="h-px flex-1 bg-[#2b2b2e]" />
           </div>
           <div className="flex gap-2 max-w-sm mx-auto">
             <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRepo()} placeholder="https://github.com/owner/repo" className="input flex-1" />
@@ -134,20 +134,20 @@ export default function OnboardingPage() {
               <Plus className="h-3.5 w-3.5" /> Add
             </button>
           </div>
-          {error && <p className="mt-3 text-xs text-[#e06060]">{error}</p>}
+          {error && <p className="mt-3 text-xs text-[#f87171]">{error}</p>}
         </div>
       ) : (
         <div className="grid grid-cols-4 gap-6">
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold text-[#5a5a5e] uppercase tracking-wider mb-2 px-2">Repos</p>
+            <p className="text-[10px] font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-2">Repos</p>
             {repos.map((repo) => (
               <button
                 key={repo.id}
                 onClick={() => setSelectedId(repo.id)}
                 className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
                   selectedId === repo.id
-                    ? "bg-[#2a2a30] text-[#cccccc]"
-                    : "text-[#6a6a6e] hover:text-[#cccccc] hover:bg-[#25252b]"
+                    ? "bg-[#262626] text-[#e4e4e7]"
+                    : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#202020]"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -163,14 +163,14 @@ export default function OnboardingPage() {
             </div>
             {errors.length > 0 && (
               <div className="mt-6 panel p-4">
-                <h3 className="text-xs font-semibold text-[#e06060] mb-2">Errors ({errors.length})</h3>
+                <h3 className="text-xs font-semibold text-[#f87171] mb-2">Errors ({errors.length})</h3>
                 <div className="space-y-1.5">
                   {errors.map((e: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2 rounded p-2 bg-[#2a1515] border border-[#4a2020]">
-                      <AlertCircle className="h-3.5 w-3.5 text-[#e06060] mt-0.5 shrink-0" />
+                    <div key={i} className="flex items-start gap-2 rounded p-2 bg-[#1f1010] border border-[#3a1818]">
+                      <AlertCircle className="h-3.5 w-3.5 text-[#f87171] mt-0.5 shrink-0" />
                       <div>
-                        <span className="text-xs text-[#e06060] font-medium">{STAGES.length > e.stage ? STAGES[e.stage] : `Stage ${e.stage + 1}`}</span>
-                        <p className="text-[11px] text-[#c06060] mt-0.5 font-mono">{e.error}</p>
+                        <span className="text-xs text-[#f87171] font-medium">{STAGES.length > e.stage ? STAGES[e.stage] : `Stage ${e.stage + 1}`}</span>
+                        <p className="text-[11px] text-[#fb7185] mt-0.5 font-mono">{e.error}</p>
                       </div>
                     </div>
                   ))}
@@ -183,10 +183,10 @@ export default function OnboardingPage() {
           <div className="col-span-3 panel p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-sm font-semibold text-[#cccccc]">{activeRepo?.local_name || "Select a repo"}</h2>
-                <p className="text-xs text-[#6a6a6e]">{completed}/12 stages complete</p>
+                <h2 className="text-sm font-semibold text-[#e4e4e7]">{activeRepo?.local_name || "Select a repo"}</h2>
+                <p className="text-xs text-[#a1a1aa]">{completed}/12 stages complete</p>
               </div>
-              <span className={`badge ${pct === 100 ? "border-[#3a6a3a] bg-[#2a3a2a] text-[#6aaa6a]" : "border-[#2a4a6a] bg-[#223040] text-[#7a9ec8]"}`}>
+              <span className={`badge ${pct === 100 ? "border-[#16a34a] bg-[#16341e] text-[#4ade80]" : "border-[#1e3a5c] bg-[#1a2438] text-[#60a5fa]"}`}>
                 {pct === 100 ? "Complete" : `${pct}%`}
               </span>
               {failed > 0 || (completed === 0 && Object.keys(stages).length === 0) ? (
@@ -197,8 +197,8 @@ export default function OnboardingPage() {
               ) : null}
             </div>
 
-            <div className="mb-6 h-1.5 w-full rounded-sm bg-[#2a2a30] overflow-hidden">
-              <div className="h-1.5 rounded-sm bg-[#264f78] transition-all duration-1000" style={{ width: `${pct}%` }} />
+            <div className="mb-6 h-1.5 w-full rounded-sm bg-[#262626] overflow-hidden">
+              <div className="h-1.5 rounded-sm bg-[#3b82f6] transition-all duration-1000" style={{ width: `${pct}%` }} />
             </div>
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-1">
@@ -214,15 +214,15 @@ export default function OnboardingPage() {
                 return (
                   <div key={i} className="flex items-center gap-2.5 py-1.5">
                     {isDone ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#6aaa6a] shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[#4ade80] shrink-0" />
                     ) : isRunning ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#7a9ec8] shrink-0" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#60a5fa] shrink-0" />
                     ) : isFailed ? (
-                      <AlertCircle className="h-3.5 w-3.5 text-[#e06060] shrink-0" />
+                      <AlertCircle className="h-3.5 w-3.5 text-[#f87171] shrink-0" />
                     ) : (
-                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#2a2a30] text-[9px] text-[#5a5a5e] font-mono shrink-0">{i + 1}</span>
+                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#262626] text-[9px] text-[#71717a] font-mono shrink-0">{i + 1}</span>
                     )}
-                    <span className={`text-xs ${isDone ? "text-[#8a8a8e]" : isRunning ? "text-[#cccccc]" : isFailed ? "text-[#e06060]" : "text-[#5a5a5e]"}`}>
+                    <span className={`text-xs ${isDone ? "text-[#a1a1aa]" : isRunning ? "text-[#e4e4e7]" : isFailed ? "text-[#f87171]" : "text-[#71717a]"}`}>
                       {label}
                     </span>
                   </div>

@@ -35,9 +35,9 @@ async function putConfig(key: string, value: any) {
 
 function NotWired({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-md border border-[#3a3010] bg-[#2a2410] px-3 py-2">
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#c0a040]" />
-      <p className="text-[11px] text-[#c0a040]">{children}</p>
+    <div className="mb-4 flex items-start gap-2 rounded-md border border-[#3a2a10] bg-[#2a1f10] px-3 py-2">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#fbbf24]" />
+      <p className="text-[11px] text-[#fbbf24]">{children}</p>
     </div>
   );
 }
@@ -147,14 +147,14 @@ export default function AdminPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-lg font-semibold text-[#cccccc]">Settings</h1>
-        <p className="mt-0.5 text-xs text-[#6a6a6e]">Configure providers and integrations</p>
+        <h1 className="text-lg font-semibold text-[#e4e4e7]">Settings</h1>
+        <p className="mt-0.5 text-xs text-[#a1a1aa]">Configure providers and integrations</p>
       </div>
 
       <div className="flex gap-8">
         <div className="w-44 space-y-0.5">
           {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${tab === t.id ? "bg-[#2a2a30] text-[#cccccc]" : "text-[#6a6a6e] hover:text-[#cccccc] hover:bg-[#25252b]"}`}>
+            <button key={t.id} onClick={() => setTab(t.id)} className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${tab === t.id ? "bg-[#262626] text-[#e4e4e7]" : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-[#202020]"}`}>
               <t.icon className="h-3.5 w-3.5" /> {t.label}
             </button>
           ))}
@@ -164,9 +164,9 @@ export default function AdminPage() {
           {tab === "llm" && (
             <div className="panel space-y-4 p-5">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-[#6a6a6e]">The provider your teammate thinks with.</p>
+                <p className="text-xs text-[#a1a1aa]">The provider your teammate thinks with.</p>
                 {prov?.active ? (
-                  <span className="badge border-[#2a4a3a] bg-[#1c2a22] text-[#6aaa8a]">
+                  <span className="badge border-[#1a3a26] bg-[#142a1d] text-[#4ade80]">
                     Active: {prov.active.provider} · {prov.active.model}
                   </span>
                 ) : (
@@ -186,7 +186,7 @@ export default function AdminPage() {
                     {providerModels.map((m) => <option key={m.model} value={m.model}>{m.model} — {m.tier}</option>)}
                   </select>
                   {model && providerModels.find((m) => m.model === model)?.note && (
-                    <p className="text-[10px] text-[#6a6a6e]">{providerModels.find((m) => m.model === model)?.note}</p>
+                    <p className="text-[10px] text-[#a1a1aa]">{providerModels.find((m) => m.model === model)?.note}</p>
                   )}
                   <input
                     type="password" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setLlmSaved(false); }}
@@ -199,33 +199,33 @@ export default function AdminPage() {
                   </button>
                 </>
               )}
-              <p className="text-[10px] text-[#5a5a5e]">Fallback order: Anthropic → OpenAI → DeepSeek → Groq → Ollama</p>
+              <p className="text-[10px] text-[#71717a]">Fallback order: Anthropic → OpenAI → DeepSeek → Groq → Ollama</p>
             </div>
           )}
 
           {tab === "integrations" && (
             <div className="panel space-y-5 p-5">
               <div>
-                <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[#8a8a8e]"><Github className="h-3.5 w-3.5" /> GitHub</label>
+                <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[#a1a1aa]"><Github className="h-3.5 w-3.5" /> GitHub</label>
                 {ghLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-[#6a6a6e]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…</div>
+                  <div className="flex items-center gap-2 text-xs text-[#a1a1aa]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…</div>
                 ) : gh?.valid ? (
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-md border border-[#2a4a3a] bg-[#1c2a22] px-3 py-2">
-                      <span className="text-xs text-[#cccccc]">
-                        Connected as <span className="font-mono text-[#6aaa8a]">{gh.login}</span>
-                        {gh.token_type ? <span className="ml-2 text-[10px] text-[#6a6a6e]">{gh.token_type}</span> : null}
+                    <div className="flex items-center justify-between rounded-md border border-[#1a3a26] bg-[#142a1d] px-3 py-2">
+                      <span className="text-xs text-[#e4e4e7]">
+                        Connected as <span className="font-mono text-[#4ade80]">{gh.login}</span>
+                        {gh.token_type ? <span className="ml-2 text-[10px] text-[#a1a1aa]">{gh.token_type}</span> : null}
                       </span>
                       <button onClick={disconnectGithub} disabled={githubSaving} className="btn-ghost text-[11px]">
                         <Unplug className="h-3 w-3" /> Disconnect
                       </button>
                     </div>
-                    <p className={`text-[10px] ${gh.can_push === false ? "text-[#e0a060]" : "text-[#6a6a6e]"}`}>
+                    <p className={`text-[10px] ${gh.can_push === false ? "text-[#fbbf24]" : "text-[#a1a1aa]"}`}>
                       {gh.can_push === true ? "Push access: yes — can open PRs."
                         : gh.can_push === false ? "Push access: no — this is read-only, so pushes/PRs will 403."
                         : gh.note}
                     </p>
-                    <details className="text-[10px] text-[#6a6a6e]">
+                    <details className="text-[10px] text-[#a1a1aa]">
                       <summary className="cursor-pointer">Replace token</summary>
                       <div className="mt-2 flex gap-2">
                         <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="input text-xs" />
@@ -235,23 +235,23 @@ export default function AdminPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {gh?.note && <p className="text-[10px] text-[#e0a060]">{gh.note}</p>}
+                    {gh?.note && <p className="text-[10px] text-[#fbbf24]">{gh.note}</p>}
                     <div className="flex gap-2">
                       <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="github_pat_..." className="input text-xs" />
                       <button onClick={saveGithub} disabled={!githubToken || githubSaving} className="btn-primary text-xs disabled:opacity-50">
                         {githubSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Connect
                       </button>
                     </div>
-                    <p className="text-[10px] text-[#6a6a6e]">Create at github.com/settings/tokens — needs Contents + Pull requests write to open PRs.</p>
+                    <p className="text-[10px] text-[#a1a1aa]">Create at github.com/settings/tokens — needs Contents + Pull requests write to open PRs.</p>
                   </div>
                 )}
               </div>
 
-              <div className="border-t border-[#2a2a2e] pt-4">
+              <div className="border-t border-[#2b2b2e] pt-4">
                 <NotWired>Slack and Jira aren&apos;t wired up yet — these inputs are disabled until the integrations are built.</NotWired>
-                <label className="mb-1.5 block text-xs font-medium text-[#5a5a5e]">Slack Bot Token</label>
+                <label className="mb-1.5 block text-xs font-medium text-[#71717a]">Slack Bot Token</label>
                 <input type="password" disabled placeholder="xoxb-..." className="input text-xs opacity-50" />
-                <label className="mb-1.5 mt-3 block text-xs font-medium text-[#5a5a5e]">Jira API Token</label>
+                <label className="mb-1.5 mt-3 block text-xs font-medium text-[#71717a]">Jira API Token</label>
                 <input type="password" disabled placeholder="Token" className="input text-xs opacity-50" />
               </div>
             </div>
@@ -261,13 +261,13 @@ export default function AdminPage() {
             <div className="panel p-5">
               <NotWired>Auto-sync currently runs on a fixed schedule. Configurable scheduling and GitHub-webhook triggers aren&apos;t wired up yet.</NotWired>
               <div className="space-y-3 opacity-50 pointer-events-none">
-                <label className="flex items-center gap-3 rounded bg-[#25252b] px-3 py-2.5">
-                  <input type="radio" name="update" defaultChecked disabled className="h-3.5 w-3.5 accent-[#264f78]" />
-                  <span className="text-sm text-[#cccccc]">Git pull on schedule</span>
+                <label className="flex items-center gap-3 rounded bg-[#202020] px-3 py-2.5">
+                  <input type="radio" name="update" defaultChecked disabled className="h-3.5 w-3.5 accent-[#3b82f6]" />
+                  <span className="text-sm text-[#e4e4e7]">Git pull on schedule</span>
                 </label>
                 <label className="flex items-center gap-3 rounded px-3 py-2.5">
-                  <input type="radio" name="update" disabled className="h-3.5 w-3.5 accent-[#264f78]" />
-                  <span className="text-sm text-[#cccccc]">GitHub webhooks</span>
+                  <input type="radio" name="update" disabled className="h-3.5 w-3.5 accent-[#3b82f6]" />
+                  <span className="text-sm text-[#e4e4e7]">GitHub webhooks</span>
                 </label>
               </div>
             </div>
@@ -275,23 +275,23 @@ export default function AdminPage() {
 
           {tab === "permissions" && (
             <div className="panel p-5">
-              <p className="mb-4 text-xs text-[#6a6a6e]">
+              <p className="mb-4 text-xs text-[#a1a1aa]">
                 What your teammate is allowed to do. Disabling a capability blocks its tools
                 (read/write code, PRs); the agent gets a permission error if it tries.
               </p>
               <div className="space-y-1">
                 {perms.map((p) => (
-                  <label key={p.capability} className="flex cursor-pointer items-center justify-between rounded px-3 py-2.5 hover:bg-[#25252b]">
-                    <span className="text-sm text-[#cccccc]">{p.label}</span>
+                  <label key={p.capability} className="flex cursor-pointer items-center justify-between rounded px-3 py-2.5 hover:bg-[#202020]">
+                    <span className="text-sm text-[#e4e4e7]">{p.label}</span>
                     <input
                       type="checkbox" checked={p.enabled}
                       onChange={(e) => togglePermission(p.capability, e.target.checked)}
-                      className="h-3.5 w-3.5 accent-[#264f78]"
+                      className="h-3.5 w-3.5 accent-[#3b82f6]"
                     />
                   </label>
                 ))}
                 {perms.length === 0 && (
-                  <p className="px-3 py-6 text-center text-xs text-[#5a5a5e]">Loading…</p>
+                  <p className="px-3 py-6 text-center text-xs text-[#71717a]">Loading…</p>
                 )}
               </div>
             </div>
@@ -299,7 +299,7 @@ export default function AdminPage() {
 
           {tab === "persona" && (
             <div className="panel p-5">
-              <p className="mb-4 text-xs text-[#6a6a6e]">
+              <p className="mb-4 text-xs text-[#a1a1aa]">
                 How your teammate works. The choice is woven into its system prompt — it
                 shifts tone and emphasis without changing what it&apos;s allowed to do.
               </p>
@@ -311,13 +311,13 @@ export default function AdminPage() {
                   { key: "pragmatic", label: "Pragmatic", desc: "Favors shipping over perfection" },
                   { key: "architect", label: "Architect", desc: "Thinks in systems and diagrams" },
                 ].map((p) => (
-                  <label key={p.key} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2.5 hover:bg-[#25252b]">
+                  <label key={p.key} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2.5 hover:bg-[#202020]">
                     <input
                       type="radio" name="persona" checked={persona === p.key}
                       onChange={() => savePersona(p.key)}
-                      className="h-3.5 w-3.5 accent-[#264f78]"
+                      className="h-3.5 w-3.5 accent-[#3b82f6]"
                     />
-                    <div><span className="text-sm text-[#cccccc]">{p.label}</span><span className="ml-2 text-[11px] text-[#6a6a6e]">{p.desc}</span></div>
+                    <div><span className="text-sm text-[#e4e4e7]">{p.label}</span><span className="ml-2 text-[11px] text-[#a1a1aa]">{p.desc}</span></div>
                   </label>
                 ))}
               </div>

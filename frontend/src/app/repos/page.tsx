@@ -66,8 +66,8 @@ export default function ReposPage() {
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[#cccccc]">Repositories</h1>
-          <p className="mt-0.5 text-xs text-[#6a6a6e]">Browse your GitHub account or add repos by URL</p>
+          <h1 className="text-lg font-semibold text-[#e4e4e7]">Repositories</h1>
+          <p className="mt-0.5 text-xs text-[#a1a1aa]">Browse your GitHub account or add repos by URL</p>
         </div>
         {!browsing && (
           <button onClick={() => setBrowsing(true)} className="btn-secondary">
@@ -91,16 +91,16 @@ export default function ReposPage() {
             </button>
           </div>
 
-          {error && <div className="mb-4 panel px-4 py-3 text-xs text-[#e06060]">{error}</div>}
+          {error && <div className="mb-4 panel px-4 py-3 text-xs text-[#f87171]">{error}</div>}
 
           {loading ? (
             <div className="space-y-2">
-              {[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-md bg-[#25252b]" />)}
+              {[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-md bg-[#202020]" />)}
             </div>
           ) : repos.length === 0 ? (
             <div className="panel p-12 text-center">
-              <GitBranch className="mx-auto mb-3 h-8 w-8 text-[#5a5a5e]" />
-              <p className="text-sm text-[#6a6a6e]">No repositories added yet.</p>
+              <GitBranch className="mx-auto mb-3 h-8 w-8 text-[#71717a]" />
+              <p className="text-sm text-[#a1a1aa]">No repositories added yet.</p>
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -113,34 +113,34 @@ export default function ReposPage() {
                 return (
                   <div key={repo.id} className="panel flex items-center justify-between px-4 py-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <GitBranch className="h-4 w-4 shrink-0 text-[#5a5a5e]" />
+                      <GitBranch className="h-4 w-4 shrink-0 text-[#71717a]" />
                       <div className="min-w-0">
-                        <span className="font-mono text-sm text-[#cccccc]">{repo.local_name}</span>
-                        <span className="ml-2 truncate text-[11px] text-[#5a5a5e]">{repo.github_url}</span>
+                        <span className="font-mono text-sm text-[#e4e4e7]">{repo.local_name}</span>
+                        <span className="ml-2 truncate text-[11px] text-[#71717a]">{repo.github_url}</span>
                       </div>
                     </div>
 
                     {confirmRemove === repo.id ? (
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-[#e0a060]">Remove {repo.local_name}?</span>
-                        <button onClick={() => remove(repo.id)} className="rounded bg-[#3a2020] px-2 py-1 text-[#e06060] hover:bg-[#4a2020]">Remove</button>
+                        <span className="text-[#fbbf24]">Remove {repo.local_name}?</span>
+                        <button onClick={() => remove(repo.id)} className="rounded bg-[#2e1818] px-2 py-1 text-[#f87171] hover:bg-[#3a1818]">Remove</button>
                         <button onClick={() => setConfirmRemove(null)} className="btn-ghost">Cancel</button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                          <div className="h-1 w-24 overflow-hidden rounded-sm bg-[#2a2a30]">
-                            <div className="h-1 rounded-sm bg-[#264f78] transition-all" style={{ width: `${pct}%` }} />
+                          <div className="h-1 w-24 overflow-hidden rounded-sm bg-[#262626]">
+                            <div className="h-1 rounded-sm bg-[#3b82f6] transition-all" style={{ width: `${pct}%` }} />
                           </div>
-                          <span className="font-mono text-[11px] text-[#6a6a6e]">{status ? `${completed}/12` : "queued"}</span>
+                          <span className="font-mono text-[11px] text-[#a1a1aa]">{status ? `${completed}/12` : "queued"}</span>
                         </div>
-                        <button onClick={() => router.push(`/onboarding?repo=${repo.id}`)} className="text-[11px] text-[#5a5a5e] transition-colors hover:text-[#8a8a8e]">
+                        <button onClick={() => router.push(`/onboarding?repo=${repo.id}`)} className="text-[11px] text-[#71717a] transition-colors hover:text-[#a1a1aa]">
                           View pipeline
                         </button>
-                        <button onClick={() => resync(repo.id)} disabled={!!action} className="text-[#5a5a5e] transition-colors hover:text-[#8a8a8e] disabled:opacity-50" title="Re-sync (re-run onboarding)">
+                        <button onClick={() => resync(repo.id)} disabled={!!action} className="text-[#71717a] transition-colors hover:text-[#a1a1aa] disabled:opacity-50" title="Re-sync (re-run onboarding)">
                           {action === "resync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         </button>
-                        <button onClick={() => setConfirmRemove(repo.id)} disabled={!!action} className="text-[#5a5a5e] transition-colors hover:text-[#e06060] disabled:opacity-50" title="Remove">
+                        <button onClick={() => setConfirmRemove(repo.id)} disabled={!!action} className="text-[#71717a] transition-colors hover:text-[#f87171] disabled:opacity-50" title="Remove">
                           {action === "remove" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </button>
                       </div>

@@ -92,8 +92,8 @@ export default function RepoSelector({ existing, onDone, onCancel }: {
 
   return (
     <div className="panel mx-auto max-w-3xl">
-      <div className="flex items-center justify-between border-b border-[#2a2a2e] px-5 py-3">
-        <div className="flex items-center gap-2 text-[#cccccc]">
+      <div className="flex items-center justify-between border-b border-[#2b2b2e] px-5 py-3">
+        <div className="flex items-center gap-2 text-[#e4e4e7]">
           <Github className="h-4 w-4" />
           <span className="text-sm font-semibold">Select repositories to onboard</span>
         </div>
@@ -101,40 +101,40 @@ export default function RepoSelector({ existing, onDone, onCancel }: {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 px-5 py-12 text-sm text-[#6a6a6e]">
+        <div className="flex items-center gap-2 px-5 py-12 text-sm text-[#a1a1aa]">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading your repositories…
         </div>
       ) : error ? (
-        <div className="px-5 py-10 text-center text-sm text-[#e06060]">{error}</div>
+        <div className="px-5 py-10 text-center text-sm text-[#f87171]">{error}</div>
       ) : repos.length === 0 ? (
-        <div className="px-5 py-10 text-center text-sm text-[#6a6a6e]">No repositories found for this token.</div>
+        <div className="px-5 py-10 text-center text-sm text-[#a1a1aa]">No repositories found for this token.</div>
       ) : (
         <>
-          <div className="flex items-center justify-between border-b border-[#2a2a2e] px-5 py-2.5">
-            <button onClick={toggleAll} className="text-xs text-[#7a9ec8] hover:text-[#9ab8e0]">
+          <div className="flex items-center justify-between border-b border-[#2b2b2e] px-5 py-2.5">
+            <button onClick={toggleAll} className="text-xs text-[#60a5fa] hover:text-[#93c5fd]">
               {allSelected ? "Deselect all" : "Select all"}
             </button>
-            <span className="text-[11px] text-[#6a6a6e]">{checked.size} of {selectable.length} selected</span>
+            <span className="text-[11px] text-[#a1a1aa]">{checked.size} of {selectable.length} selected</span>
           </div>
-          <div className="max-h-[55vh] divide-y divide-[#2a2a2e] overflow-y-auto">
+          <div className="max-h-[55vh] divide-y divide-[#2b2b2e] overflow-y-auto">
             {repos.map((r) => {
               const added = addedSlugs.has(repoSlug(r.name));
               return (
-                <label key={r.url} className={`flex items-center gap-3 px-5 py-2.5 ${added ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#25252b]"}`}>
-                  <input type="checkbox" checked={added ? false : checked.has(r.url)} disabled={added} onChange={() => toggle(r.url)} className="h-3.5 w-3.5 accent-[#264f78]" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-[#cccccc]">{r.name}</span>
+                <label key={r.url} className={`flex items-center gap-3 px-5 py-2.5 ${added ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#202020]"}`}>
+                  <input type="checkbox" checked={added ? false : checked.has(r.url)} disabled={added} onChange={() => toggle(r.url)} className="h-3.5 w-3.5 accent-[#3b82f6]" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-[#e4e4e7]">{r.name}</span>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {r.language && <span className="text-[10px] text-[#6a6a6e]">{r.language}</span>}
+                    {r.language && <span className="text-[10px] text-[#a1a1aa]">{r.language}</span>}
                     {r.private && <Badge icon={<Lock className="h-2.5 w-2.5" />} label="private" />}
                     {r.fork && <Badge icon={<GitFork className="h-2.5 w-2.5" />} label="fork" />}
                     {r.archived && <Badge icon={<Archive className="h-2.5 w-2.5" />} label="archived" />}
-                    {added && <span className="rounded bg-[#223040] px-1.5 py-0.5 text-[10px] text-[#7a9ec8]">added</span>}
+                    {added && <span className="rounded bg-[#1a2438] px-1.5 py-0.5 text-[10px] text-[#60a5fa]">added</span>}
                   </div>
                 </label>
               );
             })}
           </div>
-          <div className="flex items-center justify-between border-t border-[#2a2a2e] px-5 py-3">
+          <div className="flex items-center justify-between border-t border-[#2b2b2e] px-5 py-3">
             <button onClick={onCancel} className="btn-ghost text-xs">Cancel</button>
             <button onClick={onboardSelected} disabled={onboarding || checked.size === 0} className="btn-primary disabled:opacity-50">
               {onboarding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
@@ -149,7 +149,7 @@ export default function RepoSelector({ existing, onDone, onCancel }: {
 
 function Badge({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded bg-[#2a2a30] px-1.5 py-0.5 text-[10px] text-[#8a8a8e]">
+    <span className="inline-flex items-center gap-1 rounded bg-[#262626] px-1.5 py-0.5 text-[10px] text-[#a1a1aa]">
       {icon}{label}
     </span>
   );
