@@ -21,8 +21,11 @@ def _print_report(report: dict) -> None:
     print(f"\n{s['count']} questions | hit-rate: {s['hit_rate']:.2f} | MRR: {s['mrr']:.2f}")
 
 
-async def _amain(args) -> int:
+async def _amain(args: argparse.Namespace) -> int:
     from pathlib import Path
+    # Import the module, not the name: async_session_factory is None until
+    # _init_engine() runs, so a `from ... import async_session_factory` would
+    # capture None. Access it via the module after init.
     import app.db.session as _session
     from app.evals.engine import run_eval
     from app.evals.fixtures import load_fixture_repo, load_golden
