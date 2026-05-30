@@ -46,3 +46,52 @@ def test_dedup_by_path_keeps_first_and_skips_non_source_tools():
 def test_errored_tool_calls_produce_no_sources():
     invs = [{"tool": "read_file", "args": {"file_path": "x.py"}, "result": {"error": "File not found"}}]
     assert extract_sources(invs) == []
+
+
+import pytest
+from app.services.agent.loop import run_agent_loop
+
+
+class _Msg:
+    def __init__(self, content=None, tool_calls=None):
+        self.content = content
+        self.tool_calls = tool_calls
+        self.reasoning_content = None
+
+
+class _Resp:
+    def __init__(self, msg):
+        self.choices = [type("C", (), {"message": msg})()]
+
+
+class _TC:
+    def __init__(self, name, args):
+        self.id = "call_1"
+        self.function = type("F", (), {"name": name, "arguments": args})()
+
+
+@pytest.mark.asyncio
+async def test_loop_emits_sources_event_after_answer():
+    # Turn 1: one semantic_search tool call. Turn 2: a plain-text answer.
+    responses = [
+        _Resp(_Msg(tool_calls=[_TC("semantic_search", '{"query": "stripe"}')])),
+        _Resp(_Msg(content="Webhooks are verified in billing_webhooks.py.")),
+    ]
+    calls = iter(responses)
+
+    async def llm_call(messages, tools):
+        return next(calls)
+
+    async def execute_tool(name, args):
+        return {"success": True, "data": [{"file_path": "billing_webhooks.py", "start_line": 1, "end_line": 9}]}
+
+    events = [ev async for ev in run_agent_loop(
+        llm_call=llm_call, execute_tool=execute_tool, messages=[], tools=[])]
+
+    types = [e["type"] for e in events]
+    assert "sources" in types
+    sources_ev = next(e for e in events if e["type"] == "sources")
+    assert sources_ev["sources"] == [
+        {"path": "billing_webhooks.py", "tool": "semantic_search", "lines": "1-9"}]
+    # sources must come after the final text answer
+    assert types.index("sources") > types.index("text")

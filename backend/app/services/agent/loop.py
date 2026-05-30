@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from typing import AsyncIterator
 
+from .citations import extract_sources
 from .message_utils import (
     assistant_tool_calls_message,
     strip_tool_markup,
@@ -73,6 +74,10 @@ async def run_agent_loop(
     keep_tool_results: int = 8,
 ) -> AsyncIterator[dict]:
     nudges = 0
+    invocations: list[dict] = []
+
+    def _sources_event() -> dict:
+        return {"type": "sources", "sources": extract_sources(invocations)}
 
     for _iteration in range(max_iterations):
         # Elide stale tool outputs before re-sending the transcript so a deep
@@ -96,6 +101,7 @@ async def run_agent_loop(
                 yield {"type": "tool_start", "tool": name, "args": str(args)[:200]}
                 try:
                     result = await execute_tool(name, args)
+                    invocations.append({"tool": name, "args": args, "result": result})
                     result_str = json.dumps(result)[:4000]
                 except Exception as e:  # tool failures are data, not crashes
                     result_str = json.dumps({"error": str(e)})
@@ -108,6 +114,7 @@ async def run_agent_loop(
         if clean:
             messages.append({"role": "assistant", "content": clean})
             yield {"type": "text", "content": clean}
+            yield _sources_event()
             return
 
         # Empty, or content was nothing but leaked tool-call markup.
@@ -116,6 +123,7 @@ async def run_agent_loop(
             messages.append({"role": "system", "content": _NUDGE})
             continue
         yield {"type": "text", "content": _EMPTY_MESSAGE}
+        yield _sources_event()
         return
 
     # Step limit hit: one final plain-text wrap-up so the user learns what
@@ -127,5 +135,7 @@ async def run_agent_loop(
             getattr(response.choices[0].message, "content", None) or "")
         if clean:
             yield {"type": "text", "content": clean}
+            yield _sources_event()
             return
     yield {"type": "text", "content": _CAP_MESSAGE}
+    yield _sources_event()

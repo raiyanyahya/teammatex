@@ -54,8 +54,8 @@ class TestAgentLoop:
         msgs = [{"role": "user", "content": "read /a"}]
         events = await _collect(run_agent_loop(
             llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[{"x": 1}]))
-        assert [e["type"] for e in events] == ["tool_start", "tool_end", "text"]
-        assert events[-1]["content"] == "The file says hello."
+        assert [e["type"] for e in events] == ["tool_start", "tool_end", "text", "sources"]
+        assert events[-2]["content"] == "The file says hello."
 
     async def test_multiple_tool_calls_one_turn_all_run(self):
         llm = _scripted_llm([
@@ -116,7 +116,8 @@ class TestAgentLoop:
             llm_call=always_tool, execute_tool=_ok_exec,
             messages=[{"role": "user", "content": "x"}], tools=[],
             max_iterations=3))
-        assert events[-1]["type"] == "text"
+        assert events[-1]["type"] == "sources"
+        assert events[-2]["type"] == "text"
         # 3 iterations, each one tool call
         assert sum(1 for e in events if e["type"] == "tool_start") == 3
 
@@ -134,8 +135,9 @@ class TestAgentLoop:
         events = await _collect(run_agent_loop(
             llm_call=llm, execute_tool=_ok_exec,
             messages=[{"role": "user", "content": "x"}], tools=[], max_iterations=3))
-        assert events[-1]["type"] == "text"
-        assert "403" in events[-1]["content"]
+        assert events[-1]["type"] == "sources"
+        assert events[-2]["type"] == "text"
+        assert "403" in events[-2]["content"]
 
     async def test_reasoning_content_preserved_in_history(self):
         # A thinking model returns reasoning_content alongside tool calls; it
@@ -164,7 +166,8 @@ class TestAgentLoop:
             messages=[{"role": "user", "content": "x"}], tools=[]))
         end = [e for e in events if e["type"] == "tool_end"][0]
         assert "kaboom" in end["result"]
-        assert events[-1]["content"] == "recovered"
+        text_events = [e for e in events if e["type"] == "text"]
+        assert text_events[-1]["content"] == "recovered"
 
 
 # ─── token-saving behaviour ──────────────────────────────────────────────
