@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, Search, Settings } from "lucide-react";
+import { Search, Settings } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import NotificationsBell from "./NotificationsBell";
 
 const HIDDEN_ROUTES = ["/login", "/setup"];
 
@@ -79,9 +80,7 @@ export default function Topbar() {
         </kbd>
       </button>
 
-      <TopbarIcon label="Notifications">
-        <Bell size={14} />
-      </TopbarIcon>
+      <NotificationsBell />
       <TopbarIcon label="Settings" onClick={() => router.push("/admin")}>
         <Settings size={14} />
       </TopbarIcon>
