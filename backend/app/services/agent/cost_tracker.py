@@ -40,7 +40,9 @@ def _sync_log_cost(engine, provider, model, call_type, tokens_in, tokens_out, co
                 ),
                 {
                     "id": str(uuid.uuid4()),
-                    "date": datetime.now(timezone.utc).date(),
+                    # Full timestamp, not just the date: the cost log is ordered
+                    # and displayed by time, so same-day rows must be distinguishable.
+                    "date": datetime.now(timezone.utc),
                     "provider": provider,
                     "model": model,
                     "call_type": call_type,
