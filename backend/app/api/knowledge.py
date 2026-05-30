@@ -226,8 +226,8 @@ async def get_costs_summary(db: AsyncSession = Depends(get_db)):
 
     return {
         "total_tokens": int(total_tokens),
-        "total_cost_cents": int(total_cost),
-        "by_provider": [{"provider": p, "cost_cents": int(c)} for p, c in provider_result.all()],
+        "total_cost_cents": float(total_cost),
+        "by_provider": [{"provider": p, "cost_cents": float(c)} for p, c in provider_result.all()],
     }
 
 
@@ -242,7 +242,7 @@ async def get_costs_log(db: AsyncSession = Depends(get_db), limit: int = 20):
     logs = result.scalars().all()
     return [{"provider": l.provider, "model": l.model, "call_type": l.call_type,
              "tokens_in": l.tokens_in, "tokens_out": l.tokens_out,
-             "cost_cents": l.cost_cents, "date": str(l.date)} for l in logs]
+             "cost_cents": float(l.cost_cents), "date": str(l.date)} for l in logs]
 
 
 @router.get("/audit")

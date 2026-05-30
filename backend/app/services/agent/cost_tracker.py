@@ -12,7 +12,7 @@ async def log_cost(
     call_type: str,
     tokens_in: int,
     tokens_out: int,
-    cost_cents: int,
+    cost_cents: float,
 ) -> None:
     try:
         from sqlalchemy import create_engine, text
@@ -66,7 +66,7 @@ async def log_audit(
     summary: str = "",
     llm_calls: int = 0,
     tokens_used: int = 0,
-    cost_cents: int = 0,
+    cost_cents: float = 0,
     status: str = "success",
 ) -> None:
     try:

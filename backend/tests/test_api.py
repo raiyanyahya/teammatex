@@ -368,6 +368,27 @@ class TestTasksEndpoints:
         assert len(r.json()) == 2
 
 
+class TestCostsPrecision:
+    """The costs summary must preserve sub-cent costs — the dominant reality for
+    cheap models — not truncate them to zero (the old integer-cents bug)."""
+
+    async def test_summary_preserves_sub_cent_costs(self, api_client, api_db):
+        from app.models.audit import CostLog
+
+        api_db.add(CostLog(provider="deepseek", model="deepseek-v4-flash",
+                           call_type="chat", tokens_in=1000, tokens_out=100, cost_cents=0.028))
+        api_db.add(CostLog(provider="deepseek", model="deepseek-v4-flash",
+                           call_type="chat", tokens_in=2000, tokens_out=200, cost_cents=0.05))
+        await api_db.flush()
+
+        r = await api_client.get("/api/knowledge/costs/summary")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["total_tokens"] == 3300
+        # 0.028 + 0.05 = 0.078 cents — must NOT round to 0.
+        assert round(d["total_cost_cents"], 4) == 0.078
+
+
 class TestLogsEndpoint:
     """The Logs page fetches /api/logs/{service} as plain text and splits it on
     newlines, one row per log line, so the level filters (INFO/WARN/…) work. The

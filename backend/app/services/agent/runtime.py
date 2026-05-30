@@ -306,11 +306,8 @@ class AgentRuntime:
             yield f"data: {json.dumps(ev)}\n\n"
 
         if usage["in"] > 0:
-            pricing = {"deepseek": (0.014, 0.028), "openai": (0.15, 0.60),
-                       "anthropic": (0.30, 1.50), "groq": (0.0, 0.0)}
-            rate_in, rate_out = pricing.get(usage["provider"], (0.014, 0.028))
-            total_cost = (int(usage["in"] * rate_in / 1000 * 100)
-                          + int(usage["out"] * rate_out / 1000 * 100))
+            from app.services.agent.cost import cost_cents
+            total_cost = cost_cents(usage["model"], usage["in"], usage["out"], usage["provider"])
             try:
                 await log_cost(usage["provider"], usage["model"], "chat",
                                usage["in"], usage["out"], total_cost)

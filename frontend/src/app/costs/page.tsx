@@ -89,7 +89,12 @@ export default function CostsPage() {
   }, [log]);
 
   const tokens = formatTokens(summary.total_tokens);
-  const spend = (summary.total_cost_cents / 100).toFixed(2);
+  // Sub-cent precision when the spend is tiny (cheap models), 2 decimals otherwise.
+  const usd = (cents: number) => {
+    const d = cents / 100;
+    return d > 0 && d < 0.01 ? d.toFixed(4) : d.toFixed(2);
+  };
+  const spend = usd(summary.total_cost_cents);
   const avg = log.length ? (summary.total_cost_cents / 100 / log.length).toFixed(4) : "0";
 
   return (

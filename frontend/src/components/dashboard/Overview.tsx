@@ -108,7 +108,9 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
 
   const repoCount = repos.length;
   const tokens = cost?.total_tokens ?? 0;
-  const spent = ((cost?.total_cost_cents ?? 0) / 100).toFixed(2);
+  const spentUsd = (cost?.total_cost_cents ?? 0) / 100;
+  // Show sub-cent precision when spend is tiny (cheap models), else 2 decimals.
+  const spent = spentUsd > 0 && spentUsd < 0.01 ? spentUsd.toFixed(4) : spentUsd.toFixed(2);
 
   return (
     <div className="p-10">
