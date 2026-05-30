@@ -17,6 +17,9 @@ async def lifespan(app: FastAPI):
         from app.db.neo4j import get_neo4j_manager
         await get_neo4j_manager().verify_connectivity()
         logger.info("neo4j_connected")
+        from app.services.knowledge.graph import KnowledgeGraph
+        await KnowledgeGraph().ensure_schema()
+        logger.info("neo4j_schema_ready")
     except Exception as e:
         logger.warning("neo4j_unavailable", error=str(e))
 

@@ -1,4 +1,4 @@
-"""Verify all 21 models instantiate and have correct table names."""
+"""Verify all 22 models instantiate and have correct table names."""
 
 import pytest
 from sqlalchemy import inspect
@@ -20,6 +20,7 @@ from app.models.blocked import BlockedTask
 from app.models.api_registry import APIRegistryEntry
 from app.models.app_config import AppConfig
 from app.models.code_embedding import CodeEmbedding
+from app.models.concept import Concept
 
 
 EXPECTED_TABLES = {
@@ -28,14 +29,14 @@ EXPECTED_TABLES = {
     "audit_log", "feedback", "cost_log", "tech_debt_items",
     "dependency_snapshots", "permissions", "trust_level",
     "trust_metrics", "blocked_tasks", "api_registry", "app_config",
-    "code_embeddings",
+    "code_embeddings", "concepts",
 }
 
 ALL_MODELS = [
     User, Repo, RepoOnboardingState, Task, PR, Conversation, Message,
     Note, Integration, AuditLog, Feedback, CostLog, TechDebtItem,
     DependencySnapshot, Permission, TrustLevel, TrustMetrics,
-    BlockedTask, APIRegistryEntry, AppConfig, CodeEmbedding,
+    BlockedTask, APIRegistryEntry, AppConfig, CodeEmbedding, Concept,
 ]
 
 
@@ -44,7 +45,7 @@ class TestAllModels:
         # sqlite_session creates all tables on sqlite_engine (its side effect).
         inspector = inspect(sqlite_engine)
         tables = set(inspector.get_table_names())
-        assert len(tables) == 21, f"Expected 21 tables, got {len(tables)}: {tables}"
+        assert len(tables) == 22, f"Expected 22 tables, got {len(tables)}: {tables}"
 
     def test_all_tables_match_expected(self, sqlite_engine, sqlite_session):
         inspector = inspect(sqlite_engine)

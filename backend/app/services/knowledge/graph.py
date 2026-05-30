@@ -152,6 +152,40 @@ class KnowledgeGraph:
         SET c.email = $email, c.name = $name, c.version = $version
         """, id=contrib_nid, email=email, name=name, version=EXTRACTOR_VERSION)
 
+    async def ensure_schema(self) -> None:
+        """Heal and guard the contributor identity model. The onboarding pipeline
+        MERGEs Contributor nodes by id, but without a uniqueness constraint MERGE
+        isn't atomic, so concurrent workers leave several nodes sharing one id —
+        which is what makes the Team page show duplicates. We first collapse any
+        existing same-id duplicates (re-pointing their OWNS edges onto a single
+        survivor), then add the constraint that stops them from recurring. Order
+        matters: the constraint can't be created while duplicates still exist.
+        Best-effort and idempotent — safe to run on every startup."""
+        # 1. Merge same-id duplicates: keep the first node, move every other
+        #    node's owned files onto it, then delete the extras.
+        await self.run("""
+        MATCH (c:Contributor)
+        WITH c.id AS id, collect(c) AS nodes
+        WHERE size(nodes) > 1
+        WITH nodes[0] AS keep, nodes[1..] AS dups
+        UNWIND dups AS dup
+        OPTIONAL MATCH (dup)-[o:OWNS]->(f:File)
+        FOREACH (_ IN CASE WHEN f IS NULL THEN [] ELSE [1] END |
+            MERGE (keep)-[ko:OWNS]->(f)
+            SET ko.weight = CASE
+                WHEN ko.weight IS NULL THEN o.weight
+                WHEN o.weight IS NULL THEN ko.weight
+                ELSE ko.weight + o.weight END)
+        WITH DISTINCT dup
+        DETACH DELETE dup
+        """)
+        # 2. Now that ids are unique, install the constraint so MERGE becomes
+        #    atomic and the duplicates can never come back.
+        await self.run("""
+        CREATE CONSTRAINT contributor_id_unique IF NOT EXISTS
+        FOR (c:Contributor) REQUIRE c.id IS UNIQUE
+        """)
+
     async def add_call_relationship(
         self,
         repo_id: str,
@@ -327,15 +361,30 @@ class KnowledgeGraph:
         """Everyone the graph profiles, with the ownership footprint built from
         commit history: how many files each owns, across which repos and
         languages. `collect`/`count` skip nulls, so a contributor with no OWNS
-        edges still appears with files_owned=0 and empty repos/languages."""
+        edges still appears with files_owned=0 and empty repos/languages.
+
+        Identities are collapsed to one row per person: the onboarding pipeline
+        can leave several Contributor nodes for the same human — identical-id
+        duplicates (concurrent MERGE with no uniqueness constraint) and the same
+        person committing under multiple git emails. We group by a person key
+        (their name when present, else email) and count each owned file once
+        across all of that person's nodes, so the Team page shows no dupes and
+        no inflated file totals."""
         return await self.run("""
         MATCH (c:Contributor)
+        WITH c, coalesce(
+                 CASE WHEN trim(c.name) = '' THEN null ELSE trim(c.name) END,
+                 c.email
+             ) AS person_key
         OPTIONAL MATCH (c)-[:OWNS]->(f:File)
         OPTIONAL MATCH (r:Repository {repo_id: f.repo_id})
-        WITH c, count(DISTINCT f) AS files_owned,
+        WITH person_key,
+             head(collect(DISTINCT c.name)) AS name,
+             head(collect(DISTINCT c.email)) AS email,
+             count(DISTINCT f) AS files_owned,
              collect(DISTINCT r.name) AS repos,
              collect(DISTINCT f.language) AS languages
-        RETURN c.name AS name, c.email AS email, files_owned,
+        RETURN name, email, files_owned,
                [x IN repos WHERE x <> ""] AS repos,
                [x IN languages WHERE x <> ""] AS languages
         ORDER BY files_owned DESC, name ASC
