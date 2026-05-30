@@ -141,7 +141,16 @@ def _execute_stage(
     elif stage == OnboardingStage.HISTORY_MINING:
         clone_path = _get_clone_path(prev_result)
         name = _get_repo_name(prev_result) or local_name
-        return {"stage": stage, "clone_path": clone_path, "name": name, "processed": True}
+        # Pull requests live in the GitHub API (not the clone), so ingest them
+        # here as part of history mining. Best-effort: a GitHub/token hiccup must
+        # not fail onboarding — the auto_sync poll loop will retry later.
+        prs_synced = 0
+        try:
+            from app.services.integrations.pr_sync import sync_repo_prs_by_id
+            prs_synced = sync_repo_prs_by_id(repo_id).get("added", 0)
+        except Exception as e:
+            logger.warning("history_mining_pr_sync_failed", repo_id=repo_id, error=str(e)[:160])
+        return {"stage": stage, "clone_path": clone_path, "name": name, "prs_synced": prs_synced, "processed": True}
 
     elif stage == OnboardingStage.CODE_ANALYSIS:
         parser = CodeParser()

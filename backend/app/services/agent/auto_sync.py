@@ -66,9 +66,22 @@ class AutoSyncEngine:
                 logger.warning("auto_sync_repo_failed", repo=repo.local_name, error=str(e)[:100])
 
     async def _sync_repo(self, repo) -> dict:
+        import asyncio
         from pathlib import Path
         from app.services.knowledge.repo_manifest import RepoManifest
         from app.services.knowledge.incremental_graph import IncrementalGraphUpdater
+
+        # Pull requests live in the GitHub API, not the cloned git repo, so they
+        # are synced independently of (and before) the clone-dependent graph sync.
+        try:
+            from app.services.integrations.pr_sync import sync_repo_prs_by_id
+            pr_result = await asyncio.to_thread(sync_repo_prs_by_id, str(repo.id))
+            if pr_result.get("added") or pr_result.get("closed"):
+                logger.info("auto_sync_prs_updated", repo=repo.local_name,
+                            added=pr_result.get("added", 0), closed=pr_result.get("closed", 0),
+                            open=pr_result.get("open", 0))
+        except Exception as e:
+            logger.warning("auto_sync_pr_failed", repo=repo.local_name, error=str(e)[:120])
 
         clone_path = f"/data/repos/{repo.local_name}"
         if not Path(clone_path).exists():
