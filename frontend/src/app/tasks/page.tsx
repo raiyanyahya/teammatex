@@ -1,40 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Clock, GitBranch, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, X } from "lucide-react";
 
 type Priority = "low" | "medium" | "high";
 type ColumnId = "todo" | "doing" | "review" | "done";
 
 type Task = {
-  id: number;
+  id: string;
   title: string;
-  priority: Priority;
-  repo: string;
-  assignee: string;
-  estimate: string;
-  linked?: string[];
-  progress?: number;
-};
-
-const INITIAL: Record<ColumnId, Task[]> = {
-  todo: [
-    { id: 1, title: "Add rate limiting to auth endpoints", priority: "high", repo: "kit-fork", assignee: "yuji", estimate: "4h", linked: ["KIT-2104", "PR #847"] },
-    { id: 2, title: "Refactor payment service error handling", priority: "low", repo: "kit-fork", assignee: "jin", estimate: "1d", linked: [] },
-    { id: 3, title: "Document the queue backpressure model", priority: "medium", repo: "build-pipe-frk", assignee: "yuji", estimate: "2h", linked: [] },
-    { id: 4, title: "Migrate stripe webhook to idempotent flow", priority: "high", repo: "kit-fork", assignee: "maya", estimate: "6h", linked: ["PR #851"] },
-  ],
-  doing: [
-    { id: 5, title: "Update API documentation for v2", priority: "medium", repo: "yacs-frk", assignee: "arun", estimate: "3h", linked: ["PR #112"] },
-    { id: 6, title: "Investigate CI cache miss in build-pipe", priority: "high", repo: "build-pipe-frk", assignee: "yuji", estimate: "2h", linked: [], progress: 60 },
-  ],
-  review: [
-    { id: 7, title: "PR #847 — clarify retry semantics", priority: "medium", repo: "build-pipe-frk", assignee: "jin", estimate: "1h", linked: ["PR #847"] },
-  ],
-  done: [
-    { id: 8, title: "Fix login redirect loop on Safari", priority: "high", repo: "kit-fork", assignee: "yuji", estimate: "4h", linked: ["PR #844"] },
-    { id: 9, title: "Knowledge graph refresh for zapq", priority: "low", repo: "zapq-frk", assignee: "yuji", estimate: "8h", linked: [] },
-  ],
+  status: ColumnId;
+  priority?: Priority | null;
+  assignee?: string | null;
 };
 
 const COLUMNS: { id: ColumnId; label: string; accent: string }[] = [
@@ -50,41 +27,101 @@ const PRI_COLOR: Record<Priority, string> = {
   low: "paper-3",
 };
 
+const COLUMN_IDS: ColumnId[] = ["todo", "doing", "review", "done"];
+
+function groupByColumn(tasks: Task[]): Record<ColumnId, Task[]> {
+  const out: Record<ColumnId, Task[]> = { todo: [], doing: [], review: [], done: [] };
+  for (const t of tasks) {
+    const col = COLUMN_IDS.includes(t.status) ? t.status : "todo";
+    out[col].push(t);
+  }
+  return out;
+}
+
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Record<ColumnId, Task[]>>(INITIAL);
-  const [dragId, setDragId] = useState<number | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dragId, setDragId] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<ColumnId | null>(null);
   const [hoverCol, setHoverCol] = useState<ColumnId | null>(null);
+  const [composing, setComposing] = useState<ColumnId | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/tasks");
+      const data = await r.json();
+      setTasks(Array.isArray(data) ? data : []);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const board = useMemo(() => groupByColumn(tasks), [tasks]);
+
+  const moveTask = async (id: string, toCol: ColumnId) => {
+    const prev = tasks;
+    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: toCol } : t)));
+    try {
+      const r = await fetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: toCol }),
+      });
+      if (!r.ok) throw new Error();
+    } catch {
+      setTasks(prev); // revert on failure
+    }
+  };
 
   const drop = (toCol: ColumnId) => {
-    if (dragId == null || dragFrom == null || dragFrom === toCol) {
-      setDragId(null);
-      setDragFrom(null);
-      setHoverCol(null);
-      return;
-    }
-    setTasks((t) => {
-      const card = t[dragFrom].find((x) => x.id === dragId);
-      if (!card) return t;
-      return {
-        ...t,
-        [dragFrom]: t[dragFrom].filter((x) => x.id !== dragId),
-        [toCol]: [card, ...t[toCol]],
-      };
-    });
+    const id = dragId;
+    const from = dragFrom;
     setDragId(null);
     setDragFrom(null);
     setHoverCol(null);
+    if (id == null || from == null || from === toCol) return;
+    moveTask(id, toCol);
   };
 
-  const totals = useMemo(() => {
-    const all = Object.values(tasks).flat();
-    return {
-      total: all.length,
-      yuji: all.filter((t) => t.assignee === "yuji").length,
-      doing: tasks.doing.length,
-    };
-  }, [tasks]);
+  const createTask = async (status: ColumnId, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    try {
+      const r = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: clean, status }),
+      });
+      if (r.ok) {
+        const created = await r.json();
+        setTasks((ts) => [created, ...ts]);
+      }
+    } catch {}
+  };
+
+  const removeTask = async (id: string) => {
+    const prev = tasks;
+    setTasks((ts) => ts.filter((t) => t.id !== id));
+    try {
+      const r = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setTasks(prev);
+    }
+  };
+
+  const totals = useMemo(
+    () => ({
+      total: tasks.length,
+      yuji: tasks.filter((t) => t.assignee === "yuji").length,
+      doing: board.doing.length,
+    }),
+    [tasks, board]
+  );
 
   return (
     <div style={{ padding: 40, display: "flex", flexDirection: "column", height: "100%" }}>
@@ -98,13 +135,10 @@ export default function TasksPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--ink-2)", borderRadius: 6, border: "1px solid var(--line)" }}>
-            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11, background: "var(--ink-3)" }}>Board</button>
-            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} disabled>List</button>
-            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} disabled>Timeline</button>
-          </div>
-          <input className="input" placeholder="Filter by repo, person, label…" style={{ width: 240, fontSize: 12 }} />
-          <button className="btn btn-primary" disabled>
+          <button className="btn" onClick={load} disabled={loading}>
+            <RefreshCw size={13} /> Refresh
+          </button>
+          <button className="btn btn-primary" onClick={() => setComposing("todo")}>
             <Plus size={12} /> New task
           </button>
         </div>
@@ -135,14 +169,23 @@ export default function TasksPage() {
                 <span className="font-mono" style={{ fontSize: 11, color: "var(--paper-0)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
                   {col.label}
                 </span>
-                <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>{tasks[col.id].length}</span>
+                <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>{board[col.id].length}</span>
               </div>
-              <button className="btn btn-ghost" style={{ padding: "2px 6px" }} disabled>
+              <button className="btn btn-ghost" style={{ padding: "2px 6px" }} onClick={() => setComposing(col.id)}>
                 <Plus size={11} />
               </button>
             </div>
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", flex: 1 }}>
-              {tasks[col.id].map((t) => (
+              {composing === col.id && (
+                <Composer
+                  onCancel={() => setComposing(null)}
+                  onSubmit={(title) => {
+                    createTask(col.id, title);
+                    setComposing(null);
+                  }}
+                />
+              )}
+              {board[col.id].map((t) => (
                 <TaskCard
                   key={t.id}
                   task={t}
@@ -156,11 +199,14 @@ export default function TasksPage() {
                     setDragFrom(null);
                     setHoverCol(null);
                   }}
+                  onDelete={() => removeTask(t.id)}
                 />
               ))}
-              {tasks[col.id].length === 0 && (
+              {board[col.id].length === 0 && composing !== col.id && (
                 <div style={{ padding: "32px 12px", textAlign: "center" }}>
-                  <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>no tasks here</div>
+                  <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-4)" }}>
+                    {loading ? "loading…" : "no tasks here"}
+                  </div>
                 </div>
               )}
             </div>
@@ -171,66 +217,104 @@ export default function TasksPage() {
   );
 }
 
+function Composer({ onSubmit, onCancel }: { onSubmit: (title: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+
+  return (
+    <div style={{ background: "var(--ink-2)", border: "1px solid var(--line-strong)", borderRadius: 6, padding: 10 }}>
+      <input
+        ref={ref}
+        className="input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit(value);
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Task title…"
+        style={{ width: "100%", fontSize: 12, marginBottom: 8 }}
+      />
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => onSubmit(value)}>
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TaskCard({
   task,
   dragging,
   onDragStart,
   onDragEnd,
+  onDelete,
 }: {
   task: Task;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onDelete: () => void;
 }) {
+  const [hover, setHover] = useState(false);
+  const priColor = task.priority ? PRI_COLOR[task.priority] : "line-strong";
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         background: "var(--ink-2)",
         border: "1px solid var(--line-strong)",
-        borderLeft: `2px solid var(--${PRI_COLOR[task.priority]})`,
+        borderLeft: `2px solid var(--${priColor})`,
         borderRadius: 6,
         padding: 12,
         cursor: "grab",
         opacity: dragging ? 0.4 : 1,
+        position: "relative",
       }}
     >
-      <div style={{ fontSize: 13, lineHeight: 1.4, color: "var(--paper-0)", marginBottom: 10 }}>
-        {task.title}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: task.assignee || task.priority ? 10 : 0 }}>
+        <div style={{ fontSize: 13, lineHeight: 1.4, color: "var(--paper-0)" }}>{task.title}</div>
+        {hover && (
+          <button
+            className="btn btn-ghost"
+            style={{ padding: 2, height: 18, flexShrink: 0 }}
+            onClick={onDelete}
+            title="Delete task"
+          >
+            <X size={11} />
+          </button>
+        )}
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-        <span className="tag" style={{ fontSize: 9 }}>
-          <GitBranch size={9} /> {task.repo}
-        </span>
-        {task.linked?.map((l, i) => (
-          <span key={i} className="tag tag-sky" style={{ fontSize: 9 }}>{l}</span>
-        ))}
-      </div>
-
-      {task.progress != null && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            <span className="font-mono" style={{ fontSize: 9, color: "var(--paper-4)" }}>PROGRESS</span>
-            <span className="font-mono" style={{ fontSize: 9, color: "var(--amber)" }}>{task.progress}%</span>
-          </div>
-          <div style={{ height: 2, background: "var(--ink-3)", borderRadius: 1 }}>
-            <div style={{ height: "100%", width: `${task.progress}%`, background: "var(--amber)", borderRadius: 1 }} />
-          </div>
+      {(task.assignee || task.priority) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          {task.assignee ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Avatar name={task.assignee} />
+              <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>{task.assignee}</span>
+            </div>
+          ) : (
+            <span />
+          )}
+          {task.priority && (
+            <span className={`tag tag-${task.priority === "high" ? "rust" : task.priority === "medium" ? "amber" : ""}`} style={{ fontSize: 9 }}>
+              {task.priority}
+            </span>
+          )}
         </div>
       )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Avatar name={task.assignee} />
-          <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>{task.assignee}</span>
-        </div>
-        <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <Clock size={9} /> {task.estimate}
-        </span>
-      </div>
     </div>
   );
 }
