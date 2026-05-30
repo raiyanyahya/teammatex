@@ -1,3 +1,6 @@
+import pytest
+from pathlib import Path
+
 from app.evals.engine import score_item, aggregate
 
 
@@ -31,3 +34,23 @@ def test_aggregate_means():
     assert agg["count"] == 3
     assert round(agg["hit_rate"], 3) == round(2 / 3, 3)
     assert round(agg["mrr"], 3) == round((1.0 + 0.5 + 0.0) / 3, 3)
+
+
+@pytest.mark.asyncio
+async def test_fixture_retrieval_eval_meets_floor(async_db):
+    from app.evals.fixtures import load_fixture_repo, load_golden
+    from app.evals.engine import run_eval
+    from app.services.knowledge.embeddings import EmbeddingService
+
+    repo_id = "eval-fixture"
+    fixture_dir = Path(__file__).parent / "fixtures" / "eval_repo"
+    embedder = EmbeddingService()
+
+    await load_fixture_repo(async_db, embedder, fixture_dir, repo_id)
+    golden = load_golden("fixture.yaml")
+    report = await run_eval(async_db, embedder, golden, k=3)
+
+    # Every question should retrieve its file in the top 3 on this tiny, distinct corpus.
+    assert report["summary"]["hit_rate"] >= 0.8, report
+    q1 = next(i for i in report["items"] if i["id"] == "q1")
+    assert q1["rank"] == 1                       # the Stripe question hits its file first
