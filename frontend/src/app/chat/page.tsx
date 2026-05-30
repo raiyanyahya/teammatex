@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Sources from "../../components/chat/Sources";
 import {
   Bug,
   Compass,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 
 type Role = "user" | "assistant" | "tool";
+type Source = { path: string; tool: string; lines?: string };
 
 interface Message {
   role: Role;
@@ -26,6 +28,7 @@ interface Message {
   tool?: string;
   args?: string;
   result?: string;
+  sources?: Source[];
 }
 
 const STORAGE_KEY = "teammatex_chat";
@@ -101,6 +104,7 @@ export default function ChatPage() {
 
     let accumulated = "";
     const toolMessages: Message[] = [];
+    let sources: Source[] = [];
 
     const history = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -165,6 +169,8 @@ export default function ChatPage() {
                 result: raw.slice(0, 1000),
               });
               setActiveTool(null);
+            } else if (data.type === "sources") {
+              sources = Array.isArray(data.sources) ? data.sources : [];
             }
           } catch {}
         }
@@ -176,7 +182,7 @@ export default function ChatPage() {
       setActiveTool(null);
 
       if (accumulated) {
-        setMessages((prev) => [...prev, ...toolMessages, { role: "assistant", content: accumulated }]);
+        setMessages((prev) => [...prev, ...toolMessages, { role: "assistant", content: accumulated, sources }]);
       } else if (toolMessages.length > 0) {
         setMessages((prev) => [...prev, ...toolMessages, {
           role: "assistant",
@@ -409,6 +415,7 @@ function MessageRow({ m }: { m: Message }) {
           </span>
         </div>
         <div style={{ fontSize: 14, color: "var(--paper-0)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{m.content}</div>
+        <Sources sources={m.sources} />
       </div>
     </div>
   );
