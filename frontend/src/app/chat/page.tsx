@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Sources from "../../components/chat/Sources";
+import Sources, { Source } from "../../components/chat/Sources";
 import {
   Bug,
   Compass,
@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 
 type Role = "user" | "assistant" | "tool";
-type Source = { path: string; tool: string; lines?: string };
 
 interface Message {
   role: Role;
