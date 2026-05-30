@@ -7,7 +7,11 @@ class Settings(BaseSettings):
 
     teammate_name: str = "TeammateX"
     teammate_persona: str = "helpful_senior_dev"
-    teammate_secret_key: str = "change-me"
+    # The env convention is TEAMMATEX_* (see neo4j_uri). Without this alias the
+    # field maps to TEAMMATE_SECRET_KEY (no X), never matches the configured
+    # TEAMMATEX_SECRET_KEY, and the app silently signs every JWT with the public
+    # default "change-me" — which would let anyone forge a token past the gate.
+    teammate_secret_key: str = Field(default="change-me", validation_alias="TEAMMATEX_SECRET_KEY")
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

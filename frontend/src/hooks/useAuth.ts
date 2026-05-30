@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { logout as clearSession } from "../lib/session";
 
 interface User {
   id: string;
@@ -50,9 +51,8 @@ export function useAuth() {
     setLoading(false);
   }, [pathname, router]);
 
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  async function logout() {
+    await clearSession();
     setUser(null);
     router.push("/login");
   }

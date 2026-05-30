@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import AUTH_COOKIE
 from app.db.session import get_db
 from app.models.user import User
 from app.utils.auth import (
@@ -11,6 +12,21 @@ from app.utils.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# 30 days, matching the JWT exp in app.utils.auth.create_token.
+_COOKIE_MAX_AGE = 30 * 24 * 3600
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """Set the session token as an HttpOnly cookie so the browser sends it on
+    every same-origin API call automatically. SameSite=Lax blocks the cookie on
+    cross-site POSTs (CSRF mitigation). secure=False so it also works over plain
+    http on localhost; behind the https Caddy front door it is still sent."""
+    response.set_cookie(
+        AUTH_COOKIE, token,
+        httponly=True, samesite="lax", secure=False,
+        max_age=_COOKIE_MAX_AGE, path="/",
+    )
 
 
 class LoginRequest(BaseModel):
@@ -51,7 +67,7 @@ async def check_first_run(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
@@ -62,6 +78,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Account is disabled")
 
     token = create_token(str(user.id), user.email)
+    _set_auth_cookie(response, token)
 
     return {
         "token": token,
@@ -75,7 +92,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/register", status_code=201)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -90,6 +107,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     await db.refresh(user)
 
     token = create_token(str(user.id), user.email)
+    _set_auth_cookie(response, token)
 
     return {
         "token": token,
@@ -99,6 +117,13 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             "name": user.name,
         },
     }
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the auth cookie. The client also drops its localStorage token."""
+    response.delete_cookie(AUTH_COOKIE, path="/")
+    return {"ok": True}
 
 
 @router.get("/me")

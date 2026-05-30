@@ -14,10 +14,12 @@ import {
   ScrollText,
   Terminal,
   Settings,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "../../package.json";
+import { logout } from "../lib/session";
 
 const HIDDEN_ROUTES = ["/login", "/setup"];
 
@@ -190,6 +192,26 @@ export default function Sidebar() {
       ))}
 
       <PresenceCard name={agentName} uptime={uptime} version={pkg.version} />
+
+      <button
+        onClick={async () => {
+          await logout();
+          router.push("/login");
+        }}
+        className="mt-2 flex w-full items-center gap-2.5 rounded-[4px] px-2 py-[7px] text-left text-[13px] font-medium leading-none transition-colors"
+        style={{ color: "var(--paper-3)" }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(244, 237, 224, 0.03)";
+          e.currentTarget.style.color = "var(--paper-0)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "var(--paper-3)";
+        }}
+      >
+        <LogOut className="shrink-0" size={14} color="var(--paper-3)" />
+        <span className="flex-1 truncate">Sign out</span>
+      </button>
     </aside>
   );
 }

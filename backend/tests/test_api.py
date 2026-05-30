@@ -183,6 +183,267 @@ class TestKnowledgeGraphContributors:
             await g.run("MATCH (n) WHERE n.repo_id = $rid DETACH DELETE n", rid=repo_id)
             await g.run("MATCH (c:Contributor {email: $e}) DETACH DELETE c", e=email)
 
+    async def test_list_contributors_merges_same_person_across_emails(self):
+        """One human often commits under several git emails (work vs personal),
+        which the pipeline stores as separate Contributor nodes. list_contributors
+        must surface ONE row per person — keyed on name — counting each owned file
+        once across all of that person's nodes, so the Team page shows no dupes
+        and no inflated file totals."""
+        from app.services.knowledge.graph import KnowledgeGraph
+
+        g = KnowledgeGraph()
+        repo_id = "dedup-test-repo"
+        email_a = "dup@example.com"
+        email_b = "dup-alt@example.com"
+        try:
+            await g.ensure_repo_node(repo_id, "dedup-repo")
+            await g.ensure_file_node(repo_id, "a.py", "python", 10)
+            await g.ensure_file_node(repo_id, "b.py", "python", 20)
+
+            # Same person "Dup Person" under two different emails → two nodes with
+            # different ids (constraint-safe), one owning a.py, the other a.py
+            # (overlap) + b.py.
+            await g.ensure_contributor_node(email_a, "Dup Person")
+            await g.ensure_contributor_node(email_b, "Dup Person")
+            await g.add_ownership(email_a, repo_id, "a.py")
+            await g.add_ownership(email_b, repo_id, "a.py")
+            await g.add_ownership(email_b, repo_id, "b.py")
+
+            contributors = await g.list_contributors()
+            dup_rows = [c for c in contributors if c["name"] == "Dup Person"]
+
+            assert len(dup_rows) == 1, f"expected one merged person, got {dup_rows}"
+            row = dup_rows[0]
+            assert row["files_owned"] == 2  # a.py + b.py, each counted once
+            assert row["email"] in {email_a, email_b}
+            assert row["repos"] == ["dedup-repo"]
+            assert set(row["languages"]) == {"python"}
+        finally:
+            await g.run("MATCH (n) WHERE n.repo_id = $rid DETACH DELETE n", rid=repo_id)
+            await g.run("MATCH (c:Contributor) WHERE c.email IN $es DETACH DELETE c",
+                        es=[email_a, email_b])
+
+    async def test_ensure_schema_dedupes_nodes_and_adds_constraint(self):
+        """ensure_schema heals the concurrent-MERGE bug: it physically merges
+        Contributor nodes that share an id (re-pointing their OWNS edges onto a
+        single survivor) and then adds the uniqueness constraint that stops the
+        duplicates from ever coming back."""
+        from app.services.knowledge.graph import KnowledgeGraph
+        from app.services.knowledge.graph_ids import node_id
+
+        g = KnowledgeGraph()
+        repo_id = "schema-test-repo"
+        email = "schema-dup@example.com"
+        same_id = node_id("", "Contributor", email)
+        try:
+            # Start from a clean slate: drop the constraint so we can recreate the
+            # buggy same-id duplicates.
+            await g.run("DROP CONSTRAINT contributor_id_unique IF EXISTS")
+            await g.ensure_repo_node(repo_id, "schema-repo")
+            await g.ensure_file_node(repo_id, "x.py", "python", 10)
+            await g.ensure_file_node(repo_id, "y.py", "python", 20)
+            x_fid = node_id(repo_id, "File", "x.py")
+            y_fid = node_id(repo_id, "File", "y.py")
+
+            # Two nodes with the SAME id (the bug), each owning a different file.
+            await g.run("CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
+                        id=same_id, e=email)
+            await g.run("CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
+                        id=same_id, e=email)
+            # Each node owns one file, with an ownership weight that must survive
+            # the merge (find_owner ranks reviewers by it).
+            await g.run("MATCH (c:Contributor {id: $id}) WITH c LIMIT 1 "
+                        "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
+                        id=same_id, f=x_fid)
+            await g.run("MATCH (c:Contributor {id: $id}) WITH c SKIP 1 LIMIT 1 "
+                        "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
+                        id=same_id, f=y_fid)
+
+            before = (await g.run(
+                "MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id))[0]["n"]
+            assert before == 2
+
+            await g.ensure_schema()
+
+            after = await g.run(
+                "MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id)
+            assert after[0]["n"] == 1, "duplicate id nodes should be merged into one"
+
+            # The survivor keeps BOTH owned files (edges re-pointed, not lost)…
+            owned = await g.run(
+                "MATCH (c:Contributor {id: $id})-[:OWNS]->(f:File) "
+                "RETURN count(DISTINCT f) AS n", id=same_id)
+            assert owned[0]["n"] == 2
+            # …and the moved edge's ownership weight is carried over, not reset.
+            weights = await g.run(
+                "MATCH (c:Contributor {id: $id})-[o:OWNS]->(:File) RETURN o.weight AS w",
+                id=same_id)
+            assert all(row["w"] == 5 for row in weights), weights
+
+            constraints = await g.run("SHOW CONSTRAINTS YIELD name RETURN collect(name) AS names")
+            assert "contributor_id_unique" in constraints[0]["names"]
+        finally:
+            await g.run("MATCH (n) WHERE n.repo_id = $rid DETACH DELETE n", rid=repo_id)
+            await g.run("MATCH (c:Contributor {email: $e}) DETACH DELETE c", e=email)
+            # This test drops the constraint to recreate the buggy duplicates on
+            # the SHARED graph; if it errored before ensure_schema re-added it,
+            # restore the guard here so production is never left unprotected.
+            await g.ensure_schema()
+
+
+class TestTasksEndpoints:
+    """The Tasks board is backed by the real `tasks` table — list, create, move
+    (status change) and delete — not hardcoded frontend mock data."""
+
+    async def test_list_tasks_empty_by_default(self, api_client):
+        r = await api_client.get("/api/tasks")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    async def test_create_task_defaults_to_todo(self, api_client):
+        r = await api_client.post("/api/tasks", json={"title": "Write the docs"})
+        assert r.status_code == 201
+        body = r.json()
+        assert body["title"] == "Write the docs"
+        assert body["status"] == "todo"
+        assert body["id"]
+
+    async def test_create_task_persists_fields(self, api_client):
+        r = await api_client.post("/api/tasks", json={
+            "title": "Add rate limiting", "priority": "high",
+            "assignee": "yuji", "status": "doing",
+        })
+        assert r.status_code == 201
+        body = r.json()
+        assert body["priority"] == "high"
+        assert body["assignee"] == "yuji"
+        assert body["status"] == "doing"
+
+        listed = (await api_client.get("/api/tasks")).json()
+        assert any(t["id"] == body["id"] and t["title"] == "Add rate limiting" for t in listed)
+
+    async def test_move_task_changes_status(self, api_client):
+        created = (await api_client.post("/api/tasks", json={"title": "Move me"})).json()
+        assert created["status"] == "todo"
+
+        r = await api_client.patch(f"/api/tasks/{created['id']}", json={"status": "done"})
+        assert r.status_code == 200
+        assert r.json()["status"] == "done"
+
+        listed = (await api_client.get("/api/tasks")).json()
+        moved = next(t for t in listed if t["id"] == created["id"])
+        assert moved["status"] == "done"
+
+    async def test_update_unknown_task_returns_404(self, api_client):
+        r = await api_client.patch("/api/tasks/00000000-0000-0000-0000-000000000000",
+                                   json={"status": "done"})
+        assert r.status_code == 404
+
+    async def test_delete_task(self, api_client):
+        created = (await api_client.post("/api/tasks", json={"title": "Delete me"})).json()
+        r = await api_client.delete(f"/api/tasks/{created['id']}")
+        assert r.status_code == 200
+        assert r.json()["deleted"] is True
+
+        listed = (await api_client.get("/api/tasks")).json()
+        assert all(t["id"] != created["id"] for t in listed)
+
+    async def test_create_task_rejects_invalid_status(self, api_client):
+        """POST must reject an unknown status (422), mirroring PATCH — not
+        silently coerce it to 'todo'."""
+        r = await api_client.post("/api/tasks", json={"title": "x", "status": "nonsense"})
+        assert r.status_code == 422
+
+    async def test_create_task_rejects_overlong_title(self, api_client):
+        """title maps to a varchar(500) column; reject at the edge (422) instead
+        of letting it 500 at the database."""
+        r = await api_client.post("/api/tasks", json={"title": "x" * 501})
+        assert r.status_code == 422
+
+    async def test_list_tasks_respects_limit(self, api_client):
+        for i in range(3):
+            await api_client.post("/api/tasks", json={"title": f"t{i}"})
+        r = await api_client.get("/api/tasks", params={"limit": 2})
+        assert r.status_code == 200
+        assert len(r.json()) == 2
+
+
+class TestLogsEndpoint:
+    """The Logs page fetches /api/logs/{service} as plain text and splits it on
+    newlines, one row per log line, so the level filters (INFO/WARN/…) work. The
+    endpoint must return text/plain — a JSON-encoded string would escape every
+    newline into a literal \\n and collapse the whole log into a single row."""
+
+    async def test_logs_returned_as_plain_text(self, api_client):
+        r = await api_client.get("/api/logs/api")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/plain")
+        # A JSON-serialized string body would start with a double-quote; plain
+        # text must not.
+        assert not r.text.startswith('"')
+
+    async def test_unknown_service_is_plain_text(self, api_client):
+        r = await api_client.get("/api/logs/does-not-exist")
+        assert r.headers["content-type"].startswith("text/plain")
+        assert "Unknown service" in r.text
+        assert not r.text.startswith('"')
+
+
+class TestApiAuthGate:
+    """Data/mutation routers require an authenticated user; public routers
+    (auth, webhooks) and /health stay open. Auth rides as a Bearer header or the
+    HttpOnly tmx_token cookie."""
+
+    async def test_gated_endpoint_rejects_anonymous(self, anon_client):
+        r = await anon_client.get("/api/tasks")
+        assert r.status_code == 401
+
+    async def test_gated_mutation_rejects_anonymous(self, anon_client):
+        r = await anon_client.post("/api/tasks", json={"title": "no auth"})
+        assert r.status_code == 401
+
+    async def test_gated_endpoint_allows_bearer(self, api_client):
+        r = await api_client.get("/api/tasks")
+        assert r.status_code == 200
+
+    async def test_cookie_authenticates(self, anon_client):
+        from app.utils.auth import create_token
+        token = create_token("u", "u@example.com")
+        r = await anon_client.get("/api/tasks", cookies={"tmx_token": token})
+        assert r.status_code == 200
+
+    async def test_invalid_token_rejected(self, anon_client):
+        r = await anon_client.get("/api/tasks", cookies={"tmx_token": "garbage.token.value"})
+        assert r.status_code == 401
+
+    async def test_health_is_public(self, anon_client):
+        r = await anon_client.get("/api/health")
+        assert r.status_code == 200
+
+    async def test_login_is_public_and_sets_httponly_cookie(self, anon_client, api_db):
+        from app.models.user import User
+        from app.utils.auth import hash_password
+
+        api_db.add(User(email="gate@example.com", name="Gate",
+                        hashed_password=hash_password("password123")))
+        await api_db.flush()
+
+        r = await anon_client.post("/api/auth/login",
+                                   json={"email": "gate@example.com", "password": "password123"})
+        assert r.status_code == 200
+        set_cookie = r.headers.get("set-cookie", "")
+        assert "tmx_token=" in set_cookie
+        assert "HttpOnly" in set_cookie
+        assert "samesite=lax" in set_cookie.lower()
+
+    async def test_logout_is_public_and_clears_cookie(self, anon_client):
+        r = await anon_client.post("/api/auth/logout")
+        assert r.status_code == 200
+        # Deleting a cookie = re-set it empty/expired.
+        set_cookie = r.headers.get("set-cookie", "")
+        assert "tmx_token=" in set_cookie
+        assert ('Max-Age=0' in set_cookie) or ('expires=' in set_cookie.lower())
+
 
 class TestConfigEndpoints:
     """GET /api/config and /api/config/{key} must never echo stored secrets

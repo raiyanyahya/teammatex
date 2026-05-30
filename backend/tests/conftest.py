@@ -370,7 +370,35 @@ async def api_db(api_engine):
 @pytest_asyncio.fixture(loop_scope="session")
 async def api_client(api_db):
     """An httpx AsyncClient against the app, with get_db overridden to the
-    api_db transaction that is rolled back after each test (clean isolation)."""
+    api_db transaction that is rolled back after each test (clean isolation).
+    Carries a valid Bearer token by default — the data routers require auth, so
+    an anonymous client would 401. Use `anon_client` to test the gate itself."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.db.session import get_db
+    from app.main import app
+    from app.utils.auth import create_token
+
+    async def _override_get_db():
+        yield api_db
+
+    app.dependency_overrides[get_db] = _override_get_db
+    token = create_token("test-user", "tester@teammatex.local")
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(
+            transport=transport, base_url="http://test",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def anon_client(api_db):
+    """Like api_client but with NO credentials — for asserting that gated
+    endpoints reject anonymous callers and that public ones still allow them."""
     from httpx import ASGITransport, AsyncClient
 
     from app.db.session import get_db
