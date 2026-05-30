@@ -54,3 +54,10 @@ async def test_fixture_retrieval_eval_meets_floor(async_db):
     assert report["summary"]["hit_rate"] >= 0.8, report
     q1 = next(i for i in report["items"] if i["id"] == "q1")
     assert q1["rank"] == 1                       # the Stripe question hits its file first
+
+
+def test_threshold_exit_code():
+    from app.evals.__main__ import exit_code_for
+
+    assert exit_code_for(summary={"hit_rate": 0.9}, threshold=0.8) == 0
+    assert exit_code_for(summary={"hit_rate": 0.7}, threshold=0.8) == 1
