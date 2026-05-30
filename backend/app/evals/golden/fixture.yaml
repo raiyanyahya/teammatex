@@ -1,0 +1,20 @@
+repo: eval-fixture
+questions:
+  - id: q1
+    question: "How do we verify Stripe webhook signatures?"
+    expect_files: ["billing_webhooks.py"]
+  - id: q2
+    question: "Where is the password login and JWT verification?"
+    expect_files: ["auth.py"]
+  - id: q3
+    question: "How are failed jobs retried with backoff?"
+    expect_files: ["queue_retry.py"]
+  - id: q4
+    question: "Where do we create and deactivate users?"
+    expect_files: ["users.py"]
+  - id: q5
+    question: "How is a subscription marked active after payment?"
+    expect_files: ["billing_webhooks.py"]
+  - id: q6
+    question: "How do we decode and validate a session token?"
+    expect_files: ["auth.py"]
