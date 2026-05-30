@@ -108,6 +108,31 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
     return out
 
 
+@router.get("/activity")
+async def repo_activity(limit: int = 12, db: AsyncSession = Depends(get_db)):
+    """Recent real pull-request activity across all watched repos, newest first.
+    Powers the dashboard 'Live activity' feed with actual repo data."""
+    from app.models.pr import PR
+
+    rows = (await db.execute(
+        select(PR, Repo.local_name)
+        .join(Repo, PR.repo_id == Repo.id)
+        .order_by(PR.created_at.desc())
+        .limit(min(limit, 50))
+    )).all()
+    return [
+        {
+            "repo": local_name,
+            "number": pr.github_pr_number,
+            "title": pr.title,
+            "branch": pr.branch,
+            "status": pr.status,
+            "created_at": str(pr.created_at) if pr.created_at else None,
+        }
+        for pr, local_name in rows
+    ]
+
+
 @router.post("", response_model=dict, status_code=201)
 async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
     local_name = payload.local_name

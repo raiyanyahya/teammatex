@@ -7,11 +7,6 @@ import {
   Sparkles,
   GitBranch,
   GitPullRequest,
-  GitCommit,
-  MessageSquare,
-  CheckCircle2,
-  AlertTriangle,
-  BookOpen,
   Pencil,
 } from "lucide-react";
 
@@ -37,6 +32,14 @@ type Standup = {
 type Cost = { total_tokens: number; total_cost_cents: number };
 type GraphStats = { concepts: number };
 type Contributors = { count: number };
+type PRActivity = {
+  repo: string;
+  number: number | null;
+  title: string;
+  branch: string;
+  status: string;
+  created_at: string | null;
+};
 
 const SUGGESTED = [
   "Why is the build slow on kit-fork?",
@@ -54,6 +57,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   const [cost, setCost] = useState<Cost | null>(null);
   const [people, setPeople] = useState<number | null>(null);
   const [concepts, setConcepts] = useState<number | null>(null);
+  const [activity, setActivity] = useState<PRActivity[]>([]);
   const [ask, setAsk] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -74,6 +78,10 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
           }),
         );
         setOnboarded(done);
+      } catch {}
+      try {
+        const a = await fetch("/api/repos/activity?limit=8").then((x) => x.json());
+        setActivity(Array.isArray(a) ? a : []);
       } catch {}
       try { setStandup(await fetch("/api/features/standup").then((x) => x.json())); } catch {}
       try { setAudit((await fetch("/api/knowledge/audit?limit=8").then((x) => x.json())) || []); } catch {}
@@ -227,7 +235,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
 
       {/* Three-col: Activity / Today / Repos */}
       <div className="grid gap-6" style={{ gridTemplateColumns: "1.4fr 1fr 1fr" }}>
-        <ActivityCard audit={audit} />
+        <ActivityCard activity={activity} />
         <TodayCard standup={standup} />
         <ReposCard repos={repos} onboarded={onboarded} onClick={() => router.push("/repos")} />
       </div>
@@ -293,69 +301,50 @@ function formatTokens(n: number) {
   return String(n);
 }
 
-function ActivityCard({ audit }: { audit: Audit[] }) {
-  // Use real audit when available, otherwise gentle mock that matches the design vocabulary.
-  const items =
-    audit.length > 0
-      ? audit.slice(0, 7).map((a, i) => ({
-          t: new Date(a.completed_at || Date.now()).toLocaleTimeString([], { hour12: false }),
-          icon: iconForAction(a.action),
-          color: colorForStatus(a.status),
-          text: a.action,
-          sub: a.summary || "",
-          tag: a.status,
-        }))
-      : DEMO_ACTIVITY;
-
+function ActivityCard({ activity }: { activity: PRActivity[] }) {
+  // Real pull-request activity pulled from the watched repos (newest first).
   return (
     <div className="card">
       <div className="card-head">
         <div className="card-title">Live activity</div>
-        <span className="font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>last 1h</span>
+        <span className="font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>recent prs</span>
       </div>
       <div>
-        {items.map((a, i) => (
-          <div
-            key={i}
-            className="grid items-start gap-3 px-4 py-[11px]"
-            style={{
-              gridTemplateColumns: "auto auto 1fr auto",
-              borderBottom: i === items.length - 1 ? "none" : "1px solid var(--line)",
-            }}
-          >
-            <span className="pt-[3px] font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>{a.t}</span>
-            <span style={{ color: a.color, marginTop: 3 }}>
-              <a.icon size={13} />
-            </span>
-            <div>
-              <div className="text-[13px]" style={{ color: "var(--paper-0)" }}>{a.text}</div>
-              <div className="mt-0.5 font-mono text-[11px]" style={{ color: "var(--paper-3)" }}>{a.sub}</div>
-            </div>
-            <span className="tag uppercase">{a.tag}</span>
+        {activity.length === 0 ? (
+          <div className="px-4 py-6 font-mono text-[11px]" style={{ color: "var(--paper-4)" }}>
+            No pull-request activity yet.
           </div>
-        ))}
+        ) : (
+          activity.map((a, i) => (
+            <div
+              key={i}
+              className="grid items-start gap-3 px-4 py-[11px]"
+              style={{
+                gridTemplateColumns: "auto auto 1fr auto",
+                borderBottom: i === activity.length - 1 ? "none" : "1px solid var(--line)",
+              }}
+            >
+              <span className="pt-[3px] font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>
+                {a.created_at ? new Date(a.created_at).toLocaleDateString([], { month: "short", day: "numeric" }) : ""}
+              </span>
+              <span style={{ color: "var(--sky)", marginTop: 3 }}>
+                <GitPullRequest size={13} />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-[13px]" style={{ color: "var(--paper-0)" }}>
+                  {a.number ? `#${a.number} ` : ""}{a.title}
+                </div>
+                <div className="mt-0.5 truncate font-mono text-[11px]" style={{ color: "var(--paper-3)" }}>
+                  {a.repo}{a.branch ? ` · ${a.branch}` : ""}
+                </div>
+              </div>
+              <span className="tag uppercase">{a.status}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
-}
-
-const DEMO_ACTIVITY = [
-  { t: "12:47:02", icon: GitPullRequest, color: "var(--sky)", text: "Opened PR #847 in build-pipe-frk", sub: "docs: clarify retry semantics", tag: "pr" },
-  { t: "12:44:18", icon: MessageSquare, color: "var(--amber)", text: "Answered maya's question in #eng", sub: '"how does the queue handle backpressure?"', tag: "chat" },
-  { t: "12:38:55", icon: CheckCircle2, color: "var(--sage)", text: "Resolved Jira KIT-2104", sub: "auth token refresh race condition", tag: "jira" },
-  { t: "12:31:09", icon: GitCommit, color: "var(--paper-2)", text: "Pushed 3 commits to feat/rate-limit", sub: "kit-fork · co-authored with @arun", tag: "commit" },
-  { t: "12:22:40", icon: BookOpen, color: "var(--plum)", text: "Updated knowledge graph", sub: "+47 concepts from history mining", tag: "kg" },
-  { t: "12:15:01", icon: AlertTriangle, color: "var(--rust)", text: "Flagged regression risk in #847", sub: "callsite at queue.ts:142 may deadlock", tag: "alert" },
-  { t: "12:08:33", icon: MessageSquare, color: "var(--paper-2)", text: "Posted standup in #team-platform", sub: "3 blockers identified for jin", tag: "slack" },
-];
-
-function iconForAction(action: string) {
-  if (/pr|pull/i.test(action)) return GitPullRequest;
-  if (/commit/i.test(action)) return GitCommit;
-  if (/chat|message|answer/i.test(action)) return MessageSquare;
-  if (/alert|warn/i.test(action)) return AlertTriangle;
-  if (/knowledge|index|concept/i.test(action)) return BookOpen;
-  return CheckCircle2;
 }
 
 function colorForStatus(status: string) {
@@ -446,7 +435,7 @@ function statusForHealth(h: number): string {
 }
 
 function ReposCard({ repos, onboarded, onClick }: { repos: Repo[]; onboarded: number; onClick: () => void }) {
-  const display = repos.slice(0, 4).map((r) => {
+  const display = repos.slice(0, 8).map((r) => {
     const health = r.health ?? 0;
     return {
       name: r.local_name,
