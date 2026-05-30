@@ -3,6 +3,7 @@ import json
 import urllib.parse
 
 from fastapi import APIRouter
+from fastapi.responses import PlainTextResponse
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -16,7 +17,11 @@ CONTAINERS = {
 }
 
 
-@router.get("/{service}")
+# PlainTextResponse so the body is the raw log text with real newlines. The
+# default JSONResponse would wrap it in quotes and escape every newline to a
+# literal \n, collapsing the whole log into one line in the Logs UI (which
+# splits on newlines) and breaking the level filters.
+@router.get("/{service}", response_class=PlainTextResponse)
 async def get_logs(service: str):
     container = CONTAINERS.get(service)
     if not container:
