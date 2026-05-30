@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Search, Settings } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const HIDDEN_ROUTES = ["/login", "/setup"];
 
@@ -30,6 +30,7 @@ function titleFor(pathname: string) {
 
 export default function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
   if (HIDDEN_ROUTES.includes(pathname)) return null;
   const current = titleFor(pathname);
 
@@ -81,22 +82,24 @@ export default function Topbar() {
       <TopbarIcon label="Notifications">
         <Bell size={14} />
       </TopbarIcon>
-      <TopbarIcon label="Settings">
+      <TopbarIcon label="Settings" onClick={() => router.push("/admin")}>
         <Settings size={14} />
       </TopbarIcon>
     </div>
   );
 }
 
-function TopbarIcon({ children, label }: { children: React.ReactNode; label: string }) {
+function TopbarIcon({ children, label, onClick }: { children: React.ReactNode; label: string; onClick?: () => void }) {
   return (
     <button
       title={label}
+      onClick={onClick}
       className="grid h-[30px] w-[30px] place-items-center rounded-[var(--radius)] transition-colors"
       style={{
         border: "1px solid var(--line)",
         background: "var(--ink-1)",
         color: "var(--paper-3)",
+        cursor: onClick ? "pointer" : "default",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.color = "var(--paper-0)";
