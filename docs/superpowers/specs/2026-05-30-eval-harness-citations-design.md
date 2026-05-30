@@ -32,14 +32,19 @@ agent reads/searches/blames are therefore observable without changing tool behav
 A small, pure module with one responsibility: turn a turn's tool activity into a deduped,
 ordered list of sources.
 
-- **Source-producing tools** (allowlist): `semantic_search`, `read_file`, `edit_file`,
-  `grep_search`, `glob_search`, `get_blame`, `find_owner`, `find_dependencies`,
-  `find_dependents`, `get_architecture`.
-- For each such tool call, extract file path(s) from the tool args and/or result
-  (each tool has a known shape; semantic_search results carry `path`/`repo`/line range,
-  `read_file`/`get_blame` carry the path argument, etc.).
-- Produce `Source { path, repo, tool, lines? }`, deduped by `(path, repo)` (first/best
-  occurrence wins; prefer one that carries a line range), preserving discovery order.
+- **Source-producing tools** (allowlist, as built): `semantic_search` (results carry
+  `file_path`/`start_line`/`end_line`) plus the file-path-argument tools `read_file`,
+  `edit_file`, `write_file`, `get_blame`, `find_owner`.
+  - *Deferred fast-follow:* the list-of-paths tools `grep_search`, `glob_search`,
+    `find_dependents`, `find_dependencies`, `get_architecture` are NOT yet extracted —
+    their result shapes weren't pinned during planning. This only ever *under*-cites
+    (never wrong), so it preserves the "provably grounded" intent; extend when their
+    shapes are confirmed.
+- For each such tool call, extract file path(s) from the tool args and/or result.
+- Produce `Source { path, tool, lines? }`, deduped by `path` (first occurrence wins,
+  which keeps the entry carrying a line range), preserving discovery order. *`repo` is
+  deferred:* chat is single-repo today, so path alone is unambiguous; add `repo` to the
+  Source + dedup key when chat goes multi-repo.
 
 This module is pure (input: list of tool-event dicts → output: list of Source dicts) so it
 is trivially unit-testable with no DB/LLM.
@@ -74,9 +79,11 @@ so it is a faithful proxy for "are the citations right?")
     (reciprocal rank of the first expected file).
   - Aggregate: mean hit@k, mean MRR, count, and a per-item pass/detail table.
   - Return a structured `EvalReport` (data, not printing).
-- `__main__.py` — CLI wrapper: `python -m app.evals [--golden FILE] [--k 3] [--threshold 0.7]`.
-  Prints the report table; exits non-zero if `hit@k < threshold` → regression gate.
-  `--instance <url>` (optional) targets a live API instead of in-process retrieval.
+- `__main__.py` — CLI wrapper: `python -m app.evals [--golden FILE] [--k 3] [--threshold 0.8]`.
+  Prints the report table; exits non-zero if `hit_rate < threshold` → regression gate.
+  *Deferred:* a `--instance <url>` live-mode flag is NOT yet implemented — the CLI runs
+  in-process. The engine itself is instance-agnostic (`run_eval(db, embedder, …)`), so the
+  flag is a trivial add when a live golden set is authored.
 
 ### Self-contained fixture (the always-runnable corpus)
 - `backend/tests/fixtures/eval_repo/` — ~5 small files with **unambiguous, distinct** content,
