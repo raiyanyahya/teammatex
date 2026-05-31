@@ -217,8 +217,10 @@ class GitHubProvider(SCMProvider):
 
     @staticmethod
     def verify_webhook_signature(payload: bytes, signature: str) -> bool:
+        # Fail closed: an unconfigured secret means the sender cannot be
+        # authenticated, so reject rather than accept unverified payloads.
         if not settings.github_webhook_secret:
-            return True
+            return False
         mac = hmac.new(
             settings.github_webhook_secret.encode(),
             payload,

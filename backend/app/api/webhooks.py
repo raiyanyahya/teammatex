@@ -13,8 +13,11 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 def _verify_hmac(secret: str, payload: bytes, signature: str) -> bool:
+    # Fail closed: an unconfigured secret means we cannot authenticate the
+    # sender, so we reject rather than accept. Webhook endpoints are
+    # unauthenticated remote triggers — never let them through unverified.
     if not secret:
-        return True
+        return False
     mac = hmac.new(secret.encode(), payload, hashlib.sha256)
     expected = f"sha256={mac.hexdigest()}"
     return hmac.compare_digest(expected, signature)
@@ -49,9 +52,8 @@ async def github_webhook(request: Request):
 async def jira_webhook(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Hub-Signature", "")
-    if settings.jira_api_token:
-        if not _verify_hmac(settings.jira_api_token, body, signature):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    if not _verify_hmac(settings.jira_api_token, body, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload = json.loads(body)
     from app.services.integrations.jira import JiraProvider
@@ -66,11 +68,17 @@ async def slack_webhook(request: Request):
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
     signature = request.headers.get("X-Slack-Signature", "")
 
-    if settings.slack_signing_secret and timestamp and signature:
-        sig_basestring = f"v0:{timestamp}:{body.decode()}"
-        expected = f"v0={hmac.new(settings.slack_signing_secret.encode(), sig_basestring.encode(), hashlib.sha256).hexdigest()}"
-        if not hmac.compare_digest(expected, signature):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    # Fail closed: Slack signs every request (including the url_verification
+    # challenge) with the signing secret. No secret or missing headers means we
+    # cannot authenticate the sender, so reject.
+    if not settings.slack_signing_secret:
+        raise HTTPException(status_code=401, detail="Webhook signing secret not configured")
+    if not timestamp or not signature:
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    sig_basestring = f"v0:{timestamp}:{body.decode()}"
+    expected = f"v0={hmac.new(settings.slack_signing_secret.encode(), sig_basestring.encode(), hashlib.sha256).hexdigest()}"
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload = json.loads(body)
 

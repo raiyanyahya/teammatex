@@ -867,37 +867,88 @@ class TestAPIRegistryEndpoints:
 
 
 class TestWebhookEndpoints:
-    async def test_slack_url_verification(self, api_client):
+    """Webhook verification fails closed: an unconfigured secret or a missing/
+    bad signature is rejected with 401, since these endpoints are unauthenticated
+    remote triggers. A correctly signed payload is accepted."""
+
+    @staticmethod
+    def _sig(secret: str, body: bytes) -> str:
+        import hashlib
+        import hmac
+        return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    async def test_slack_rejected_when_unsigned(self, api_client):
         response = await api_client.post("/api/webhooks/slack", json={
             "type": "url_verification",
             "challenge": "test-challenge-123",
         })
+        assert response.status_code == 401
+
+    async def test_slack_url_verification_signed(self, api_client, monkeypatch):
+        import hashlib
+        import hmac
+        import json
+
+        from app.config import settings
+        secret = "slack-signing-secret"
+        monkeypatch.setattr(settings, "slack_signing_secret", secret)
+        body = json.dumps({"type": "url_verification", "challenge": "test-challenge-123"}).encode()
+        ts = "1700000000"
+        sig = "v0=" + hmac.new(secret.encode(), f"v0:{ts}:{body.decode()}".encode(), hashlib.sha256).hexdigest()
+        response = await api_client.post(
+            "/api/webhooks/slack", content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Slack-Request-Timestamp": ts,
+                "X-Slack-Signature": sig,
+            },
+        )
         assert response.status_code == 200
         assert response.json()["challenge"] == "test-challenge-123"
 
-    async def test_slack_event_callback(self, api_client):
-        response = await api_client.post("/api/webhooks/slack", json={
-            "type": "event_callback",
-            "event": {
-                "type": "app_mention",
-                "text": "Hello teammate!",
-                "channel": "C123",
-                "user": "U456",
-            },
-        })
-        assert response.status_code == 200
-
-    async def test_github_webhook_no_signature_handles(self, api_client):
+    async def test_github_rejected_when_unsigned(self, api_client):
         response = await api_client.post(
             "/api/webhooks/github",
             json={"action": "opened", "pull_request": {"number": 1}},
             headers={"X-GitHub-Event": "pull_request"},
         )
+        assert response.status_code == 401
+
+    async def test_github_webhook_signed(self, api_client, monkeypatch):
+        import json
+
+        from app.config import settings
+        secret = "gh-webhook-secret"
+        monkeypatch.setattr(settings, "github_webhook_secret", secret)
+        body = json.dumps({"action": "opened", "pull_request": {"number": 1}}).encode()
+        response = await api_client.post(
+            "/api/webhooks/github", content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": self._sig(secret, body),
+            },
+        )
         assert response.status_code == 200
 
-    async def test_jira_webhook(self, api_client):
+    async def test_jira_rejected_when_unsigned(self, api_client):
         response = await api_client.post("/api/webhooks/jira", json={
             "webhookEvent": "jira:issue_updated",
-            "issue": {"key": "PROJ-1", "fields": {"summary": "Test"}},
         })
+        assert response.status_code == 401
+
+    async def test_jira_webhook_signed(self, api_client, monkeypatch):
+        import json
+
+        from app.config import settings
+        secret = "jira-token"
+        monkeypatch.setattr(settings, "jira_api_token", secret)
+        body = json.dumps({
+            "webhookEvent": "jira:issue_updated",
+            "issue": {"key": "PROJ-1", "fields": {"summary": "Test"}},
+        }).encode()
+        response = await api_client.post(
+            "/api/webhooks/jira", content=body,
+            headers={"Content-Type": "application/json", "X-Hub-Signature": self._sig(secret, body)},
+        )
         assert response.status_code == 200

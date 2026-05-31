@@ -1,6 +1,6 @@
 import hashlib
+import hmac
 import secrets
-import string
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -22,7 +22,7 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
     salt, pw_hash = hashed.split("$", 1)
     computed = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), 100000).hex()
-    return computed == pw_hash
+    return hmac.compare_digest(computed, pw_hash)
 
 
 def create_token(user_id: str, email: str) -> str:
@@ -42,8 +42,8 @@ def decode_token(token: str) -> dict | None:
         return None
 
 
-def generate_default_password(length: int = 12) -> str:
-    return "test"
+def generate_default_password(length: int = 16) -> str:
+    return secrets.token_urlsafe(length)
 
 
 async def first_run_check(db) -> tuple[bool, str | None]:

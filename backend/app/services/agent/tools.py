@@ -222,14 +222,6 @@ class ToolRegistry:
 
     def _register_knowledge_tools(self):
         self.register(ToolDefinition(
-            name="semantic_search",
-            description="Search the codebase semantically for code related to a query. Returns relevant code chunks.",
-            parameters={...},
-            category="knowledge",
-        ))
-        # ... existing tools ...
-
-        self.register(ToolDefinition(
             name="web_search",
             description="Search the web for information. Returns search results.",
             parameters={
