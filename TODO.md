@@ -11,6 +11,17 @@ _What's left. Shipped work lives in git history / commit messages._
 - **Updates**: config-driven auto-sync interval + GitHub-webhook triggers.
 - **Slack / Jira**: wire credential save + actually use them.
 
+## Citations / evals follow-ups (deferred from the as-built design)
+- **Extend citation sources**: `grep_search`, `glob_search`, `find_dependents`,
+  `find_dependencies`, `get_architecture` are NOT yet extracted as citation sources
+  (their result shapes weren't pinned). Today this only ever *under*-cites (never wrong);
+  extend `agent/citations.py` when the shapes are confirmed.
+- **Multi-repo citations**: chat is single-repo today, so a file path alone is an
+  unambiguous Source key. Add `repo` to the Source + dedup key when chat goes multi-repo.
+- **Eval live mode**: the eval CLI runs in-process; a `--instance <url>` live-mode flag
+  is not yet implemented. The engine is instance-agnostic (`run_eval(db, embedder, …)`),
+  so it's a small add when a live golden set is authored.
+
 ## Known issues / tech debt
 - **Rotate credentials**: the leaked DeepSeek key + GitHub PAT are still in git history
   (user action — see `SECURITY.md`). The available GitHub PAT is read-only (pushes 403).
