@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🤖 TeammateX
+# 🦾 TeammateX
 
 ### The self-hosted AI teammate that onboards itself into your engineering team.
 
@@ -75,6 +75,7 @@ The result is a teammate that can say *"that retry logic lives in `queue/consume
 | 📋 **Runs the rituals** | Standup, task board, weekly digest — as deterministic product surfaces, not chat |
 | 🔌 **Integrates** | GitHub (PRs, repos, webhooks), Jira (boards/sprints), Slack (channels, posts) |
 | 📊 **Stays observable** | Costs, audit trail, live container logs, Prometheus + Grafana + Loki |
+| 🗂️ **Gives each dev a workspace** | Per-user autosaving notepad + private file uploads |
 | 🔒 **Self-hosted & private** | Your servers, your LLM key, cookie-gated API, nothing phones home |
 
 ---
@@ -98,7 +99,7 @@ The result is a teammate that can say *"that retry logic lives in `queue/consume
 
 ---
 
-## ⚡ Quickstart (local, 3 commands)
+## ⚡ Quickstart (local, 2 steps)
 
 > **Requirements:** Docker + Docker Compose v2, ~6 GB free RAM, and one LLM API key (DeepSeek, OpenAI, Anthropic, Groq — or a local Ollama model).
 
@@ -108,10 +109,9 @@ git clone <your-fork-url> teammatex && cd teammatex
 cp .env.example .env          # then edit .env — at minimum set TEAMMATEX_SECRET_KEY + one LLM key
 
 # 2. Launch the whole stack (api, worker, frontend, postgres, neo4j, redis, caddy…)
+#    A one-shot `migrate` service runs the DB migrations automatically before
+#    the API starts — no manual step.
 docker compose up -d --build
-
-# 3. Run database migrations (the app does NOT auto-migrate)
-docker compose exec api alembic upgrade head
 ```
 
 Then open **http://localhost:3000** (or **https://localhost** through Caddy).
@@ -224,6 +224,14 @@ A background poller (interval-configurable) periodically re-syncs each repo: it 
 
 Batteries included for running this for real: **Prometheus** (metrics), **Grafana** (dashboards), **Loki + Promtail** (log aggregation), **Flower** (Celery task monitor), and **node-exporter** — all wired in the compose file and toggleable.
 
+### 16. Notepad
+
+A per-developer scratchpad at **`/notepad`** — a black, full-height editor that **autosaves** as you type (no Save button). One private note per user, persisted server-side, so it survives reloads and follows you across sessions.
+
+### 17. Uploads
+
+A private file area at **`/uploads`** where each developer can **drag-and-drop or pick files** (up to 25 MB), then download or delete them later. Files are scoped to the uploader (no one else sees them), stored under a generated name so the original filename can't traverse the filesystem, and always served as attachments. **Store-only — uploaded files are never executed.**
+
 ---
 
 ## 🏗 Architecture
@@ -310,12 +318,13 @@ sed -i "s|^TEAMMATEX_SECRET_KEY=.*|TEAMMATEX_SECRET_KEY=$(python3 -c 'import sec
 
 Caddy is already the front door (ports 80/443). Set your hostname in `docker/Caddyfile` (replace the local placeholder with `teammatex.example.com`). Caddy provisions a Let's Encrypt certificate automatically on first request — just make sure DNS `A`/`AAAA` records point at the box and ports 80/443 are open.
 
-### 5. Launch & migrate
+### 5. Launch
 
 ```bash
 docker compose up -d --build
-docker compose exec api alembic upgrade head        # one-time + after every upgrade
 ```
+
+A one-shot `migrate` service runs `alembic upgrade head` and exits before the API and workers start, so the stack **self-migrates on every `up`** — no manual migration step, on first launch or after an upgrade.
 
 ### 6. First login & hardening
 
@@ -330,11 +339,10 @@ Log in at `https://teammatex.example.com`, **change the admin password immediate
 ```bash
 docker compose ps                 # health of every service
 docker compose logs -f api        # follow logs (or use the in-app Logs page)
-docker compose pull && docker compose up -d   # update images
-docker compose exec api alembic upgrade head  # re-run after updates
+docker compose pull && docker compose up -d   # update images (auto-migrates on start)
 
 # Backups — the stateful volumes:
-#   postgres_data · neo4j_data · cloned_repos · grafana_data · caddy_data
+#   postgres_data · neo4j_data · cloned_repos · uploads_data · grafana_data · caddy_data
 docker run --rm -v teammatex_postgres_data:/data -v "$PWD":/backup alpine \
   tar czf /backup/postgres-$(date +%F).tgz -C /data .
 ```
@@ -416,9 +424,10 @@ Interactive docs at **`/docs`** (Swagger) and **`/redoc`**. A taste of the surfa
 |---|---|
 | **Auth** | `POST /auth/login` · `POST /auth/logout` · `POST /auth/register` · `GET /auth/me` · `POST /auth/change-password` |
 | **Agent** | `POST /agent/chat` · `POST /agent/plan` · `POST /agent/validate` · `GET /agent/tools` |
-| **Repos** | `GET /repos` · `POST /repos` · `POST /repos/bulk` · `GET /repos/activity` · `GET /repos/{id}/onboarding` · `POST /repos/{id}/retry` |
-| **Knowledge** | `GET /knowledge/contributors` · `GET /knowledge/concepts` · `POST /knowledge/search` · `GET /knowledge/graph/*` · `GET /knowledge/costs/*` |
+| **Repos** | `GET /repos` · `POST /repos` · `POST /repos/bulk` · `GET /repos/activity` · `GET /repos/onboarding-summary` · `GET /repos/{id}/onboarding` · `POST /repos/{id}/retry` |
+| **Knowledge** | `GET /knowledge/contributors` · `GET /knowledge/concepts` · `POST /knowledge/search` · `GET /knowledge/suggested-questions` · `GET /knowledge/graph/*` · `GET /knowledge/costs/*` |
 | **Tasks** | `GET /tasks` · `POST /tasks` · `PATCH /tasks/{id}` · `DELETE /tasks/{id}` |
+| **Workspace** | `GET/POST/DELETE /uploads` · `GET /uploads/{id}/download` · `GET/POST /notepad` |
 | **Features** | `GET/POST /features/standup` · `GET /features/digest` · `POST /features/release-notes` · `POST /features/tests/*` |
 | **Integrations** | `GET /integrations/github/repos` · `GET /integrations/jira/*` · `GET /integrations/slack/channels` |
 | **Ops** | `GET /health` · `GET /logs/{service}` · `GET /config` · `PUT /config/{key}` |
@@ -466,7 +475,7 @@ Different jobs. **pgvector** answers *"what code is semantically similar to this
 <details>
 <summary><strong>The dashboard says "0 repos" / data looks empty.</strong></summary>
 
-You haven't onboarded a repo yet (or migrations didn't run). Run `docker compose exec api alembic upgrade head`, then add a repo via **Onboarding**. Watch progress per-stage; the dashboard fills in once the graph and embeddings exist.
+You probably haven't onboarded a repo yet — add one via **Onboarding**. Watch progress per-stage; the dashboard fills in once the graph and embeddings exist. (Migrations run automatically on `up` via the one-shot `migrate` service, so an empty DB usually isn't the cause.)
 </details>
 
 <details>
@@ -480,9 +489,8 @@ Expected. JWTs are signed with that key — rotating it invalidates existing ses
 
 ```bash
 git pull && docker compose up -d --build
-docker compose exec api alembic upgrade head
 ```
-The app never auto-migrates, so always run `alembic upgrade head` after pulling.
+The one-shot `migrate` service applies any new DB migrations automatically before the API starts — no manual `alembic` step needed.
 </details>
 
 <details>
