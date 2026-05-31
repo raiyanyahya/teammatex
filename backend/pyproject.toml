@@ -9,6 +9,7 @@ packages = [{ include = "app" }]
 [tool.poetry.dependencies]
 python = "~3.12"
 fastapi = "^0.115"
+python-multipart = "^0.0.9"
 uvicorn = { extras = ["standard"], version = "^0.30" }
 gunicorn = "^22.0"
 sqlalchemy = { extras = ["asyncio"], version = "^2.0" }

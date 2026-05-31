@@ -15,6 +15,8 @@ import {
   Terminal,
   Settings,
   LogOut,
+  Upload,
+  NotebookPen,
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -37,6 +39,8 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/chat", label: "Chat", icon: MessageSquare },
       { href: "/standup", label: "Standup", icon: ListChecks },
+      { href: "/notepad", label: "Notepad", icon: NotebookPen },
+      { href: "/uploads", label: "Uploads", icon: Upload },
     ],
   },
   {

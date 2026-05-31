@@ -15,6 +15,8 @@ from app.models.trust import TrustLevel, TrustMetrics
 from app.models.blocked import BlockedTask
 from app.models.api_registry import APIRegistryEntry
 from app.models.app_config import AppConfig
+from app.models.upload import Upload
+from app.models.notepad import Notepad
 try:
     from app.models.code_embedding import CodeEmbedding
     _has_code_embedding = True
@@ -48,6 +50,8 @@ __all__ = [
     "BlockedTask",
     "APIRegistryEntry",
     "AppConfig",
+    "Upload",
+    "Notepad",
 ]
 
 if _has_code_embedding:

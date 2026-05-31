@@ -53,6 +53,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - cloned_repos:/data/repos
+      - uploads_data:/data/uploads
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
@@ -228,6 +229,7 @@ volumes:
   neo4j_logs:
   redis_data:
   cloned_repos:
+  uploads_data:
   caddy_data:
   caddy_config:
   prometheus_data:
