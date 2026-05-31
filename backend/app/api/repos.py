@@ -195,9 +195,16 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
             base_url="https://api.github.com",
             headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}, timeout=30,
         ) as client:
+            # GitHub caps per_page at 100, so importing more than that means
+            # paginating. Pull up to MAX_REPOS across pages (5 × 100) instead of
+            # silently stopping at the first 100.
+            MAX_REPOS = 500
+            PER_PAGE = 100
+            working = None
             for endpoint in [f"/orgs/{org}/repos", f"/users/{org}/repos"]:
-                resp = await client.get(endpoint, params={"per_page": 100, "type": "all"})
+                resp = await client.get(endpoint, params={"per_page": PER_PAGE, "type": "all", "page": 1})
                 if resp.status_code == 200:
+                    working = endpoint
                     break
                 if resp.status_code == 401:
                     raise HTTPException(status_code=401, detail="GitHub token is invalid or expired. Update it in Settings → Integrations.")
@@ -205,7 +212,23 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
                 status = resp.status_code
                 msg = resp.json().get("message", "Unknown error")
                 raise HTTPException(status_code=400, detail=f"GitHub API returned {status}: {msg}")
+
             gh_repos = resp.json()
+            last_count = len(gh_repos)
+            page = 2
+            # Keep paging while the last page was full (more may remain) and we
+            # haven't hit the cap. A short page means we've reached the end.
+            while last_count == PER_PAGE and len(gh_repos) < MAX_REPOS:
+                page_resp = await client.get(working, params={"per_page": PER_PAGE, "type": "all", "page": page})
+                if page_resp.status_code != 200:
+                    break
+                batch = page_resp.json()
+                last_count = len(batch)
+                if not batch:
+                    break
+                gh_repos.extend(batch)
+                page += 1
+            gh_repos = gh_repos[:MAX_REPOS]
 
         added = []
         for r in gh_repos:

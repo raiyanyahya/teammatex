@@ -34,9 +34,23 @@ class GitHubProvider(SCMProvider):
         )
 
     async def list_repos(self) -> list[RepoInfo]:
-        response = await self.client.get("/user/repos", params={"per_page": 100, "sort": "updated"})
-        response.raise_for_status()
-        repos = response.json()
+        # GitHub caps per_page at 100; paginate up to MAX_REPOS so users with
+        # more than 100 repos see them all, not just the first page.
+        MAX_REPOS = 500
+        PER_PAGE = 100
+        repos: list[dict] = []
+        page = 1
+        while len(repos) < MAX_REPOS:
+            response = await self.client.get(
+                "/user/repos", params={"per_page": PER_PAGE, "sort": "updated", "page": page}
+            )
+            response.raise_for_status()
+            batch = response.json()
+            repos.extend(batch)
+            if len(batch) < PER_PAGE:
+                break
+            page += 1
+        repos = repos[:MAX_REPOS]
         return [
             RepoInfo(
                 id=str(r["id"]),
