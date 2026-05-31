@@ -76,7 +76,7 @@ function BrandMark() {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [agentName, setAgentName] = useState("Yuji");
+  const [agentName, setAgentName] = useState("");
   const [uptime, setUptime] = useState<string>("…");
 
   useEffect(() => {
@@ -191,7 +191,7 @@ export default function Sidebar() {
         </div>
       ))}
 
-      <PresenceCard name={agentName} uptime={uptime} version={pkg.version} />
+      <PresenceCard name={agentName || "Teammate"} uptime={uptime} version={pkg.version} />
 
       <button
         onClick={async () => {

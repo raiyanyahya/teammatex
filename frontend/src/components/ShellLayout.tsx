@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
+import OnboardingBanner from "@/components/OnboardingBanner";
 
 const FULLSCREEN_ROUTES = ["/login", "/setup"];
 
@@ -29,6 +30,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         style={{ background: "var(--ink-0)" }}
       >
         <Topbar />
+        <OnboardingBanner />
         <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </main>
     </div>

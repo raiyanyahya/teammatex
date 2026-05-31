@@ -133,6 +133,47 @@ async def repo_activity(limit: int = 12, db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/onboarding-summary")
+async def onboarding_summary(db: AsyncSession = Depends(get_db)):
+    """Global onboarding state for the 'teammate is busy' banner: how many active
+    repos are fully onboarded vs still processing, plus the names still in
+    flight. A repo with a failed stage is neither 'ready' nor 'onboarding' — it
+    is stuck, so it never keeps the banner up forever."""
+    from app.models.repo import RepoOnboardingState
+
+    repos = (await db.execute(select(Repo).where(Repo.is_active == True))).scalars().all()
+    if not repos:
+        return {"total": 0, "ready": 0, "onboarding": []}
+
+    repo_ids = [r.id for r in repos]
+    rows = (await db.execute(
+        select(RepoOnboardingState.repo_id, RepoOnboardingState.status)
+        .where(RepoOnboardingState.repo_id.in_(repo_ids))
+    )).all()
+    total_by: dict[str, int] = {}
+    done_by: dict[str, int] = {}
+    failed_by: dict[str, int] = {}
+    for rid, status in rows:
+        total_by[rid] = total_by.get(rid, 0) + 1
+        if status == "completed":
+            done_by[rid] = done_by.get(rid, 0) + 1
+        elif status == "failed":
+            failed_by[rid] = failed_by.get(rid, 0) + 1
+
+    ready = 0
+    onboarding: list[str] = []
+    for r in repos:
+        total = total_by.get(r.id, 0)
+        done = done_by.get(r.id, 0)
+        failed = failed_by.get(r.id, 0)
+        if total > 0 and done == total:
+            ready += 1
+        elif failed == 0:
+            # No stages yet (just queued) or stages still running — in flight.
+            onboarding.append(r.local_name)
+    return {"total": len(repos), "ready": ready, "onboarding": onboarding}
+
+
 @router.post("", response_model=dict, status_code=201)
 async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
     local_name = payload.local_name

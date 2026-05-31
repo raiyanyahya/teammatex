@@ -41,13 +41,6 @@ type PRActivity = {
   created_at: string | null;
 };
 
-const SUGGESTED = [
-  "Why is the build slow on kit-fork?",
-  "Summarize this week's PRs",
-  "Who knows the billing module?",
-  "Find security issues in zapq",
-];
-
 export default function Overview({ name, onRename }: { name: string; onRename: (n: string) => Promise<void> }) {
   const router = useRouter();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -59,6 +52,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   const [concepts, setConcepts] = useState<number | null>(null);
   const [activity, setActivity] = useState<PRActivity[]>([]);
   const [ask, setAsk] = useState("");
+  const [suggested, setSuggested] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
 
@@ -93,6 +87,10 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
       try {
         const g: GraphStats = await fetch("/api/knowledge/graph/stats").then((x) => x.json());
         setConcepts(g?.concepts ?? 0);
+      } catch {}
+      try {
+        const sq = await fetch("/api/knowledge/suggested-questions").then((x) => x.json());
+        setSuggested(Array.isArray(sq?.questions) ? sq.questions : []);
       } catch {}
     })();
   }, []);
@@ -159,7 +157,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
           >
             <div>
               <div className="font-mono text-[10px] tracking-[0.12em]" style={{ color: "var(--paper-3)" }}>
-                {name.toUpperCase()} · KNOWLEDGE GRAPH
+                {(name || "Teammate").toUpperCase()} · KNOWLEDGE GRAPH
               </div>
               <div className="mt-1.5 font-serif text-[24px] leading-[1.1]">
                 I&rsquo;ve indexed{" "}
@@ -195,7 +193,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
                 value={ask}
                 onChange={(e) => setAsk(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitAsk()}
-                placeholder={`Ask ${name} anything about your codebase, team, or history…`}
+                placeholder={`Ask ${name || "your teammate"} anything about your codebase, team, or history…`}
                 className="flex-1 bg-transparent font-serif text-[15px] outline-none"
                 style={{ color: "var(--paper-0)" }}
               />
@@ -204,16 +202,22 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
               </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {SUGGESTED.map((q) => (
-                <button
-                  key={q}
-                  className="tag"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => { setAsk(q); submitAsk(q); }}
-                >
-                  {q}
-                </button>
-              ))}
+              {suggested.length > 0 ? (
+                suggested.map((q) => (
+                  <button
+                    key={q}
+                    className="tag"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => { setAsk(q); submitAsk(q); }}
+                  >
+                    {q}
+                  </button>
+                ))
+              ) : (
+                <span className="font-mono text-[12px]" style={{ color: "var(--paper-4)" }}>
+                  Onboard a repo to start asking questions.
+                </span>
+              )}
             </div>
           </div>
         </div>

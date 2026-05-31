@@ -19,6 +19,24 @@ services:
       - caddy_config:/config
 
   # ─── Backend ────────────────────────────────────────────
+  # ─── DB migrations (one-shot) ───────────────────────────
+  # Runs `alembic upgrade head` once and exits; api/workers wait for it to finish
+  # via service_completed_successfully. A fresh `docker compose up` therefore
+  # self-migrates — no manual step and no "relation does not exist" errors during
+  # the startup window. Single migrator = no race between api and worker replicas.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.api
+    env_file: .env
+    networks:
+      - teammatex
+    command: alembic upgrade head
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     <<: *common
     build:
@@ -31,6 +49,8 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - cloned_repos:/data/repos
       - /var/run/docker.sock:/var/run/docker.sock
@@ -56,6 +76,8 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - cloned_repos:/data/repos
     deploy:
@@ -72,6 +94,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   # ─── Frontend ────────────────────────────────────────────
   frontend:
