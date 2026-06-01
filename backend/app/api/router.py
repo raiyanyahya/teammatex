@@ -17,6 +17,7 @@ from app.api.permissions import router as permissions_router
 from app.api.tasks import router as tasks_router
 from app.api.uploads import router as uploads_router
 from app.api.notepad import router as notepad_router
+from app.api.conversations import router as conversations_router
 
 from app.api.logs_endpoint import router as logs_router
 from app.api.reporting import router as reports_router
@@ -43,6 +44,7 @@ api_router.include_router(permissions_router, dependencies=_auth)
 api_router.include_router(tasks_router, dependencies=_auth)
 api_router.include_router(uploads_router, dependencies=_auth)
 api_router.include_router(notepad_router, dependencies=_auth)
+api_router.include_router(conversations_router, dependencies=_auth)
 api_router.include_router(logs_router, dependencies=_auth)
 api_router.include_router(reports_router, dependencies=_auth)
 

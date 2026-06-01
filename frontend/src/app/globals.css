@@ -286,3 +286,56 @@
 }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Chat markdown rendering ─────────────────────────────────────────── */
+.md-body { font-size: 14px; line-height: 1.6; color: var(--paper-0); }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body p { margin: 0 0 10px; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  font-family: var(--serif); color: var(--paper-0);
+  margin: 16px 0 8px; line-height: 1.25; font-weight: 600;
+}
+.md-body h1 { font-size: 21px; }
+.md-body h2 { font-size: 18px; }
+.md-body h3 { font-size: 16px; }
+.md-body h4 { font-size: 14px; }
+.md-body ul, .md-body ol { margin: 0 0 10px; padding-left: 22px; }
+.md-body li { margin: 3px 0; }
+.md-body li::marker { color: var(--paper-4); }
+.md-body a { color: var(--sky); text-decoration: underline; text-underline-offset: 2px; }
+.md-body blockquote {
+  margin: 10px 0; padding: 2px 14px; border-left: 2px solid var(--line-strong);
+  color: var(--paper-2);
+}
+.md-body hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+.md-body code.md-inline {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--ink-3); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 5px; color: var(--paper-1);
+}
+.md-body table {
+  border-collapse: collapse; margin: 10px 0; display: block; overflow-x: auto;
+}
+.md-body th, .md-body td {
+  border: 1px solid var(--line); padding: 5px 10px; font-size: 13px; text-align: left;
+}
+.md-body th { background: var(--ink-3); color: var(--paper-1); font-weight: 600; }
+.md-code, .md-code pre {
+  border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+}
+.md-code pre, .md-code-plain {
+  margin: 0; padding: 12px 14px; overflow-x: auto;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-family: var(--mono);
+}
+.md-code-plain { background: var(--ink-3); color: var(--paper-1); }
+.md-code pre { background: #0b0f17 !important; }
+.md-code code { font-family: var(--mono); }
+
+/* Reveal copy/delete affordances on hover */
+.assistant-copy { opacity: 0; transition: opacity 0.12s ease; }
+.assistant-row:hover .assistant-copy { opacity: 1; }
+.convo-del { opacity: 0; transition: opacity 0.12s ease; }
+.convo-row:hover .convo-del { opacity: 1; }
+.convo-row:hover { background: rgba(255,255,255,0.02); }

@@ -9,7 +9,9 @@ from app.models.base import Base, UUIDMixin, utcnow
 class Conversation(Base, UUIDMixin):
     __tablename__ = "conversations"
 
-    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
+    # Owner is the caller's JWT ``sub`` (a free string, like uploads/notepad) —
+    # not a FK, so it tolerates the test/anonymous subs and avoids a uuid cast.
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

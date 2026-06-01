@@ -6,7 +6,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_user
 from app.db.session import get_db
+from app.services.agent.attachments import build_attached_message
+from app.services.agent.conversations_service import get_or_create, save_message
 from app.services.agent.runtime import agent_runtime
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -16,6 +19,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
     repo_id: str | None = None
     conversation_id: str | None = None
+    upload_id: str | None = None
     history: list[dict] | None = None
 
 
@@ -50,11 +54,47 @@ class ReviewRequest(BaseModel):
 
 # ─── Chat (Streaming) ────────────────────────────────────
 
+def _capture_text(raw: str, parts: list[str]) -> None:
+    """Pull the assistant's final text out of the SSE chunk(s) so we can persist
+    it. The loop emits the answer as ``{"type": "text", ...}`` events."""
+    for line in raw.splitlines():
+        if not line.startswith("data: "):
+            continue
+        body = line[6:]
+        if body == "[DONE]":
+            continue
+        try:
+            data = json.loads(body)
+        except ValueError:
+            continue
+        if data.get("type") == "text":
+            parts.append(data.get("content", ""))
+
+
 @router.post("/chat")
-async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat(
+    payload: ChatRequest,
+    user: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner = str(user.get("sub") or "anonymous")
+    # Inject any attached file as context for the LLM, but persist the user's
+    # original message (not the augmented blob).
+    augmented = await build_attached_message(db, payload.upload_id, owner, payload.message)
+    convo = await get_or_create(db, owner, payload.conversation_id, payload.message)
+    convo_id = convo.id
+    await save_message(db, convo_id, "user", payload.message)
+    await db.commit()
+
     async def stream():
-        async for event in agent_runtime.chat(db, payload.message, payload.repo_id, payload.history):
+        yield f"data: {json.dumps({'type': 'conversation', 'id': convo_id})}\n\n"
+        parts: list[str] = []
+        async for event in agent_runtime.chat(db, augmented, payload.repo_id, payload.history):
+            _capture_text(event, parts)
             yield event
+        if parts:
+            await save_message(db, convo_id, "assistant", "".join(parts))
+            await db.commit()
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")

@@ -29,7 +29,7 @@ EXPECTED_TABLES = {
     "audit_log", "feedback", "cost_log", "tech_debt_items",
     "dependency_snapshots", "permissions", "trust_level",
     "trust_metrics", "blocked_tasks", "api_registry", "app_config",
-    "code_embeddings", "concepts",
+    "code_embeddings", "concepts", "uploads", "notepad",
 }
 
 ALL_MODELS = [
@@ -45,7 +45,7 @@ class TestAllModels:
         # sqlite_session creates all tables on sqlite_engine (its side effect).
         inspector = inspect(sqlite_engine)
         tables = set(inspector.get_table_names())
-        assert len(tables) == 22, f"Expected 22 tables, got {len(tables)}: {tables}"
+        assert len(tables) == 24, f"Expected 24 tables, got {len(tables)}: {tables}"
 
     def test_all_tables_match_expected(self, sqlite_engine, sqlite_session):
         inspector = inspect(sqlite_engine)
@@ -87,7 +87,7 @@ class TestAllModels:
         assert pr.task_id == task.id
 
     def test_conversation_message_relationship(self, db_session):
-        conv = Conversation(title="Test chat")
+        conv = Conversation(owner_id="user-1", title="Test chat")
         db_session.add(conv)
         db_session.commit()
 
