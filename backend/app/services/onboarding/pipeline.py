@@ -104,6 +104,29 @@ def _save_stage_status(repo_id: str, stage_name: str, status: str, error: str = 
         logger.warning("save_stage_status_failed", repo_id=repo_id, stage=stage_name, error=str(e)[:200])
 
 
+def _save_repo_default_branch(repo_id: str, default_branch: str):
+    """Write the branch detected at clone time onto the repo row. No-op if the
+    value is empty/unchanged. Best-effort: a DB hiccup must not fail onboarding."""
+    if not repo_id or not default_branch:
+        return
+    from sqlalchemy import create_engine, select as _select
+    from sqlalchemy.orm import Session
+    from app.models.repo import Repo
+    from app.config import settings as _s
+
+    try:
+        engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
+        with Session(engine) as db:
+            repo = db.execute(_select(Repo).where(Repo.id == repo_id)).scalar_one_or_none()
+            if repo and repo.default_branch != default_branch:
+                repo.default_branch = default_branch
+                db.commit()
+                logger.info("repo_default_branch_set", repo_id=repo_id, branch=default_branch)
+        engine.dispose()
+    except Exception as e:
+        logger.warning("save_default_branch_failed", repo_id=repo_id, error=str(e)[:200])
+
+
 def _execute_stage(
     pipeline_id: str,
     repo_id: str,
@@ -126,6 +149,11 @@ def _execute_stage(
     if stage == OnboardingStage.REPO_DISCOVERY:
         crawler = GitCrawler()
         info = crawler.crawl(github_url, local_name)
+        # Persist the *detected* default branch back to the repo row. The row is
+        # created with the model default ("main") before the clone exists, so a
+        # repo whose real branch is e.g. "master" would otherwise stay wrong and
+        # break auto-sync (which pulls default_branch).
+        _save_repo_default_branch(repo_id, info.default_branch)
         return {
             "stage": stage,
             "name": info.name,
