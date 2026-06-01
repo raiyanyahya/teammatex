@@ -135,6 +135,9 @@ The heart of the product. The **Chat** page is a streaming conversation with an 
 - **Grounded, not guessing.** Before answering it can `semantic_search` your embeddings, `graph_query` the knowledge graph, `find_owner` of a file, or `get_blame` on a line.
 - **Acts, doesn't just talk.** It can `read_file` / `edit_file`, `run_tests`, `run_lint`, `create_branch`, `commit_files`, and `create_pr` — it runs `git` and `gh` itself rather than following a scripted workflow.
 - **Persistent memory.** `write_note` / `search_notes` give the team a durable, searchable memory that survives across conversations and is linked into the graph.
+- **Rich, readable replies.** Answers render as full Markdown with **syntax-highlighted** code blocks (Shiki), and every code block — and message — has a one-click **copy** button. A **Stop** button cancels a running response mid-stream.
+- **Conversation history.** Threads are persisted server-side and listed in a sidebar, so you can reopen past discussions across devices and start a fresh one any time — the agent's memory now extends to the chat itself.
+- **Attach a file.** Pull one of your private **uploads** straight into a message; its text is injected inline as context, so the agent can reason over a stack trace, log, or design doc alongside your code.
 - **Configurable brain.** Pick your provider/model per deployment. DeepSeek is the cost-effective default; OpenAI, Anthropic, Groq, and local **Ollama** are all supported via LiteLLM.
 - **Persona.** Give the teammate a name (e.g. "Yuji") and a working style.
 
@@ -218,7 +221,7 @@ Controls that aren't wired yet are honestly disabled with a note, rather than pr
 
 ### 14. Auto-sync (keeping the brain fresh)
 
-A background poller (interval-configurable) periodically re-syncs each repo: it ingests new pull requests and incrementally updates the graph, so the teammate's knowledge tracks reality without a manual re-onboard. Webhook-driven sync is also supported.
+A background poller (interval-configurable, default 15 min) periodically re-syncs each repo: it **`git pull`s the latest commits** on the repo's real default branch, ingests new pull requests, and incrementally updates the graph — so the teammate's knowledge tracks reality without a manual re-onboard. The default branch is **detected at onboarding** (e.g. `main` vs `master`) and the pull falls back to whatever branch the clone is actually on, so a mis-recorded branch can't silently stall sync. Webhook-driven sync is also supported.
 
 ### 15. Observability stack
 
