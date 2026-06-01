@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sources, { Source } from "../../components/chat/Sources";
+import Markdown, { CopyButton } from "../../components/chat/Markdown";
 import {
   Bug,
   Compass,
@@ -9,14 +10,17 @@ import {
   GitPullRequest,
   ListChecks,
   Loader2,
+  MessageSquare,
   Network,
   NotebookPen,
   Paperclip,
   Plus,
   Search,
   Send,
+  Square,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 
 type Role = "user" | "assistant" | "tool";
@@ -30,8 +34,17 @@ interface Message {
   sources?: Source[];
 }
 
-const STORAGE_KEY = "teammatex_chat";
-const MAX_STORED = 50;
+interface ConvSummary {
+  id: string;
+  title: string | null;
+  created_at: string | null;
+}
+
+interface UploadItem {
+  id: string;
+  filename: string;
+  size_bytes: number;
+}
 
 const CAPABILITIES = [
   { label: "Understand the architecture", Icon: Compass, example: "Explain how this codebase is structured." },
@@ -45,30 +58,20 @@ const CAPABILITIES = [
   { label: "Standup", Icon: ListChecks, example: "Give me a standup of recent activity." },
 ];
 
-function loadMessages(): Message[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>(loadMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<ConvSummary[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState("");
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [attachment, setAttachment] = useState<{ id: string; filename: string } | null>(null);
+  const [showAttach, setShowAttach] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-MAX_STORED)));
-    }
-  }, [messages]);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,6 +79,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     taRef.current?.focus();
+    loadConversations();
   }, []);
 
   useEffect(() => {
@@ -87,15 +91,64 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function clear() {
-    localStorage.removeItem(STORAGE_KEY);
+  async function loadConversations() {
+    try {
+      const r = await fetch("/api/conversations");
+      if (r.ok) setConversations(await r.json());
+    } catch {}
+  }
+
+  async function openConversation(id: string) {
+    if (streaming || id === conversationId) return;
+    try {
+      const r = await fetch(`/api/conversations/${id}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      setMessages((data.messages || []).map((m: Message) => ({ role: m.role, content: m.content })));
+      setConversationId(id);
+    } catch {}
+  }
+
+  function newConversation() {
+    if (streaming) return;
     setMessages([]);
+    setConversationId(null);
+    setInput("");
+    setAttachment(null);
+    setShowAttach(false);
+    taRef.current?.focus();
+  }
+
+  async function deleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    } catch {}
+    if (id === conversationId) newConversation();
+    loadConversations();
+  }
+
+  async function toggleAttach() {
+    if (!showAttach) {
+      try {
+        const r = await fetch("/api/uploads");
+        if (r.ok) setUploads(await r.json());
+      } catch {}
+    }
+    setShowAttach((v) => !v);
+  }
+
+  function stop() {
+    abortRef.current?.abort();
   }
 
   async function send(text?: string) {
     const userMsg = (text ?? input).trim();
     if (!userMsg || streaming) return;
     setInput("");
+    const att = attachment;
+    setAttachment(null);
+    setShowAttach(false);
     setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setStreaming(true);
     setStreamContent("");
@@ -104,17 +157,28 @@ export default function ChatPage() {
     let accumulated = "";
     const toolMessages: Message[] = [];
     let sources: Source[] = [];
+    let newConvId: string | null = null;
+    let aborted = false;
 
     const history = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .slice(-20)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg, history }),
+        body: JSON.stringify({
+          message: userMsg,
+          history,
+          conversation_id: conversationId,
+          upload_id: att?.id,
+        }),
+        signal: controller.signal,
       });
 
       const reader = response.body?.getReader();
@@ -140,7 +204,9 @@ export default function ChatPage() {
 
           try {
             const data = JSON.parse(payload);
-            if (data.type === "text") {
+            if (data.type === "conversation") {
+              newConvId = data.id;
+            } else if (data.type === "text") {
               accumulated += data.content;
               setStreamContent(accumulated);
             } else if (data.type === "tool_start") {
@@ -174,14 +240,22 @@ export default function ChatPage() {
           } catch {}
         }
       }
-    } catch {
-      accumulated = "Error connecting to the server. Make sure everything is running.";
+    } catch (err) {
+      if (controller.signal.aborted) {
+        aborted = true;
+      } else {
+        accumulated = accumulated || "Error connecting to the server. Make sure everything is running.";
+      }
     } finally {
       setStreaming(false);
       setActiveTool(null);
+      abortRef.current = null;
 
       if (accumulated) {
-        setMessages((prev) => [...prev, ...toolMessages, { role: "assistant", content: accumulated, sources }]);
+        const content = aborted ? accumulated + "\n\n_(stopped)_" : accumulated;
+        setMessages((prev) => [...prev, ...toolMessages, { role: "assistant", content, sources }]);
+      } else if (aborted) {
+        setMessages((prev) => [...prev, ...toolMessages, { role: "assistant", content: "_(stopped before a reply)_" }]);
       } else if (toolMessages.length > 0) {
         setMessages((prev) => [...prev, ...toolMessages, {
           role: "assistant",
@@ -189,6 +263,11 @@ export default function ChatPage() {
         }]);
       }
       setStreamContent("");
+
+      if (newConvId) {
+        setConversationId(newConvId);
+        loadConversations();
+      }
     }
   }
 
@@ -212,39 +291,51 @@ export default function ChatPage() {
     <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", height: "100%", overflow: "hidden" }}>
       <aside style={{ borderRight: "1px solid var(--line)", background: "var(--ink-1)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: 16, borderBottom: "1px solid var(--line)" }}>
-          <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={clear} disabled={streaming}>
+          <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={newConversation} disabled={streaming}>
             <Plus size={12} /> New conversation
           </button>
         </div>
         <div style={{ padding: "8px 0", flex: 1, overflowY: "auto" }}>
           <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", letterSpacing: "0.12em", padding: "8px 16px" }}>
-            CURRENT
+            HISTORY
           </div>
-          <div
-            style={{
-              padding: "10px 16px",
-              background: "rgba(212,165,116,0.06)",
-              borderLeft: "2px solid var(--amber)",
-              cursor: "default",
-            }}
-          >
-            <div style={{ fontSize: 13, color: "var(--paper-0)" }}>
-              {messages.length === 0 ? "Ready when you are" : "This conversation"}
+          {conversations.length === 0 && (
+            <div style={{ padding: "4px 16px", fontSize: 12, color: "var(--paper-4)" }}>
+              No conversations yet.
             </div>
-            <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", marginTop: 3 }}>
-              {messageCount} {messageCount === 1 ? "msg" : "msgs"} · {toolCount} tool {toolCount === 1 ? "call" : "calls"}
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: 16, borderTop: "1px solid var(--line)" }}>
-          <button
-            className="btn btn-ghost"
-            style={{ width: "100%", justifyContent: "center" }}
-            onClick={clear}
-            disabled={streaming || messages.length === 0}
-          >
-            <Trash2 size={12} /> Clear history
-          </button>
+          )}
+          {conversations.map((c) => {
+            const active = c.id === conversationId;
+            return (
+              <div
+                key={c.id}
+                onClick={() => openConversation(c.id)}
+                className="convo-row"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 16px",
+                  cursor: streaming ? "default" : "pointer",
+                  background: active ? "rgba(212,165,116,0.06)" : "transparent",
+                  borderLeft: active ? "2px solid var(--amber)" : "2px solid transparent",
+                }}
+              >
+                <MessageSquare size={13} style={{ color: active ? "var(--amber)" : "var(--paper-4)", flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 13, color: "var(--paper-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.title || "Untitled"}
+                </span>
+                <button
+                  onClick={(e) => deleteConversation(c.id, e)}
+                  title="Delete conversation"
+                  className="convo-del"
+                  style={{ background: "transparent", border: "none", color: "var(--paper-4)", cursor: "pointer", padding: 2, lineHeight: 0 }}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </aside>
 
@@ -273,7 +364,7 @@ export default function ChatPage() {
             {messages.length === 0 && !streaming && (
               <div>
                 <div style={{ fontFamily: "var(--serif)", fontSize: 28, color: "var(--paper-0)", marginBottom: 6 }}>
-                  Pick a thread to start<em style={{ color: "var(--amber)", fontStyle: "italic" }}>.</em>
+                  Ready when you are<em style={{ color: "var(--amber)", fontStyle: "italic" }}>.</em>
                 </div>
                 <div className="font-mono" style={{ fontSize: 11, color: "var(--paper-3)", letterSpacing: "0.06em", marginBottom: 16 }}>
                   Yuji knows your codebase, your team, and your history. Click one to start.
@@ -323,8 +414,89 @@ export default function ChatPage() {
         </div>
 
         <div style={{ padding: "16px 28px 22px", borderTop: "1px solid var(--line)", background: "var(--ink-1)" }}>
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
+          <div style={{ maxWidth: 820, margin: "0 auto", position: "relative" }}>
+            {showAttach && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 8px)",
+                  left: 0,
+                  width: 320,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  background: "var(--ink-2)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                  zIndex: 5,
+                }}
+              >
+                <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", letterSpacing: "0.1em", padding: "10px 12px 6px" }}>
+                  ATTACH AN UPLOAD
+                </div>
+                {uploads.length === 0 && (
+                  <div style={{ padding: "4px 12px 12px", fontSize: 12, color: "var(--paper-4)" }}>
+                    No uploads yet. Add files on the Uploads page.
+                  </div>
+                )}
+                {uploads.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setAttachment({ id: u.id, filename: u.filename });
+                      setShowAttach(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      borderTop: "1px solid var(--line)",
+                      padding: "9px 12px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      color: "var(--paper-1)",
+                    }}
+                  >
+                    <FileText size={13} style={{ color: "var(--paper-4)", flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {u.filename}
+                    </span>
+                    <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>
+                      {Math.max(1, Math.round(u.size_bytes / 1024))} KB
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ background: "var(--ink-2)", border: "1px solid var(--line-strong)", borderRadius: 8, padding: 12 }}>
+              {attachment && (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "var(--ink-3)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                    marginBottom: 8,
+                    fontSize: 12,
+                    color: "var(--paper-1)",
+                  }}
+                >
+                  <FileText size={12} style={{ color: "var(--amber)" }} />
+                  {attachment.filename}
+                  <button
+                    onClick={() => setAttachment(null)}
+                    style={{ background: "transparent", border: "none", color: "var(--paper-4)", cursor: "pointer", padding: 0, lineHeight: 0 }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
               <textarea
                 ref={taRef}
                 placeholder="Ask Yuji about your codebase, team, or history…"
@@ -345,14 +517,25 @@ export default function ChatPage() {
                 }}
               />
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                <button className="btn btn-ghost" style={{ padding: "4px 8px", fontSize: 11 }} disabled>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: "4px 8px", fontSize: 11, color: attachment ? "var(--amber)" : undefined }}
+                  onClick={toggleAttach}
+                  disabled={streaming}
+                >
                   <Paperclip size={11} /> Attach
                 </button>
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
                   <span className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)" }}>⌘ + ⏎</span>
-                  <button className="btn btn-primary" onClick={() => send()} disabled={streaming || !input.trim()}>
-                    {streaming ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send
-                  </button>
+                  {streaming ? (
+                    <button className="btn" onClick={stop}>
+                      <Square size={11} /> Stop
+                    </button>
+                  ) : (
+                    <button className="btn btn-primary" onClick={() => send()} disabled={!input.trim()}>
+                      <Send size={12} /> Send
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -405,15 +588,18 @@ function MessageRow({ m }: { m: Message }) {
     );
   }
   return (
-    <div style={{ display: "flex", gap: 14 }}>
+    <div style={{ display: "flex", gap: 14 }} className="assistant-row">
       <YujiAvatar />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
           <span className="font-mono" style={{ fontSize: 11, color: "var(--amber)", letterSpacing: "0.06em" }}>
             YUJI
           </span>
+          <span className="assistant-copy" style={{ marginLeft: "auto" }}>
+            <CopyButton text={m.content} label="Copy" />
+          </span>
         </div>
-        <div style={{ fontSize: 14, color: "var(--paper-0)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{m.content}</div>
+        <Markdown content={m.content} />
         <Sources sources={m.sources} />
       </div>
     </div>
@@ -424,7 +610,7 @@ function AgentThinking({ content, tool }: { content: string; tool: string | null
   return (
     <div style={{ display: "flex", gap: 14 }}>
       <YujiAvatar />
-      <div>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div className="font-mono" style={{ fontSize: 11, color: "var(--amber)", letterSpacing: "0.06em" }}>
           YUJI
         </div>
@@ -448,19 +634,8 @@ function AgentThinking({ content, tool }: { content: string; tool: string | null
           </div>
         )}
         {content && (
-          <div style={{ marginTop: 4, fontSize: 14, color: "var(--paper-0)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-            {content}
-            <span
-              style={{
-                marginLeft: 2,
-                display: "inline-block",
-                width: 4,
-                height: 14,
-                background: "var(--paper-3)",
-                verticalAlign: -2,
-                animation: "pulse 1s ease-in-out infinite",
-              }}
-            />
+          <div style={{ marginTop: 4 }}>
+            <Markdown content={content} />
           </div>
         )}
         {!tool && !content && (
