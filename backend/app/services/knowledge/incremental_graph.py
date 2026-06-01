@@ -130,7 +130,10 @@ class IncrementalGraphUpdater:
 
         return {"status": "updated", "changes": total_changes,
                 "added": len(diff["added"]), "changed": len(diff["changed"]),
-                "removed": len(diff["removed"])}
+                "removed": len(diff["removed"]),
+                # Filename lists (consumers like auto_sync record which files moved).
+                "added_files": diff["added"], "changed_files": diff["changed"],
+                "removed_files": diff["removed"]}
 
     async def _store_manifest(self, manifest: dict):
         key = f"{MANIFEST_PREFIX}{self.repo_id}"

@@ -92,8 +92,16 @@ class AutoSyncEngine:
         # picked up unless a webhook fires (and webhooks are off by default). This
         # mirrors the pull in handle_webhook_push, off the same git helper.
         try:
+            import pygit2
             from app.utils.git import clone_or_pull
+            # Prefer the branch the clone is actually on. The stored default_branch
+            # can be wrong (e.g. recorded as "main" for a repo that uses "master"),
+            # which would silently pull a nonexistent branch and sync nothing.
             branch = getattr(repo, "default_branch", "main") or "main"
+            try:
+                branch = pygit2.Repository(clone_path).head.shorthand or branch
+            except Exception:
+                pass
             await asyncio.to_thread(clone_or_pull, repo.github_url or "", clone_path, branch)
         except Exception as e:
             logger.warning("auto_sync_pull_failed", repo=repo.local_name, error=str(e)[:120])
@@ -144,9 +152,15 @@ class AutoSyncEngine:
         # this whole method raise ImportError on every detected change.)
         from app.services.agent.memory import memory_manager
 
-        added = result.get("added", [])
-        changed = result.get("changed", [])
-        removed = result.get("removed", [])
+        # incremental_sync returns filename lists under *_files (and bare counts
+        # under added/changed/removed). Use the lists; never index a count.
+        def _names(key: str) -> list:
+            val = result.get(f"{key}_files")
+            return val if isinstance(val, list) else []
+
+        added = _names("added")
+        changed = _names("changed")
+        removed = _names("removed")
 
         if added:
             memory_manager.remember(
