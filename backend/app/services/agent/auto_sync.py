@@ -87,6 +87,17 @@ class AutoSyncEngine:
         if not Path(clone_path).exists():
             return {"status": "no_clone"}
 
+        # Pull fresh commits before re-indexing. Without this the periodic poll
+        # only ever re-scans the originally-cloned state, so new pushes are never
+        # picked up unless a webhook fires (and webhooks are off by default). This
+        # mirrors the pull in handle_webhook_push, off the same git helper.
+        try:
+            from app.utils.git import clone_or_pull
+            branch = getattr(repo, "default_branch", "main") or "main"
+            await asyncio.to_thread(clone_or_pull, repo.github_url or "", clone_path, branch)
+        except Exception as e:
+            logger.warning("auto_sync_pull_failed", repo=repo.local_name, error=str(e)[:120])
+
         updater = IncrementalGraphUpdater(clone_path, str(repo.id), repo.local_name)
         result = await updater.incremental_sync()
 
