@@ -61,30 +61,6 @@ class LLMProvider:
         return None
 
     @classmethod
-    def _get_api_key(cls, provider: str) -> str:
-        env_map = {
-            "openai": settings.openai_api_key,
-            "anthropic": settings.anthropic_api_key,
-            "deepseek": settings.deepseek_api_key,
-            "groq": settings.groq_api_key,
-            "ollama": settings.ollama_base_url,
-        }
-        env_key = env_map.get(provider, "")
-        if env_key:
-            return env_key
-        # Fallback to DB config
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                db_cfg = asyncio.ensure_future(cls._get_db_config())
-                # Can't await in sync context, return env key for now
-                return env_key
-        except Exception:
-            pass
-        return env_key
-
-    @classmethod
     async def _get_available_providers(cls) -> list[tuple[str, str, str]]:
         """Returns list of (provider, model, api_key) for available providers."""
         providers: list[tuple[str, str, str]] = []

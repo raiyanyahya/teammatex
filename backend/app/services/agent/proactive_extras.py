@@ -89,18 +89,3 @@ class GitHygieneAutomation:
             "merged_candidates": merged_branches[:50],
             "total_branches": len(list(repo.listall_references())),
         }
-
-
-class SelfUpdatingKnowledge:
-    async def handle_push_webhook(self, repo_id: str, branch: str, commits: int) -> dict:
-        logger.info("push_detected", repo_id=repo_id, branch=branch, commits=commits)
-
-        return {
-            "repo_id": repo_id,
-            "branch": branch,
-            "commits": commits,
-            "action": "Trigger incremental re-sync for changed files",
-        }
-
-    async def detect_stale_knowledge(self) -> list[dict]:
-        return []

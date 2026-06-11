@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from pygit2.errors import GitError
 from structlog import get_logger
@@ -11,17 +10,18 @@ from app.utils.git import clone_or_pull
 logger = get_logger(__name__)
 
 
+@dataclass
 class RepoInfo:
-    name: str
-    url: str
-    default_branch: str
-    branches: list[str]
-    tags: list[str]
-    commit_count: int
-    contributor_count: int
-    languages: dict[str, int]
-    total_files: int
-    clone_path: str
+    name: str = ""
+    url: str = ""
+    default_branch: str = ""
+    branches: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    commit_count: int = 0
+    contributor_count: int = 0
+    languages: dict[str, int] = field(default_factory=dict)
+    total_files: int = 0
+    clone_path: str = ""
 
 
 class GitCrawler:
