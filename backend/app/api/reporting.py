@@ -12,15 +12,19 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 @router.get("/digest")
 async def get_weekly_digest():
+    import asyncio
     from app.services.reporting.digest import digest_generator
-    digest = digest_generator.generate_weekly(settings.database_url)
+    # generate_weekly opens a sync engine and runs blocking queries — keep it
+    # off the event loop.
+    digest = await asyncio.to_thread(digest_generator.generate_weekly, settings.database_url)
     return digest
 
 
 @router.get("/digest/markdown")
 async def get_weekly_digest_md():
+    import asyncio
     from app.services.reporting.digest import digest_generator
-    digest = digest_generator.generate_weekly(settings.database_url)
+    digest = await asyncio.to_thread(digest_generator.generate_weekly, settings.database_url)
     return {"markdown": digest_generator.format_markdown(digest)}
 
 

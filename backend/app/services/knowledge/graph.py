@@ -73,15 +73,16 @@ class KnowledgeGraph:
         self, repo_id: str, file_path: str, language: str, lines: int
     ) -> None:
         file_nid = node_id(repo_id, "File", file_path)
-        repo_nid = node_id(repo_id, "Repository", self._resolve_repo_name(repo_id))
+        # Match the repo by its repo_id property: the Repository node id is
+        # hashed from the repo *name* (see ensure_repo_node), which isn't
+        # recoverable from repo_id alone.
         await self.run("""
         MERGE (f:File {id: $id})
         SET f.repo_id = $repo_id, f.path = $path, f.language = $language, f.lines = $lines, f.version = $version
         WITH f
-        MATCH (r:Repository {id: $repo_nid})
+        MATCH (r:Repository {repo_id: $repo_id})
         MERGE (f)-[:PART_OF]->(r)
-        """, id=file_nid, repo_id=repo_id, path=file_path, language=language, lines=lines, version=EXTRACTOR_VERSION,
-             repo_nid=repo_nid)
+        """, id=file_nid, repo_id=repo_id, path=file_path, language=language, lines=lines, version=EXTRACTOR_VERSION)
 
     async def ensure_function_node(
         self,
@@ -133,15 +134,13 @@ class KnowledgeGraph:
 
     async def ensure_module_node(self, repo_id: str, name: str) -> None:
         mod_nid = node_id(repo_id, "Module", name)
-        repo_nid = node_id(repo_id, "Repository", self._resolve_repo_name(repo_id))
         await self.run("""
         MERGE (m:Module {id: $id})
         SET m.repo_id = $repo_id, m.name = $name, m.version = $version
         WITH m
-        MATCH (r:Repository {id: $repo_nid})
+        MATCH (r:Repository {repo_id: $repo_id})
         MERGE (m)-[:PART_OF]->(r)
-        """, id=mod_nid, repo_id=repo_id, name=name, version=EXTRACTOR_VERSION,
-             repo_nid=repo_nid)
+        """, id=mod_nid, repo_id=repo_id, name=name, version=EXTRACTOR_VERSION)
 
     async def ensure_contributor_node(self, email: str, name: str) -> None:
         # Key the node on email only; name can vary between commits, and
@@ -413,9 +412,6 @@ class KnowledgeGraph:
         RETURN labels(n)[0] AS type, n {.*} AS properties
         LIMIT $limit
         """, query=query, limit=limit)
-
-    def _resolve_repo_name(self, repo_id: str) -> str:
-        return repo_id
 
     async def run(self, cql: str, **params: Any) -> list[dict]:
         async with get_neo4j_manager().session() as session:

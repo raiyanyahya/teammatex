@@ -27,17 +27,6 @@ def classify_query_intent(query: str) -> str:
     return best if scores[best] > 0 else "conceptual"
 
 
-def classify_query_intent(query: str) -> str:
-    lower = query.lower()
-    scores = {intent: 0 for intent in QUERY_INTENTS}
-    for intent, keywords in QUERY_INTENTS.items():
-        for kw in keywords:
-            if kw in lower:
-                scores[intent] += 1
-    best = max(scores, key=scores.get)
-    return best if scores[best] > 0 else "conceptual"
-
-
 def reciprocal_rank_fusion(result_sets: list[list[dict]], k: int = 60) -> list[dict]:
     fused: dict[str, dict] = {}
     for result_set in result_sets:

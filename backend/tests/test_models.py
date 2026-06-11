@@ -135,15 +135,15 @@ class TestAllModels:
         assert perm.capability == "read_code"
 
     def test_auth_model(self, db_session):
-        from app.api.auth import create_access_token, verify_token
+        from app.utils.auth import create_token, decode_token
 
-        token = create_access_token("user-1", "user@test.com")
-        payload = verify_token(token)
+        token = create_token("user-1", "user@test.com")
+        payload = decode_token(token)
         assert payload is not None
         assert payload["sub"] == "user-1"
         assert payload["email"] == "user@test.com"
 
-        invalid = verify_token("bad.token.here")
+        invalid = decode_token("bad.token.here")
         assert invalid is None
 
     def test_utcnow_returns_timezone_aware(self):

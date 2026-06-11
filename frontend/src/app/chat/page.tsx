@@ -181,6 +181,10 @@ export default function ChatPage() {
         signal: controller.signal,
       });
 
+      if (!response.ok) {
+        throw new Error(`The server returned an error (HTTP ${response.status}).`);
+      }
+
       const reader = response.body?.getReader();
       if (!reader) {
         setStreaming(false);
@@ -243,6 +247,8 @@ export default function ChatPage() {
     } catch (err) {
       if (controller.signal.aborted) {
         aborted = true;
+      } else if (err instanceof Error && err.message.startsWith("The server returned")) {
+        accumulated = accumulated || err.message;
       } else {
         accumulated = accumulated || "Error connecting to the server. Make sure everything is running.";
       }
