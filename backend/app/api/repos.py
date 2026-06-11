@@ -356,9 +356,6 @@ async def retry_onboarding(repo_id: str, db: AsyncSession = Depends(get_db)):
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    await db.execute(
-        select(RepoOnboardingState).where(RepoOnboardingState.repo_id == repo_id)
-    )
     states = (await db.execute(
         select(RepoOnboardingState).where(RepoOnboardingState.repo_id == repo_id)
     )).scalars().all()

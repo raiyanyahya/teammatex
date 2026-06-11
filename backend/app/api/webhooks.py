@@ -90,15 +90,15 @@ async def slack_webhook(request: Request):
         event_type = event.get("type", "unknown")
         logger.info("slack_event", type=event_type)
 
-    if event_type == "app_mention":
-        text = event.get("text", "")
-        channel = event.get("channel", "")
-        user = event.get("user", "")
-        logger.info("slack_mention_for_agent", channel=channel, user=user, text=text[:200])
+        if event_type == "app_mention":
+            text = event.get("text", "")
+            channel = event.get("channel", "")
+            user = event.get("user", "")
+            logger.info("slack_mention_for_agent", channel=channel, user=user, text=text[:200])
 
-        from app.services.integrations.slack_bot import slack_bot
-        import asyncio
-        question = text.replace("<@U", "").replace(">", "").strip()
-        asyncio.create_task(slack_bot.answer_question(channel, user, question))
+            from app.services.integrations.slack_bot import slack_bot
+            import asyncio
+            question = text.replace("<@U", "").replace(">", "").strip()
+            asyncio.create_task(slack_bot.answer_question(channel, user, question))
 
     return {"received": True}
