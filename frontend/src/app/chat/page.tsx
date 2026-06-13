@@ -6,6 +6,7 @@ import Markdown, { CopyButton } from "../../components/chat/Markdown";
 import {
   Bug,
   Compass,
+  Download,
   FileText,
   GitPullRequest,
   ListChecks,
@@ -61,6 +62,7 @@ const CAPABILITIES = [
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
+  const [search, setSearch] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -91,10 +93,33 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadConversations() {
+  async function loadConversations(q?: string) {
     try {
-      const r = await fetch("/api/conversations");
+      const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+      const r = await fetch(`/api/conversations${qs}`);
       if (r.ok) setConversations(await r.json());
+    } catch {}
+  }
+
+  // Debounce search so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => loadConversations(search), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  async function exportConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const r = await fetch(`/api/conversations/${id}/export`);
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `conversation-${id.slice(0, 8)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch {}
   }
 
@@ -305,9 +330,25 @@ export default function ChatPage() {
           <div className="font-mono" style={{ fontSize: 10, color: "var(--paper-4)", letterSpacing: "0.12em", padding: "8px 16px" }}>
             HISTORY
           </div>
+          <div style={{ padding: "0 12px 8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--ink-0)", border: "1px solid var(--line)", borderRadius: 6, padding: "5px 8px" }}>
+              <Search size={12} style={{ color: "var(--paper-4)", flexShrink: 0 }} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search conversations…"
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--paper-1)", fontSize: 12 }}
+              />
+              {search && (
+                <button onClick={() => setSearch("")} title="Clear" style={{ background: "transparent", border: "none", color: "var(--paper-4)", cursor: "pointer", padding: 0, lineHeight: 0 }}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
           {conversations.length === 0 && (
             <div style={{ padding: "4px 16px", fontSize: 12, color: "var(--paper-4)" }}>
-              No conversations yet.
+              {search ? "No matches." : "No conversations yet."}
             </div>
           )}
           {conversations.map((c) => {
@@ -331,6 +372,14 @@ export default function ChatPage() {
                 <span style={{ flex: 1, fontSize: 13, color: "var(--paper-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {c.title || "Untitled"}
                 </span>
+                <button
+                  onClick={(e) => exportConversation(c.id, e)}
+                  title="Export as Markdown"
+                  className="convo-del"
+                  style={{ background: "transparent", border: "none", color: "var(--paper-4)", cursor: "pointer", padding: 2, lineHeight: 0 }}
+                >
+                  <Download size={12} />
+                </button>
                 <button
                   onClick={(e) => deleteConversation(c.id, e)}
                   title="Delete conversation"

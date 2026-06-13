@@ -60,17 +60,38 @@ async def save_message(db: AsyncSession, conversation_id: str, role: str, conten
     return msg
 
 
-async def list_conversations(db: AsyncSession, owner: str) -> list[dict]:
-    rows = (await db.execute(
-        select(Conversation)
-        .where(Conversation.owner_id == owner)
-        .order_by(Conversation.created_at.desc())
-    )).scalars().all()
+async def list_conversations(db: AsyncSession, owner: str, q: str | None = None) -> list[dict]:
+    """List the owner's conversations, newest first. With `q`, return only those
+    whose title or any message content matches (case-insensitive substring)."""
+    stmt = select(Conversation).where(Conversation.owner_id == owner)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        matching_convo_ids = (
+            select(Message.conversation_id).where(Message.content.ilike(like))
+        )
+        stmt = stmt.where(
+            Conversation.title.ilike(like) | Conversation.id.in_(matching_convo_ids)
+        )
+    rows = (await db.execute(stmt.order_by(Conversation.created_at.desc()))).scalars().all()
     return [
         {"id": c.id, "title": c.title,
          "created_at": str(c.created_at) if c.created_at else None}
         for c in rows
     ]
+
+
+async def export_conversation_markdown(db: AsyncSession, owner: str, conversation_id: str) -> str | None:
+    """Render an owned conversation as Markdown for download, or None if not found."""
+    convo = await get_conversation(db, owner, conversation_id)
+    if convo is None:
+        return None
+    lines = [f"# {convo['title']}", ""]
+    if convo.get("created_at"):
+        lines += [f"_Started {convo['created_at']}_", ""]
+    for m in convo["messages"]:
+        who = "You" if m["role"] == "user" else "TeammateX"
+        lines += [f"## {who}", "", m["content"] or "", ""]
+    return "\n".join(lines)
 
 
 async def get_conversation(db: AsyncSession, owner: str, conversation_id: str) -> dict | None:

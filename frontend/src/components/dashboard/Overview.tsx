@@ -17,6 +17,7 @@ type Repo = {
   open_prs?: number;
   onboarding_pct?: number;
   health?: number;
+  last_synced?: string | null;
 };
 type Audit = { action: string; summary: string; status: string; completed_at: string };
 type StandupTask = { title: string; who: string; progress: number; status?: string };
@@ -29,7 +30,23 @@ type Standup = {
   tasks: StandupTask[];
   blockers_list: StandupBlocker[];
 };
-type Cost = { total_tokens: number; total_cost_cents: number };
+type CallTypeCost = { call_type: string; tokens: number; cost_cents: number };
+type Budget = {
+  status: "unset" | "ok" | "warn" | "over";
+  monthly_usd_limit: number | null;
+  usd_used_pct: number | null;
+  token_used_pct: number | null;
+  month_to_date_cost_cents: number;
+};
+type Cost = {
+  total_tokens: number;
+  total_cost_cents: number;
+  by_call_type?: CallTypeCost[];
+  budget?: Budget;
+};
+type HealthCheck = { name: string; ok: boolean; detail: string; required: boolean };
+type Health = { checks: HealthCheck[]; ready: boolean };
+type Period = "today" | "7d" | "30d" | "all";
 type GraphStats = { concepts: number };
 type Contributors = { count: number };
 type PRActivity = {
@@ -48,6 +65,8 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   const [standup, setStandup] = useState<Standup | null>(null);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [cost, setCost] = useState<Cost | null>(null);
+  const [period, setPeriod] = useState<Period>("all");
+  const [health, setHealth] = useState<Health | null>(null);
   const [people, setPeople] = useState<number | null>(null);
   const [concepts, setConcepts] = useState<number | null>(null);
   const [activity, setActivity] = useState<PRActivity[]>([]);
@@ -79,7 +98,7 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
       } catch {}
       try { setStandup(await fetch("/api/features/standup").then((x) => x.json())); } catch {}
       try { setAudit((await fetch("/api/knowledge/audit?limit=8").then((x) => x.json())) || []); } catch {}
-      try { setCost(await fetch("/api/knowledge/costs/summary").then((x) => x.json())); } catch {}
+      try { setHealth(await fetch("/api/integrations/health").then((x) => x.json())); } catch {}
       try {
         const c: Contributors = await fetch("/api/knowledge/contributors").then((x) => x.json());
         setPeople(c?.count ?? 0);
@@ -95,6 +114,15 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
     })();
   }, []);
 
+  // Re-fetch cost/budget whenever the period toggle changes.
+  useEffect(() => {
+    (async () => {
+      try {
+        setCost(await fetch(`/api/knowledge/costs/summary?period=${period}`).then((x) => x.json()));
+      } catch {}
+    })();
+  }, [period]);
+
   function submitAsk(q?: string) {
     const v = (q ?? ask).trim();
     router.push(`/chat${v ? `?q=${encodeURIComponent(v)}` : ""}`);
@@ -109,6 +137,13 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
   const spentUsd = (cost?.total_cost_cents ?? 0) / 100;
   // Show sub-cent precision when spend is tiny (cheap models), else 2 decimals.
   const spent = spentUsd > 0 && spentUsd < 0.01 ? spentUsd.toFixed(4) : spentUsd.toFixed(2);
+  const budget = cost?.budget;
+  const byCallType = cost?.by_call_type ?? [];
+  const lastSyncedTs = repos
+    .map((r) => r.last_synced)
+    .filter((t): t is string => !!t)
+    .sort()
+    .pop();
 
   return (
     <div className="p-10">
@@ -180,7 +215,13 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
               <div className="font-mono text-[10px] tracking-[0.1em]" style={{ color: "var(--paper-3)" }}>
                 LAST SYNCED
               </div>
-              <div className="mt-1 font-mono text-[13px]" style={{ color: "var(--paper-0)" }}>2m ago</div>
+              <div
+                className="mt-1 font-mono text-[13px]"
+                style={{ color: lastSyncedTs && isStale(lastSyncedTs) ? "var(--amber)" : "var(--paper-0)" }}
+                title={lastSyncedTs ? new Date(lastSyncedTs).toLocaleString() : undefined}
+              >
+                {lastSyncedTs ? timeAgo(lastSyncedTs) : "never"}
+              </div>
             </div>
           </div>
           <div
@@ -228,13 +269,22 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
 
 
           <div
-            className="grid grid-cols-2 gap-4 p-[18px]"
+            className="p-[18px]"
             style={{ background: "var(--ink-1)", border: "1px solid var(--line)", borderRadius: 8 }}
           >
-            <Stat val={formatTokens(tokens)} label="tokens used" />
-            <Stat val={`$${spent}`} label="today" />
-            <Stat val={String(audit.length)} label="actions today" />
-            <Stat val={String(standup?.prs.length ?? 0)} label="prs reviewed" />
+            <div className="mb-3 flex items-center justify-between">
+              <div className="font-mono text-[10px] tracking-[0.12em]" style={{ color: "var(--paper-3)" }}>
+                LLM USAGE
+              </div>
+              <PeriodToggle period={period} onChange={setPeriod} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Stat val={formatTokens(tokens)} label="tokens used" />
+              <Stat val={`$${spent}`} label="spend" />
+              <Stat val={String(audit.length)} label="actions today" />
+              <Stat val={String(standup?.prs.length ?? 0)} label="prs reviewed" />
+            </div>
+            {budget && budget.status !== "unset" && <BudgetBar budget={budget} />}
           </div>
         </div>
       </div>
@@ -245,8 +295,151 @@ export default function Overview({ name, onRename }: { name: string; onRename: (
         <TodayCard standup={standup} />
         <ReposCard repos={repos} onboarded={onboarded} onClick={() => router.push("/repos")} />
       </div>
+
+      {/* Spend by activity + setup checklist */}
+      <div className="mt-6 grid gap-6" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <SpendByActivityCard items={byCallType} />
+        <SetupChecklistCard health={health} />
+      </div>
     </div>
   );
+}
+
+function PeriodToggle({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
+  const opts: Period[] = ["today", "7d", "30d", "all"];
+  return (
+    <div className="flex gap-1">
+      {opts.map((p) => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className="font-mono text-[10px] uppercase tracking-[0.06em]"
+          style={{
+            padding: "2px 6px",
+            borderRadius: 4,
+            color: p === period ? "var(--ink-0)" : "var(--paper-3)",
+            background: p === period ? "var(--amber)" : "transparent",
+            border: "1px solid " + (p === period ? "var(--amber)" : "var(--line)"),
+            cursor: "pointer",
+          }}
+        >
+          {p}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BudgetBar({ budget }: { budget: Budget }) {
+  const pct = Math.max(budget.usd_used_pct ?? 0, budget.token_used_pct ?? 0);
+  const color =
+    budget.status === "over" ? "var(--rust)" : budget.status === "warn" ? "var(--amber)" : "var(--sage)";
+  return (
+    <div className="mt-3.5">
+      <div className="mb-1 flex justify-between font-mono text-[10px]" style={{ color: "var(--paper-3)" }}>
+        <span>MONTHLY BUDGET</span>
+        <span style={{ color }}>
+          {pct.toFixed(0)}% {budget.status === "over" ? "· over" : budget.status === "warn" ? "· near limit" : ""}
+        </span>
+      </div>
+      <div className="h-[3px] rounded-[2px]" style={{ background: "var(--ink-3)" }}>
+        <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, pct)}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function SpendByActivityCard({ items }: { items: CallTypeCost[] }) {
+  const total = items.reduce((s, i) => s + i.cost_cents, 0) || 1;
+  const top = [...items].sort((a, b) => b.cost_cents - a.cost_cents).slice(0, 6);
+  const colors = ["var(--amber)", "var(--sage)", "var(--sky)", "var(--plum)", "var(--rust)", "var(--paper-3)"];
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div className="card-title">Token spend by activity</div>
+        <span className="font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>this period</span>
+      </div>
+      <div className="px-4 py-3">
+        {top.length === 0 ? (
+          <div className="py-4 font-mono text-[11px]" style={{ color: "var(--paper-4)" }}>No LLM usage yet.</div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {top.map((it, i) => (
+              <div key={it.call_type}>
+                <div className="flex justify-between text-[12px]">
+                  <span style={{ color: "var(--paper-1)" }}>{it.call_type.replace(/_/g, " ")}</span>
+                  <span className="font-mono text-[11px]" style={{ color: "var(--paper-3)" }}>
+                    {formatTokens(it.tokens)} · {((100 * it.cost_cents) / total).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="mt-[5px] h-[2px] rounded-[1px]" style={{ background: "var(--ink-3)" }}>
+                  <div
+                    className="h-full rounded-[1px]"
+                    style={{ width: `${(100 * it.cost_cents) / total}%`, background: colors[i % colors.length] }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SetupChecklistCard({ health }: { health: Health | null }) {
+  const checks = health?.checks ?? [];
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div className="card-title">Setup checklist</div>
+        <span className="font-mono text-[10px]" style={{ color: health?.ready ? "var(--sage)" : "var(--amber)" }}>
+          {health?.ready ? "ready" : "needs setup"}
+        </span>
+      </div>
+      <div>
+        {checks.length === 0 ? (
+          <div className="px-4 py-6 font-mono text-[11px]" style={{ color: "var(--paper-4)" }}>Checking…</div>
+        ) : (
+          checks.map((c, i) => (
+            <div
+              key={c.name}
+              className="flex items-center gap-3 px-4 py-[11px]"
+              style={{ borderBottom: i === checks.length - 1 ? "none" : "1px solid var(--line)" }}
+            >
+              <span
+                className="flex h-[16px] w-[16px] items-center justify-center rounded-full"
+                style={{
+                  background: c.ok ? "var(--sage)" : c.required ? "var(--rust)" : "var(--ink-3)",
+                  color: "var(--ink-0)",
+                  fontSize: 10,
+                }}
+              >
+                {c.ok ? "✓" : c.required ? "!" : "·"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px]" style={{ color: "var(--paper-0)" }}>{c.name}</div>
+              </div>
+              <span className="font-mono text-[10px]" style={{ color: "var(--paper-4)" }}>{c.detail}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+function isStale(iso: string): boolean {
+  // Older than 24h → flag amber so a forgotten sync is visible.
+  return Date.now() - new Date(iso).getTime() > 24 * 3600 * 1000;
 }
 
 function RecentRunsCard({ audit }: { audit: Audit[] }) {

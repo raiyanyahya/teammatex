@@ -4,12 +4,14 @@ Writes happen in the chat stream (app.api.agent); this router lists, loads, and
 deletes. Everything is scoped to the caller's JWT ``sub``.
 """
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_user
 from app.db.session import get_db
 from app.services.agent.conversations_service import (
     delete_conversation,
+    export_conversation_markdown,
     get_conversation,
     list_conversations,
 )
@@ -22,8 +24,29 @@ def _owner(user: dict) -> str:
 
 
 @router.get("")
-async def list_(user: dict = Depends(require_user), db: AsyncSession = Depends(get_db)):
-    return await list_conversations(db, _owner(user))
+async def list_(
+    q: str | None = None,
+    user: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the caller's conversations. Pass `?q=` to search title + message text."""
+    return await list_conversations(db, _owner(user), q)
+
+
+@router.get("/{conversation_id}/export", response_class=PlainTextResponse)
+async def export_(
+    conversation_id: str,
+    user: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a conversation as Markdown."""
+    md = await export_conversation_markdown(db, _owner(user), conversation_id)
+    if md is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return PlainTextResponse(
+        md, media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="conversation-{conversation_id[:8]}.md"'},
+    )
 
 
 @router.get("/{conversation_id}")

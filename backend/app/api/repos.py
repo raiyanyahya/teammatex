@@ -28,6 +28,7 @@ class RepoResponse(BaseModel):
     open_prs: int = 0
     onboarding_pct: int = 0
     health: int = 0
+    last_synced: str | None = None
 
 
 class BulkRepoCreate(BaseModel):
@@ -71,6 +72,15 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
         if status == "completed":
             onb_done[repo_id] = onb_done.get(repo_id, 0) + 1
 
+    # Freshness: the most recent onboarding/sync stage completion per repo, so the
+    # dashboard can show "synced N ago" and flag stale repos instead of a placeholder.
+    synced_rows = (await db.execute(
+        select(RepoOnboardingState.repo_id, func.max(RepoOnboardingState.completed_at))
+        .where(RepoOnboardingState.repo_id.in_(repo_ids))
+        .group_by(RepoOnboardingState.repo_id)
+    )).all()
+    last_synced_by_repo = {rid: ts for rid, ts in synced_rows}
+
     # File counts come from the knowledge graph; a fresh repo with no graph yet
     # still renders (count=0). Failures are swallowed so a Neo4j blip can't kill
     # the dashboard.
@@ -104,6 +114,10 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
             open_prs=open_prs,
             onboarding_pct=onboarding_pct,
             health=health,
+            last_synced=(
+                last_synced_by_repo[r.id].isoformat()
+                if last_synced_by_repo.get(r.id) else None
+            ),
         ))
     return out
 

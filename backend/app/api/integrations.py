@@ -104,6 +104,33 @@ async def integration_status(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/health")
+async def integration_health():
+    """Readiness checklist for the dashboard: which capabilities are configured.
+    The LLM provider is the only hard requirement — without it nothing answers."""
+    from app.services.llm.provider import LLMProvider
+    try:
+        providers = await LLMProvider._get_available_providers()
+    except Exception:
+        providers = []
+    llm_ok = len(providers) > 0
+
+    scm = IntegrationRegistry.get_scm()
+    pm = IntegrationRegistry.get_pm()
+    chat = IntegrationRegistry.get_chat()
+    checks = [
+        {"name": "LLM provider", "ok": llm_ok,
+         "detail": providers[0][0] if providers else "no API key set", "required": True},
+        {"name": "GitHub", "ok": scm is not None,
+         "detail": "connected" if scm else "not configured", "required": False},
+        {"name": "Jira", "ok": pm is not None,
+         "detail": "connected" if pm else "not configured", "required": False},
+        {"name": "Slack", "ok": chat is not None,
+         "detail": "connected" if chat else "not configured", "required": False},
+    ]
+    return {"checks": checks, "ready": llm_ok}
+
+
 # ─── Provider Actions ────────────────────────────────────
 
 def _map_gh_repo(r: dict) -> dict:

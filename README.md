@@ -136,7 +136,7 @@ The heart of the product. The **Chat** page is a streaming conversation with an 
 - **Acts, doesn't just talk.** It can `read_file` / `edit_file`, `run_tests`, `run_lint`, `create_branch`, `commit_files`, and `create_pr` — it runs `git` and `gh` itself rather than following a scripted workflow.
 - **Persistent memory.** `write_note` / `search_notes` give the team a durable, searchable memory that survives across conversations and is linked into the graph.
 - **Rich, readable replies.** Answers render as full Markdown with **syntax-highlighted** code blocks (Shiki), and every code block — and message — has a one-click **copy** button. A **Stop** button cancels a running response mid-stream.
-- **Conversation history.** Threads are persisted server-side and listed in a sidebar, so you can reopen past discussions across devices and start a fresh one any time — the agent's memory now extends to the chat itself.
+- **Conversation history.** Threads are persisted server-side and listed in a sidebar, so you can reopen past discussions across devices and start a fresh one any time — the agent's memory now extends to the chat itself. **Search** across every thread's title and message text, and **export** any conversation to Markdown with one click.
 - **Attach a file.** Pull one of your private **uploads** straight into a message; its text is injected inline as context, so the agent can reason over a stack trace, log, or design doc alongside your code.
 - **Configurable brain.** Pick your provider/model per deployment. DeepSeek is the cost-effective default; OpenAI, Anthropic, Groq, and local **Ollama** are all supported via LiteLLM.
 - **Persona.** Give the teammate a name (e.g. "Yuji") and a working style.
@@ -194,9 +194,13 @@ The **Team** page lists your AI teammate plus every human contributor **discover
 
 The **Repos** page shows every watched repository with file counts (from the graph), open-PR counts, onboarding progress, and a computed **health** score. Add, bulk-add, retry onboarding, or remove a repo (which cleans up its DB rows, on-disk clone, and graph subgraph).
 
-### 9. Costs
+### 9. Costs & budget
 
-Every LLM call is metered. The **Costs** page summarizes token usage and spend (with a per-call log), so a self-hosted agent never becomes a surprise bill.
+Every LLM call is metered — **all of them**, not just chat: onboarding, concept extraction, proactive tasks, Slack answers, and plan/generate/review all log their token usage centrally, so the dashboard reflects true spend. On top of the per-call log you get:
+
+- **Period toggle** — view tokens and spend for **today / 7d / 30d / all-time**.
+- **Spend by activity** — a breakdown of where the tokens go (chat vs onboarding vs concept extraction vs …).
+- **Budget guardrail** — set an optional monthly USD and/or token limit (`PUT /api/config/cost_budget` with `{"monthly_usd_limit": 25, "monthly_token_limit": 5000000}`); the dashboard shows a progress bar that turns amber at 80% and red once you're over, so a self-hosted agent never becomes a surprise bill.
 
 ### 10. Audit log
 
@@ -216,12 +220,17 @@ The **Knowledge** page renders LLM-extracted **concept cards** (auth, billing, q
 - **GitHub** — connect a token; the UI shows *"Connected as `<login>`"* and whether the token can push. Powers repo listing, PR sync, and PR creation.
 - **Jira** — projects, boards, sprints, active-sprint endpoints.
 - **Slack** — channel listing and message posting.
+- **Setup checklist** — the dashboard shows a readiness card (LLM provider, GitHub, Jira, Slack), so a half-configured instance is obvious at a glance instead of failing silently.
 
 Controls that aren't wired yet are honestly disabled with a note, rather than pretending to work.
 
 ### 14. Auto-sync (keeping the brain fresh)
 
-A background poller (interval-configurable, default 15 min) periodically re-syncs each repo: it **`git pull`s the latest commits** on the repo's real default branch, ingests new pull requests, and incrementally updates the graph — so the teammate's knowledge tracks reality without a manual re-onboard. The default branch is **detected at onboarding** (e.g. `main` vs `master`) and the pull falls back to whatever branch the clone is actually on, so a mis-recorded branch can't silently stall sync. Webhook-driven sync is also supported.
+A background poller (Celery beat, every 15 min) periodically re-syncs each repo: it **`git pull`s the latest commits** on the repo's real default branch, ingests new pull requests, and incrementally updates the graph — so the teammate's knowledge tracks reality without a manual re-onboard. The default branch is **detected at onboarding** (e.g. `main` vs `master`) and the pull falls back to whatever branch the clone is actually on, so a mis-recorded branch can't silently stall sync. Webhook-driven sync is also supported. The dashboard shows each repo's real **last-synced** time and flags anything stale (>24h) in amber.
+
+### 14b. Weekly digest delivery
+
+The weekly digest (actions, repo status, LLM usage, recent notes) can be **delivered to Slack automatically** — Celery beat runs it every Monday 09:00 UTC, posting to the channel set in `digest_settings.slack_channel`. Trigger it on demand with `POST /api/reports/digest/send`. With no Slack configured it's a harmless no-op.
 
 ### 15. Observability stack
 
@@ -428,12 +437,13 @@ Interactive docs at **`/docs`** (Swagger) and **`/redoc`**. A taste of the surfa
 | **Auth** | `POST /auth/login` · `POST /auth/logout` · `POST /auth/register` · `GET /auth/me` · `POST /auth/change-password` |
 | **Agent** | `POST /agent/chat` · `POST /agent/plan` · `POST /agent/validate` · `GET /agent/tools` |
 | **Repos** | `GET /repos` · `POST /repos` · `POST /repos/bulk` · `GET /repos/activity` · `GET /repos/onboarding-summary` · `GET /repos/{id}/onboarding` · `POST /repos/{id}/retry` |
-| **Knowledge** | `GET /knowledge/contributors` · `GET /knowledge/concepts` · `POST /knowledge/search` · `GET /knowledge/suggested-questions` · `GET /knowledge/graph/*` · `GET /knowledge/costs/*` |
+| **Knowledge** | `GET /knowledge/contributors` · `GET /knowledge/concepts` · `POST /knowledge/search` · `GET /knowledge/suggested-questions` · `GET /knowledge/graph/*` · `GET /knowledge/costs/summary?period=today\|7d\|30d\|all` |
+| **Conversations** | `GET /conversations?q=` (search) · `GET /conversations/{id}` · `GET /conversations/{id}/export` (Markdown) · `DELETE /conversations/{id}` |
 | **Tasks** | `GET /tasks` · `POST /tasks` · `PATCH /tasks/{id}` · `DELETE /tasks/{id}` |
 | **Workspace** | `GET/POST/DELETE /uploads` · `GET /uploads/{id}/download` · `GET/POST /notepad` |
-| **Features** | `GET/POST /features/standup` · `GET /features/digest` · `POST /features/release-notes` · `POST /features/tests/*` |
-| **Integrations** | `GET /integrations/github/repos` · `GET /integrations/jira/*` · `GET /integrations/slack/channels` |
-| **Ops** | `GET /health` · `GET /logs/{service}` · `GET /config` · `PUT /config/{key}` |
+| **Reports** | `GET /reports/digest` · `GET /reports/digest/markdown` · `POST /reports/digest/send` |
+| **Integrations** | `GET /integrations/status` · `GET /integrations/health` · `GET /integrations/github/repos` · `GET /integrations/jira/*` · `GET /integrations/slack/channels` |
+| **Ops** | `GET /health` · `GET /logs/{service}` · `GET /config` · `PUT /config/{key}` (incl. `cost_budget`, `digest_settings`) |
 
 ---
 

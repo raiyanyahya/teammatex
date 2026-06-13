@@ -263,28 +263,103 @@ async def search_notes(query: str, db: AsyncSession = Depends(get_db), limit: in
 
 # ─── Costs & Audit ─────────────────────────────────────
 
+async def _budget_status(db: AsyncSession, mtd_tokens: int, mtd_cost_cents: float) -> dict:
+    """Compare month-to-date usage against the optional `cost_budget` config
+    (set via PUT /api/config/cost_budget {monthly_usd_limit?, monthly_token_limit?}).
+    status: unset (no limit) | ok (<80%) | warn (80-99%) | over (>=100%)."""
+    from sqlalchemy import select as sa_select
+    from app.models.app_config import AppConfig
+
+    row = (await db.execute(
+        sa_select(AppConfig).where(AppConfig.key == "cost_budget")
+    )).scalar_one_or_none()
+    cfg = row.value if row and isinstance(row.value, dict) else {}
+    usd_limit = cfg.get("monthly_usd_limit")
+    token_limit = cfg.get("monthly_token_limit")
+    mtd_usd = mtd_cost_cents / 100.0
+
+    def _pct(used: float, limit) -> float | None:
+        try:
+            limit = float(limit)
+        except (TypeError, ValueError):
+            return None
+        return round(100.0 * used / limit, 1) if limit > 0 else None
+
+    usd_pct = _pct(mtd_usd, usd_limit)
+    tok_pct = _pct(mtd_tokens, token_limit)
+    worst = max([p for p in (usd_pct, tok_pct) if p is not None], default=None)
+    status = (
+        "unset" if worst is None
+        else "over" if worst >= 100
+        else "warn" if worst >= 80
+        else "ok"
+    )
+    return {
+        "monthly_usd_limit": usd_limit,
+        "monthly_token_limit": token_limit,
+        "month_to_date_cost_cents": round(mtd_cost_cents, 4),
+        "month_to_date_tokens": mtd_tokens,
+        "usd_used_pct": usd_pct,
+        "token_used_pct": tok_pct,
+        "status": status,
+    }
+
+
 @router.get("/costs/summary")
-async def get_costs_summary(db: AsyncSession = Depends(get_db)):
+async def get_costs_summary(period: str = "all", db: AsyncSession = Depends(get_db)):
+    """LLM token/cost totals for the dashboard.
+
+    `period` = today | 7d | 30d | all (default). Returns the period totals, a
+    by-provider and by-call-type breakdown, and a month-to-date budget status
+    (independent of `period`) so the UI can warn before the bill runs away.
+    """
+    from datetime import datetime, timezone, timedelta
     from sqlalchemy import func, select as sa_select
     from app.models.audit import CostLog
 
-    result = await db.execute(
+    now = datetime.now(timezone.utc)
+    since = {
+        "today": now.replace(hour=0, minute=0, second=0, microsecond=0),
+        "7d": now - timedelta(days=7),
+        "30d": now - timedelta(days=30),
+    }.get(period)
+
+    def _scoped(stmt):
+        return stmt.where(CostLog.date >= since) if since is not None else stmt
+
+    total_tokens, total_cost = (await db.execute(_scoped(sa_select(
+        func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
+        func.coalesce(func.sum(CostLog.cost_cents), 0),
+    )))).one()
+
+    by_provider = (await db.execute(_scoped(
+        sa_select(CostLog.provider, func.sum(CostLog.cost_cents)).group_by(CostLog.provider)
+    ))).all()
+
+    by_call_type = (await db.execute(_scoped(
         sa_select(
+            CostLog.call_type,
             func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
             func.coalesce(func.sum(CostLog.cost_cents), 0),
-        )
-    )
-    total_tokens, total_cost = result.one()
+        ).group_by(CostLog.call_type).order_by(func.sum(CostLog.cost_cents).desc())
+    ))).all()
 
-    provider_result = await db.execute(
-        sa_select(CostLog.provider, func.sum(CostLog.cost_cents))
-        .group_by(CostLog.provider)
-    )
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    mtd_tokens, mtd_cost = (await db.execute(sa_select(
+        func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
+        func.coalesce(func.sum(CostLog.cost_cents), 0),
+    ).where(CostLog.date >= month_start))).one()
 
     return {
+        "period": period,
         "total_tokens": int(total_tokens),
         "total_cost_cents": float(total_cost),
-        "by_provider": [{"provider": p, "cost_cents": float(c)} for p, c in provider_result.all()],
+        "by_provider": [{"provider": p, "cost_cents": float(c)} for p, c in by_provider],
+        "by_call_type": [
+            {"call_type": ct, "tokens": int(tok), "cost_cents": float(c)}
+            for ct, tok, c in by_call_type
+        ],
+        "budget": await _budget_status(db, int(mtd_tokens), float(mtd_cost)),
     }
 
 

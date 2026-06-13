@@ -28,6 +28,15 @@ async def get_weekly_digest_md():
     return {"markdown": digest_generator.format_markdown(digest)}
 
 
+@router.post("/digest/send")
+async def send_digest_now():
+    """Generate the weekly digest and deliver it to Slack now (same job the beat
+    schedule runs Mondays). Returns delivery status; no-ops if Slack isn't set up."""
+    import asyncio
+    from app.workers.tasks import send_weekly_digest
+    return await asyncio.to_thread(send_weekly_digest)
+
+
 @router.get("/docs/{repo_id}")
 async def get_repo_docs(repo_id: str):
     from app.services.reporting.docs_generator import docs_generator
