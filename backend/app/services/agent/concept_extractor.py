@@ -68,6 +68,7 @@ class ConceptExtractor:
             ),
             user=payload,
             temperature=0.2,
+            call_type="concept_extraction",
         )
         items = self._parse_response(raw)
         if not items:
@@ -144,7 +145,7 @@ class ConceptExtractor:
               AND NOT f.path CONTAINS '/dist/'
               AND NOT f.path CONTAINS '/build/'
               AND NOT f.path CONTAINS '/.next/'
-            RETURN f.path AS path, f.language AS language, coalesce(f.lines, 0) AS lines
+            RETURN f.path AS path, f.language AS language
             ORDER BY f.path
             """,
             repo_id=repo_id,

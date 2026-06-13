@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from structlog import get_logger
@@ -75,6 +76,15 @@ async def slack_webhook(request: Request):
         raise HTTPException(status_code=401, detail="Webhook signing secret not configured")
     if not timestamp or not signature:
         raise HTTPException(status_code=401, detail="Invalid signature")
+    # Reject stale requests: the signed timestamp must be recent, otherwise a
+    # captured signed request could be replayed indefinitely. Slack recommends a
+    # 5-minute window.
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    if abs(time.time() - ts) > 60 * 5:
+        raise HTTPException(status_code=401, detail="Stale request")
     sig_basestring = f"v0:{timestamp}:{body.decode()}"
     expected = f"v0={hmac.new(settings.slack_signing_secret.encode(), sig_basestring.encode(), hashlib.sha256).hexdigest()}"
     if not hmac.compare_digest(expected, signature):

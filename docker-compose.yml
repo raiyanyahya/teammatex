@@ -51,10 +51,15 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      docker-socket-proxy:
+        condition: service_started
     volumes:
       - cloned_repos:/data/repos
       - uploads_data:/data/uploads
-      - /var/run/docker.sock:/var/run/docker.sock
+    # NOTE: the raw /var/run/docker.sock is deliberately NOT mounted here. The
+    # api runs the agent's shell tool, so a bind-mounted socket would turn any
+    # in-container RCE into host root (create a privileged container, mount /).
+    # The Logs view instead talks to the read-only docker-socket-proxy below.
     ports:
       - "8000:8000"
     healthcheck:
@@ -118,6 +123,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # ─── Least-privilege Docker API proxy (Logs view) ───────
+  # The ONLY container that touches the host Docker socket (mounted read-only).
+  # It exposes the Docker API over TCP on the internal network but forwards just
+  # GET /containers/<name>/logs (see docker-logs-proxy.Caddyfile); inspect,
+  # create and exec are all 403'd. So an attacker who lands RCE in the api can
+  # neither read other containers' env (secrets) nor escape to the host through
+  # this proxy.
+  docker-socket-proxy:
+    <<: *common
+    image: caddy:2.8-alpine
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/docker-logs-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
 
   # ─── Data Services ──────────────────────────────────────
   postgres:

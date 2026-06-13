@@ -1,6 +1,5 @@
 import http.client
-import json
-import urllib.parse
+import os
 
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
@@ -16,6 +15,13 @@ CONTAINERS = {
     "redis": "teammatex-redis-1",
 }
 
+# We reach the Docker API through the read-only docker-socket-proxy over TCP, NOT
+# a bind-mounted /var/run/docker.sock. The proxy only permits read GET calls on
+# /containers, so this endpoint can fetch logs while the api container has no
+# direct, writable handle on the host Docker daemon to escape through.
+DOCKER_PROXY_HOST = os.getenv("DOCKER_PROXY_HOST", "docker-socket-proxy")
+DOCKER_PROXY_PORT = int(os.getenv("DOCKER_PROXY_PORT", "2375"))
+
 
 # PlainTextResponse so the body is the raw log text with real newlines. The
 # default JSONResponse would wrap it in quotes and escape every newline to a
@@ -28,9 +34,7 @@ async def get_logs(service: str):
         return f"Unknown service: {service}"
 
     try:
-        conn = http.client.HTTPConnection("localhost")
-        conn.sock = __import__("socket").socket(__import__("socket").AF_UNIX, __import__("socket").SOCK_STREAM)
-        conn.sock.connect("/var/run/docker.sock")
+        conn = http.client.HTTPConnection(DOCKER_PROXY_HOST, DOCKER_PROXY_PORT, timeout=5)
         conn.request("GET", f"/containers/{container}/logs?stdout=1&stderr=1&tail=300")
         response = conn.getresponse()
         data = response.read()
@@ -45,7 +49,10 @@ async def get_logs(service: str):
             i += 8 + size
         conn.close()
         return cleaned or "No logs"
-    except FileNotFoundError:
-        return "Docker socket not available. Logs can only be viewed from the host: docker compose logs -f"
+    except (ConnectionRefusedError, OSError) as e:
+        return (
+            "Log proxy unavailable. The docker-socket-proxy service must be running; "
+            f"logs can also be viewed from the host: docker compose logs -f ({e})"
+        )
     except Exception as e:
         return f"Error: {e}"

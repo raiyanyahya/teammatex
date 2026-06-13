@@ -123,6 +123,8 @@ class SlackBot:
                     ],
                     api_key=key, temperature=0.3, max_tokens=1000,
                 )
+                from app.services.agent.cost_tracker import record_llm_usage
+                await record_llm_usage(provider, model, "slack", resp)
                 answer = resp.choices[0].message.content or ""
                 if answer:
                     await self.post_message(channel, answer)

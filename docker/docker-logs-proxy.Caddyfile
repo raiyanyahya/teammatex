@@ -1,0 +1,20 @@
+{
+	admin off
+	auto_https off
+}
+
+# Least-privilege Docker API proxy for the Logs view. The host docker.sock is
+# mounted (read-only) into THIS container only; the api reaches it over TCP. Only
+# GET /containers/<name>/logs is forwarded — every other path (container inspect,
+# which would leak env/secrets; create/exec, which would allow host escape) gets
+# a flat 403. So an attacker with RCE in the api cannot read other containers'
+# environments or spawn privileged containers through this proxy.
+:2375 {
+	@logs path_regexp logs ^/containers/[A-Za-z0-9][A-Za-z0-9_.-]*/logs$
+	handle @logs {
+		reverse_proxy unix//var/run/docker.sock
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+}

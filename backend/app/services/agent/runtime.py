@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re as _re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -25,7 +26,7 @@ from app.services.agent.prompts import (
 from app.services.agent.rag import RAGPipeline
 from app.services.agent.tools import ToolRegistry, tool_registry
 from app.services.agent.confidence import ConfidenceTier, is_low_confidence, flag_if_low
-from app.services.agent.cost_tracker import log_cost, log_audit
+from app.services.agent.cost_tracker import log_cost, log_audit, record_llm_usage
 from app.services.llm.provider import LLMProvider
 
 
@@ -73,10 +74,39 @@ def _get_github_token() -> str:
 
 logger = get_logger(__name__)
 
+# The agent only ever has legitimate business inside the cloned repos and the
+# uploads/scratch volumes. Confining file tools here stops a path like
+# /proc/<pid>/environ (process secrets), /etc/shadow, or the app source from
+# being read/written through read_file/write_file/edit_file/list/glob/grep.
+_WORKSPACE_ROOTS = ("/data/repos", "/data/uploads", "/tmp")
+
+
 def _is_safe_path(path: str) -> bool:
-    # Full access inside the container (the container is the sandbox, and
-    # run_command is already unrestricted). Any concrete path is allowed.
-    return bool(path and str(path).strip())
+    """True only if `path` resolves inside an allowed workspace root. Symlinks are
+    resolved first so a symlink (or ``..``) inside the workspace can't escape it."""
+    if not path or not str(path).strip():
+        return False
+    try:
+        real = os.path.realpath(str(path))
+    except (OSError, ValueError):
+        return False
+    return any(real == r or real.startswith(r + os.sep) for r in _WORKSPACE_ROOTS)
+
+
+# Environment-variable names that carry secrets and must never be exposed to a
+# shell/process the agent runs (run_command / run_lint). Matched as a substring,
+# case-insensitive, so OPENAI_API_KEY, TEAMMATEX_SECRET_KEY, POSTGRES_PASSWORD,
+# JIRA_API_TOKEN, etc. are all stripped while PATH/HOME/LANG survive.
+_SECRET_ENV_RE = _re.compile(
+    r"SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|_KEY$|PRIVATE|CREDENTIAL", _re.IGNORECASE
+)
+
+
+def _scrubbed_env() -> dict:
+    """A copy of the process environment with secret-bearing vars removed, for
+    handing to agent-invoked subprocesses so `env`/`printenv`/`echo $VAR` can't
+    leak the JWT signing key or integration credentials."""
+    return {k: v for k, v in os.environ.items() if not _SECRET_ENV_RE.search(k)}
 
 
 class AgentState(str, Enum):
@@ -357,6 +387,7 @@ class AgentRuntime:
                               {"role": "user", "content": prompt}],
                     api_key=key, temperature=0.2, max_tokens=2000,
                 )
+                await record_llm_usage(provider, model, "plan", response)
                 return response.choices[0].message.content or ""
             except Exception:
                 continue
@@ -698,6 +729,7 @@ class AgentRuntime:
         process = await asyncio.create_subprocess_exec(
             "ruff", "check", args["path"],
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=_scrubbed_env(),
         )
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
@@ -803,7 +835,7 @@ class AgentRuntime:
             ])
             return entries
         elif tool_name == "glob_search":
-            base = _Path(args.get("path") or ".")
+            base = _Path(args.get("path") or "/data/repos")
             if not _is_safe_path(str(base)):
                 return {"error": "Path outside allowed directories"}
             loop = asyncio.get_running_loop()
@@ -889,6 +921,7 @@ class AgentRuntime:
                     result = subprocess.run(
                         args["command"], shell=True, capture_output=True, text=True,
                         timeout=timeout, cwd=args.get("cwd") or "/data/repos",
+                        env=_scrubbed_env(),
                     )
                     return {
                         "exit_code": result.returncode,

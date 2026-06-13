@@ -8,6 +8,15 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi --no-root
 
+# sentence-transformers pulls in torch, whose default wheel is the CUDA build
+# (~4.5GB of nvidia/triton libs). This container is CPU-only, so swap in the
+# CPU-only torch of the same version and drop the orphaned GPU packages.
+# --no-deps keeps the deps poetry already resolved.
+RUN TORCH_VER="$(pip show torch | awk '/^Version:/{print $2}' | cut -d+ -f1)" \
+    && pip freeze | grep -iE '^(torch|triton|nvidia-)' | cut -d= -f1 | xargs -r pip uninstall -y \
+    && pip install --no-cache-dir --no-deps "torch==${TORCH_VER}" \
+        --index-url https://download.pytorch.org/whl/cpu
+
 FROM python:3.12-slim
 # git for repo ops; gh so the teammate can open real PRs by running commands;
 # node+npm so it can install deps and run tests on the JS/Electron repos it onboards.

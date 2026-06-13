@@ -8,13 +8,25 @@ from app.models.app_config import AppConfig
 
 router = APIRouter(prefix="/config", tags=["config"])
 
-# Field names whose values are secrets and must never be echoed back to a client.
-_SECRET_KEYS = {
-    "api_key", "token", "secret", "password", "client_secret",
-    "signing_secret", "webhook_secret", "access_token", "refresh_token",
-    "private_key",
-}
+# Substrings that mark a field value as a secret that must never be echoed back
+# to a client. Matched as substrings (not exact names) so non-canonical keys like
+# "github_pat", "my_api_key" or "jira_access_token" are redacted too — under-
+# masking leaks a credential, so we deliberately err toward masking.
+_SECRET_SUBSTRINGS = (
+    "token", "secret", "password", "passwd", "pwd",
+    "api_key", "apikey", "credential", "private_key", "privatekey",
+    "access_key",
+)
 _MASK = "********"
+
+
+def _is_secret_key(key: str) -> bool:
+    k = str(key).lower()
+    if any(s in k for s in _SECRET_SUBSTRINGS):
+        return True
+    # Catch *_key / *_pat style names (e.g. "deploy_key", "github_pat") without
+    # matching innocuous words like "path" (which does not end in "pat"/"key").
+    return k.endswith("key") or k.endswith("pat")
 
 
 def _mask_secrets(value):
@@ -23,7 +35,7 @@ def _mask_secrets(value):
     credential apart from one that's simply unset."""
     if isinstance(value, dict):
         return {
-            k: (_MASK if (k.lower() in _SECRET_KEYS and v) else _mask_secrets(v))
+            k: (_MASK if (_is_secret_key(k) and v) else _mask_secrets(v))
             for k, v in value.items()
         }
     if isinstance(value, list):
@@ -38,7 +50,7 @@ def _unmask_secrets(new_value, old_value):
     if isinstance(new_value, dict):
         old = old_value if isinstance(old_value, dict) else {}
         return {
-            k: (old.get(k) if (k.lower() in _SECRET_KEYS and v == _MASK)
+            k: (old.get(k) if (_is_secret_key(k) and v == _MASK)
                 else _unmask_secrets(v, old.get(k)))
             for k, v in new_value.items()
         }

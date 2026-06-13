@@ -44,6 +44,10 @@ class ToolExecuteRequest(BaseModel):
     tool_name: str = Field(..., min_length=1, max_length=100)
     arguments: dict
     repo_id: str | None = None
+    # Side-effecting tools (write_file, run_command, create_pr, …) are flagged
+    # requires_confirmation. The caller must pass confirm=true to run them, so the
+    # human-in-the-loop is enforced server-side, not just in the UI.
+    confirm: bool = False
 
 
 class ReviewRequest(BaseModel):
@@ -141,6 +145,14 @@ async def self_review(payload: ReviewRequest):
 @router.post("/tool")
 async def execute_tool(payload: ToolExecuteRequest, db: AsyncSession = Depends(get_db)):
     from app.services.agent.runtime import AgentContext
+
+    tool = agent_runtime.tools.get_all().get(payload.tool_name)
+    if tool is not None and tool.requires_confirmation and not payload.confirm:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Tool '{payload.tool_name}' makes changes and requires confirmation; resend with confirm=true.",
+        )
+
     ctx = AgentContext(repo_id=payload.repo_id, db=db)
     result = await agent_runtime.execute_tool(ctx, payload.tool_name, payload.arguments)
     if "error" in result:

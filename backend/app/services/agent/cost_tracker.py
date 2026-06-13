@@ -61,6 +61,24 @@ def _sync_log_cost(engine, provider, model, call_type, tokens_in, tokens_out, co
             pass
 
 
+async def record_llm_usage(provider: str, model: str, call_type: str, response) -> None:
+    """Central hook to count an LLM call in cost_log from its litellm response.
+
+    Use this at every LLM call site so the dashboard's token/cost totals reflect
+    all usage (onboarding, proactive tasks, Slack, plan/generate/review) — not
+    only interactive agent chat. No-op when the response carries no usage."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0)
+    tokens_out = int(getattr(usage, "completion_tokens", 0) or 0)
+    if tokens_in == 0 and tokens_out == 0:
+        return
+    from app.services.agent.cost import cost_cents
+    await log_cost(provider, model, call_type, tokens_in, tokens_out,
+                   cost_cents(model, tokens_in, tokens_out, provider))
+
+
 async def log_audit(
     action: str,
     entity_type: str = "",

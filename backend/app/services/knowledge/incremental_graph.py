@@ -15,6 +15,23 @@ logger = get_logger(__name__)
 
 MANIFEST_PREFIX = "manifest::"
 
+# Skip line-counting files larger than this (binary/minified blobs); the line
+# count would be meaningless and the read wasteful.
+_MAX_LINE_COUNT_BYTES = 2 * 1024 * 1024
+
+
+def _count_lines(path: Path) -> int:
+    """Best-effort line count for a source file, 0 on any error or oversized/
+    binary file. Populates File.lines so per-file size data in the graph is real
+    rather than always 0."""
+    try:
+        if not path.is_file() or path.stat().st_size > _MAX_LINE_COUNT_BYTES:
+            return 0
+        with path.open("rb") as fh:
+            return sum(1 for _ in fh)
+    except OSError:
+        return 0
+
 
 class IncrementalGraphUpdater:
     def __init__(self, clone_path: str, repo_id: str, repo_name: str):
@@ -66,12 +83,13 @@ class IncrementalGraphUpdater:
                 MERGE (f:File {id: $id})
                 SET f.repo_id = $repo_id, f.path = $path, f.language = $lang,
                     f.sha256 = $sha, f.size = $size, f.role = $role,
-                    f.version = $version
+                    f.lines = $lines, f.version = $version
                 WITH f
                 MATCH (r:Repository {id: $repo_nid})
                 MERGE (f)-[:PART_OF]->(r)
                 """, id=file_nid, repo_id=self.repo_id, path=rel, lang=lang,
-                     sha=sha, size=size_val, role=role, version=EXTRACTOR_VERSION,
+                     sha=sha, size=size_val, role=role, lines=_count_lines(file_path),
+                     version=EXTRACTOR_VERSION,
                      repo_nid=node_id(self.repo_id, "Repository", self.repo_name))
             except Exception as e:
                 logger.debug("file_node_failed", path=rel, error=str(e)[:100])
@@ -115,13 +133,13 @@ class IncrementalGraphUpdater:
                 MERGE (f:File {id: $id})
                 SET f.repo_id = $repo_id, f.path = $path, f.language = $lang,
                     f.sha256 = $sha, f.size = $size, f.role = $role,
-                    f.version = $version
+                    f.lines = $lines, f.version = $version
                 WITH f
                 MATCH (r:Repository {id: $repo_nid})
                 MERGE (f)-[:PART_OF]->(r)
                 """, id=file_nid, repo_id=self.repo_id, path=rel, lang=lang,
                      sha=info.get("sha256", ""), size=info.get("size", 0),
-                     role=role, version=EXTRACTOR_VERSION,
+                     role=role, lines=_count_lines(file_path), version=EXTRACTOR_VERSION,
                      repo_nid=node_id(self.repo_id, "Repository", self.repo_name))
             except Exception as e:
                 logger.debug("incr_file_failed", path=rel, error=str(e)[:100])

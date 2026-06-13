@@ -111,6 +111,7 @@ class LLMProvider:
     async def chat(
         cls, messages: list[dict], temperature: float = 0.2,
         max_tokens: int = 4096, stream: bool = False, tools: list[dict] | None = None,
+        call_type: str = "completion",
     ) -> dict:
         providers = await cls._get_available_providers()
         last_error = None
@@ -126,6 +127,10 @@ class LLMProvider:
                 kwargs["tools"] = tools
             try:
                 response = await acompletion(**kwargs)
+                # Count every non-chat-loop LLM call (onboarding, proactive,
+                # generate/validate/review, …) in the dashboard's token totals.
+                from app.services.agent.cost_tracker import record_llm_usage
+                await record_llm_usage(provider, model, call_type, response)
                 try:
                     cost = completion_cost(completion_response=response)
                 except Exception:
@@ -175,9 +180,10 @@ class LLMProvider:
         raise RuntimeError(f"All streaming providers failed: {last_error}")
 
     @classmethod
-    async def simple_prompt(cls, system: str, user: str, temperature: float = 0.2) -> str:
+    async def simple_prompt(cls, system: str, user: str, temperature: float = 0.2,
+                            call_type: str = "completion") -> str:
         result = await cls.chat([
             {"role": "system", "content": system},
             {"role": "user", "content": user},
-        ], temperature=temperature)
+        ], temperature=temperature, call_type=call_type)
         return result["content"]
