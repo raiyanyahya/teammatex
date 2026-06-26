@@ -40,7 +40,7 @@ It clones your repositories, reads every line and every commit, builds a living 
 
 ---
 
-> [!WARNING]
+> [!NOTE]
 > **TeammateX is in alpha — early and moving fast.**
 > It runs end-to-end and the features below are real, but expect rough edges, breaking changes, and incomplete corners. Pin a commit if you deploy it, keep backups of the named volumes, and treat it as a capable work-in-progress rather than a hardened product. **Bug reports, ideas, and PRs are hugely welcome** — this is the stage where they shape the project most.
 
