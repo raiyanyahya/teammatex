@@ -9,12 +9,13 @@ from app.models.permission import Permission
 router = APIRouter(prefix="/permissions", tags=["permissions"])
 
 # Canonical capabilities, their label, and the state the agent assumes when a
-# capability has never been explicitly set. read_code/write_code/create_pr gate
-# tools (see runtime.TOOL_CAPABILITY); merge_pr and autonomous are surfaced for
-# completeness but have no tool gate yet.
+# capability has never been explicitly set. read_code/write_code/create_pr/execute
+# gate tools (see runtime.TOOL_CAPABILITY); merge_pr and autonomous are surfaced
+# for completeness but have no tool gate yet.
 CAPABILITIES: list[tuple[str, str, bool]] = [
     ("read_code", "Read code", True),
     ("write_code", "Write code", True),
+    ("execute", "Run commands & lint", True),
     ("create_pr", "Create PRs", True),
     ("merge_pr", "Merge PRs", False),
     ("autonomous", "Autonomous mode", True),

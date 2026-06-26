@@ -93,6 +93,31 @@ def _is_safe_path(path: str) -> bool:
     return any(real == r or real.startswith(r + os.sep) for r in _WORKSPACE_ROOTS)
 
 
+def _resolve_repo_path(ctx: "AgentContext | None", args: dict) -> str | None:
+    """Resolve which clone under /data/repos a git tool should operate on.
+
+    The git tools used to open ``pygit2.Repository("/data/repos")`` — but that's
+    the *parent* of the clones, not a repo, so every call raised. Resolve a real
+    repo: an explicit ``repo_name`` arg, else the active context repo, else the
+    sole clone if there's exactly one. Returns a validated path or None."""
+    root = "/data/repos"
+    name = (args.get("repo_name") or (getattr(ctx, "repo_name", None) or "")).strip().strip("/")
+    if not name:
+        try:
+            dirs = [p for p in os.listdir(root)
+                    if os.path.isdir(os.path.join(root, p, ".git"))]
+        except OSError:
+            dirs = []
+        if len(dirs) == 1:
+            name = dirs[0]
+        else:
+            return None
+    path = os.path.join(root, name)
+    if not _is_safe_path(path):
+        return None
+    return path if os.path.isdir(os.path.join(path, ".git")) else None
+
+
 # Environment-variable names that carry secrets and must never be exposed to a
 # shell/process the agent runs (run_command / run_lint). Matched as a substring,
 # case-insensitive, so OPENAI_API_KEY, TEAMMATEX_SECRET_KEY, POSTGRES_PASSWORD,
@@ -180,6 +205,7 @@ TOOL_CAPABILITY: dict[str, str] = {
     "write_file": "write_code", "edit_file": "write_code",
     "commit_files": "write_code", "create_branch": "write_code",
     "create_pr": "create_pr",
+    "run_command": "execute", "run_lint": "execute", "run_tests": "execute",
 }
 
 
@@ -534,17 +560,17 @@ class AgentRuntime:
         elif tool_name == "create_pr":
             return await self._tool_create_pr(args, ctx)
         elif tool_name == "get_diff":
-            return await self._tool_get_diff(args)
+            return await self._tool_get_diff(args, ctx)
         elif tool_name == "get_blame":
-            return await self._tool_get_blame(args)
+            return await self._tool_get_blame(args, ctx)
         elif tool_name == "get_commit_log":
-            return await self._tool_get_commit_log(args)
+            return await self._tool_get_commit_log(args, ctx)
         elif tool_name == "run_tests":
             return {"error": "Test execution requires CI integration (not yet wired)"}
         elif tool_name == "run_lint":
             return await self._tool_run_lint(args)
         elif tool_name == "http_request":
-            return await self._tool_http_request(args)
+            return await self._tool_http_request(args, ctx)
         elif tool_name == "schedule_task":
             return await self._tool_schedule_task(args, ctx)
 
@@ -704,11 +730,14 @@ class AgentRuntime:
             ctx.files_modified = result["files"]
         return result
 
-    async def _tool_get_diff(self, args: dict) -> dict:
+    async def _tool_get_diff(self, args: dict, ctx: AgentContext) -> dict:
+        repo_path = _resolve_repo_path(ctx, args)
+        if not repo_path:
+            return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
         def _diff():
-            repo = pygit2.Repository("/data/repos")
+            repo = pygit2.Repository(repo_path)
             base_ref = args.get("base", "HEAD~1")
             head_ref = args.get("head", "HEAD")
             base = repo.revparse_single(base_ref)
@@ -718,11 +747,14 @@ class AgentRuntime:
         patch = await loop.run_in_executor(None, _diff)
         return {"diff": patch[:5000]}
 
-    async def _tool_get_blame(self, args: dict) -> dict:
+    async def _tool_get_blame(self, args: dict, ctx: AgentContext) -> dict:
+        repo_path = _resolve_repo_path(ctx, args)
+        if not repo_path:
+            return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
         def _blame():
-            repo = pygit2.Repository("/data/repos")
+            repo = pygit2.Repository(repo_path)
             blame = repo.blame(args["file_path"])
             results = []
             for hunk in blame:
@@ -738,11 +770,14 @@ class AgentRuntime:
         entries = await loop.run_in_executor(None, _blame)
         return {"blame": entries}
 
-    async def _tool_get_commit_log(self, args: dict) -> dict:
+    async def _tool_get_commit_log(self, args: dict, ctx: AgentContext) -> dict:
+        repo_path = _resolve_repo_path(ctx, args)
+        if not repo_path:
+            return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
         def _log():
-            repo = pygit2.Repository("/data/repos")
+            repo = pygit2.Repository(repo_path)
             limit = args.get("limit", 20)
             commits = []
             for commit in repo.walk(repo.head.target):
@@ -776,7 +811,42 @@ class AgentRuntime:
             "issues": stdout.decode(errors="replace")[:3000],
         }
 
-    async def _tool_http_request(self, args: dict) -> dict:
+    async def _registry_allows(self, ctx: AgentContext, url: str, method: str) -> tuple[bool, str]:
+        """Enforce the approved-API allow-list the http_request description promises.
+
+        Opt-in: with an empty registry we don't block (the SSRF guard still
+        applies), so existing instances aren't bricked. Once an operator adds any
+        active entry, http_request is restricted to registered domains/methods/
+        paths — giving real outbound egress control without extra config."""
+        if ctx is None or ctx.db is None:
+            return True, ""
+        try:
+            from sqlalchemy import select as _sel
+            from app.models.api_registry import APIRegistryEntry
+            rows = (await ctx.db.execute(
+                _sel(APIRegistryEntry).where(APIRegistryEntry.status == "active")
+            )).scalars().all()
+        except Exception:
+            return True, ""  # registry unavailable — fall back to SSRF guard only
+        if not rows:
+            return True, ""
+        from urllib.parse import urlparse
+        host = urlparse(url).hostname or ""
+        entry = next((r for r in rows if r.domain == host), None)
+        if not entry:
+            return False, f"domain '{host}' is not in the approved API registry"
+        methods = [m.upper() for m in (entry.allowed_methods or [])]
+        if methods and method.upper() not in methods:
+            return False, f"method {method.upper()} not allowed for {host} (allowed: {methods})"
+        paths = entry.allowed_paths or []
+        if paths:
+            from fnmatch import fnmatch
+            req_path = urlparse(url).path or "/"
+            if not any(fnmatch(req_path, p) for p in paths):
+                return False, f"path {req_path} not allowed for {host}"
+        return True, ""
+
+    async def _tool_http_request(self, args: dict, ctx: AgentContext) -> dict:
         import httpx
         url = args["url"]
         # SSRF guard: the model chooses this URL, so block anything that resolves
@@ -787,6 +857,10 @@ class AgentRuntime:
         if not ok:
             logger.warning("http_request_blocked", url=url[:200], reason=reason)
             return {"error": f"URL blocked: {reason}"}
+        allowed, why = await self._registry_allows(ctx, url, args["method"])
+        if not allowed:
+            logger.warning("http_request_registry_denied", url=url[:200], reason=why)
+            return {"error": f"URL blocked: {why}"}
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             response = await client.request(
                 args["method"], url,
@@ -798,13 +872,39 @@ class AgentRuntime:
             "body": response.text[:3000],
         }
 
+    # Only these registered Celery tasks may be scheduled. The old code fired
+    # "health_check" for *every* request and ignored the action — reporting a
+    # success that did nothing. Scheduling arbitrary actions isn't supported, so
+    # we accept the real tasks and reject anything else honestly.
+    _SCHEDULABLE_TASKS = {"health_check", "git_pull_repos", "send_weekly_digest"}
+
     async def _tool_schedule_task(self, args: dict, ctx: AgentContext) -> dict:
+        from datetime import datetime
         from app.workers.celery_app import celery_app
-        celery_app.send_task(
-            "health_check",
-            eta=args["trigger_time"],
-        )
-        return {"scheduled": True, "name": args["name"]}
+
+        action = args.get("action") or {}
+        task_name = action.get("task") if isinstance(action, dict) else None
+        if task_name not in self._SCHEDULABLE_TASKS:
+            return {"error": f"Only these tasks can be scheduled: "
+                             f"{sorted(self._SCHEDULABLE_TASKS)}. Got task={task_name!r}."}
+
+        trigger = (args.get("trigger_time") or "").strip()
+        eta = None
+        if trigger:
+            try:
+                eta = datetime.fromisoformat(trigger.replace("Z", "+00:00"))
+            except ValueError:
+                return {"error": f"trigger_time must be an ISO-8601 datetime "
+                                 f"(cron expressions aren't supported); got {trigger!r}."}
+
+        try:
+            result = celery_app.send_task(
+                task_name, eta=eta, kwargs=action.get("kwargs") or {},
+            )
+        except Exception as e:
+            return {"error": f"Failed to enqueue task: {str(e)[:200]}"}
+        return {"scheduled": True, "name": args["name"], "task": task_name,
+                "id": str(result.id), "eta": trigger or "now"}
 
     async def _dispatch_legacy(self, tool_name: str, args: dict, ctx: AgentContext) -> Any:
         if tool_name == "semantic_search":

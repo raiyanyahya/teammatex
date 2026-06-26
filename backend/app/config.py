@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     prometheus_enabled: bool = True
     grafana_admin_password: str = "admin"
 
+    # Set COOKIE_SECURE=true in production (behind HTTPS) so the session cookie
+    # carries the Secure flag and is never sent over plain http. Left False by
+    # default so local http://localhost development still works.
+    cookie_secure: bool = False
+
     def validate_secret_key(self) -> None:
         if self.teammate_secret_key == "change-me" or len(self.teammate_secret_key) < 16:
             import warnings

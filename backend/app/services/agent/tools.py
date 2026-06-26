@@ -181,6 +181,7 @@ class ToolRegistry:
             parameters={
                 "type": "object",
                 "properties": {
+                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
                     "base": {"type": "string", "description": "Base ref (default: HEAD~1)"},
                     "head": {"type": "string", "description": "Head ref (default: HEAD)"},
                     "path": {"type": "string", "description": "Optional file path filter"},
@@ -196,6 +197,7 @@ class ToolRegistry:
             parameters={
                 "type": "object",
                 "properties": {
+                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
                     "file_path": {"type": "string", "description": "File path"},
                     "start_line": {"type": "integer"},
                     "end_line": {"type": "integer"},
@@ -211,6 +213,7 @@ class ToolRegistry:
             parameters={
                 "type": "object",
                 "properties": {
+                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
                     "file_path": {"type": "string", "description": "Optional: filter by file"},
                     "author": {"type": "string", "description": "Optional: filter by author email"},
                     "limit": {"type": "integer", "description": "Max commits (default: 20)", "default": 20},

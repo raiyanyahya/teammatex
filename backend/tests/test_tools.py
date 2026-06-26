@@ -69,20 +69,30 @@ class TestToolRegistry:
 
 
 class TestPathSafety:
-    # The agent has full access inside the container (the user's choice): the
-    # container IS the sandbox, and run_command is already unrestricted, so the
-    # file tools allow any absolute path here too.
+    # File tools are confined to the workspace roots (/data/repos, /data/uploads,
+    # /tmp). This stops read_file/write_file/etc. from touching the app source,
+    # /etc/shadow, or /proc/<pid>/environ even though run_command has a wider
+    # blast radius. These assertions pin that contract.
     def test_allows_repo_path(self):
         assert _is_safe_path("/data/repos/my-repo/src/main.py") is True
 
     def test_allows_tmp(self):
         assert _is_safe_path("/tmp/test-file.py") is True
 
-    def test_allows_app(self):
-        assert _is_safe_path("/app/config.py") is True
+    def test_allows_uploads(self):
+        assert _is_safe_path("/data/uploads/report.pdf") is True
 
-    def test_allows_arbitrary_container_path(self):
-        assert _is_safe_path("/usr/local/bin/gh") is True
+    def test_rejects_app_source(self):
+        assert _is_safe_path("/app/config.py") is False
+
+    def test_rejects_arbitrary_container_path(self):
+        assert _is_safe_path("/usr/local/bin/gh") is False
+
+    def test_rejects_sensitive_files(self):
+        assert _is_safe_path("/etc/shadow") is False
+
+    def test_rejects_traversal_escape(self):
+        assert _is_safe_path("/data/repos/../../etc/passwd") is False
 
     def test_rejects_empty_path(self):
         assert _is_safe_path("") is False

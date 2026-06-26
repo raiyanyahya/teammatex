@@ -20,11 +20,13 @@ _COOKIE_MAX_AGE = 30 * 24 * 3600
 def _set_auth_cookie(response: Response, token: str) -> None:
     """Set the session token as an HttpOnly cookie so the browser sends it on
     every same-origin API call automatically. SameSite=Lax blocks the cookie on
-    cross-site POSTs (CSRF mitigation). secure=False so it also works over plain
-    http on localhost; behind the https Caddy front door it is still sent."""
+    cross-site POSTs (CSRF mitigation). The Secure flag is controlled by
+    settings.cookie_secure: off by default so plain-http localhost works, but set
+    COOKIE_SECURE=true in production so the session cookie never leaves over http."""
+    from app.config import settings
     response.set_cookie(
         AUTH_COOKIE, token,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite="lax", secure=settings.cookie_secure,
         max_age=_COOKIE_MAX_AGE, path="/",
     )
 

@@ -386,6 +386,7 @@ docker run --rm -v teammatex_postgres_data:/data -v "$PWD":/backup alpine \
 | `SLACK_BOT_TOKEN` / `SLACK_SIGNING_SECRET` / `SLACK_APP_TOKEN` | – | Slack integration |
 | `PROMETHEUS_ENABLED` | `true` | Toggle metrics endpoint |
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana login |
+| `COOKIE_SECURE` | `false` | Set `true` in production (HTTPS) so the session cookie carries the `Secure` flag |
 
 > 💡 LLM provider keys and the GitHub token can also be set **at runtime through the UI** (stored in `app_config`, masked on read) — handy for rotating without redeploying.
 
