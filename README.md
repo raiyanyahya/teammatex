@@ -19,7 +19,7 @@ It clones your repositories, reads every line and every commit, builds a living 
 <!-- Project status -->
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=flat-square)
 ![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-0b7285?style=flat-square)
-![License](https://img.shields.io/badge/license-see%20below-lightgrey?style=flat-square)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4?style=flat-square)
 
 <!-- Stack -->
@@ -62,6 +62,7 @@ It clones your repositories, reads every line and every commit, builds a living 
 - [API overview](#-api-overview)
 - [FAQ](#-faq)
 - [License](#-license)
+- [Contributing](#-contributing)
 
 ---
 
@@ -539,7 +540,11 @@ TeammateX is **self-hosted first** — that's the privacy story. Run it on your 
 
 ## 📄 License
 
-No license file ships in this repository yet. **Add a `LICENSE`** that matches your intent (MIT/Apache-2.0 for open source, or a proprietary license for a commercial offering) before distributing. Until then, all rights are reserved by the authors.
+Released under the [MIT License](LICENSE) — © 2026 Raiyan Yahya. Use it, fork it, ship it; just keep the copyright notice.
+
+## 🤝 Contributing
+
+Contributions are very welcome — this is alpha, so it's the best time to shape the project. Start with the [Contributing guide](CONTRIBUTING.md), and please be kind per our [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue? See [SECURITY.md](SECURITY.md) and report it privately.
 
 ---
 

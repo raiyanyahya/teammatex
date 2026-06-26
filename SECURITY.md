@@ -1,9 +1,33 @@
-# Security posture
+# Security Policy
 
 TeammateX is a **single-user, self-hosted** AI teammate. By design it has broad
 access to the machine it runs on — that is the product premise ("a teammate that
 already knows everything local and can just do the work"). Read this before
 exposing it anywhere beyond your own machine.
+
+## Supported versions
+
+TeammateX is in **alpha**; only the latest `master` is supported. Please track
+`master` and report issues against a recent commit.
+
+## Reporting a vulnerability
+
+**Please do not report security vulnerabilities through public GitHub issues.**
+
+Instead, report them privately via
+[GitHub Security Advisories](https://github.com/raiyanyahya/teammatex/security/advisories/new),
+or by email to **raiyanyahyadeveloper@gmail.com**.
+
+Include as much of the following as you can:
+
+- A description of the issue and its impact.
+- Steps to reproduce or a proof-of-concept.
+- The affected component and commit/version.
+
+We aim to acknowledge reports within a few days and will keep you updated on the
+fix. Please give us a reasonable window to remediate before any public
+disclosure. Because this is an alpha, self-hosted project, there is no bug-bounty
+program — but credit is gladly given in the release notes if you'd like it.
 
 ## What is intentional (and why)
 
