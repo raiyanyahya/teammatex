@@ -8,11 +8,21 @@ It clones your repositories, reads every line and every commit, builds a living 
 
 <br/>
 
-![Status](https://img.shields.io/badge/status-active-2ea44f?style=flat-square)
+<!-- What it is -->
+![AI teammate](https://img.shields.io/badge/🦾-AI%20teammate-6f42c1?style=flat-square)
+![Agentic](https://img.shields.io/badge/agentic-28%20tools-8957e5?style=flat-square)
+![Code knowledge graph](https://img.shields.io/badge/code-knowledge%20graph-008CC1?style=flat-square)
+![Grounded RAG](https://img.shields.io/badge/RAG-pgvector%20%2B%20Neo4j-4169E1?style=flat-square)
+![Bring your own LLM](https://img.shields.io/badge/LLM-bring%20your%20own-009688?style=flat-square)
+![Private](https://img.shields.io/badge/your%20code-never%20leaves%20the%20box-0b7285?style=flat-square)
+
+<!-- Project status -->
+![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=flat-square)
 ![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-0b7285?style=flat-square)
 ![License](https://img.shields.io/badge/license-see%20below-lightgrey?style=flat-square)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4?style=flat-square)
 
+<!-- Stack -->
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Next.js 14](https://img.shields.io/badge/Next.js%2014-000000?style=flat-square&logo=nextdotjs&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
@@ -27,6 +37,12 @@ It clones your repositories, reads every line and every commit, builds a living 
 <img src="docs/screenshots/dashboard.png" alt="TeammateX dashboard" width="850"/>
 
 </div>
+
+---
+
+> [!WARNING]
+> **TeammateX is in alpha — early and moving fast.**
+> It runs end-to-end and the features below are real, but expect rough edges, breaking changes, and incomplete corners. Pin a commit if you deploy it, keep backups of the named volumes, and treat it as a capable work-in-progress rather than a hardened product. **Bug reports, ideas, and PRs are hugely welcome** — this is the stage where they shape the project most.
 
 ---
 
