@@ -109,6 +109,40 @@ def _scrubbed_env() -> dict:
     return {k: v for k, v in os.environ.items() if not _SECRET_ENV_RE.search(k)}
 
 
+def _url_ssrf_safe(url: str) -> tuple[bool, str]:
+    """Reject URLs that would let http_request reach the host's own internals.
+
+    The model picks the URL, so a prompt-injected or confused agent could aim it
+    at the cloud metadata endpoint (169.254.169.254), localhost services, or an
+    internal-network address to exfiltrate credentials/SSRF. We allow only
+    http(s), then resolve the host and refuse if *any* resolved address is
+    private, loopback, link-local, or otherwise reserved. Returns (ok, reason)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False, f"scheme '{parsed.scheme}' not allowed (use http/https)"
+    host = parsed.hostname
+    if not host:
+        return False, "missing host"
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except OSError as e:
+        return False, f"could not resolve host: {e}"
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr.split("%")[0])
+        except ValueError:
+            return False, f"unparseable address {addr}"
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False, f"host resolves to non-public address {ip}"
+    return True, ""
+
+
 class AgentState(str, Enum):
     IDLE = "idle"
     PLANNING = "planning"
@@ -744,13 +778,18 @@ class AgentRuntime:
 
     async def _tool_http_request(self, args: dict) -> dict:
         import httpx
-        from urllib.parse import urlparse
-        domain = urlparse(args["url"]).netloc or urlparse(args["url"]).hostname or ""
-        if not domain:
-            return {"error": "Invalid URL"}
-        async with httpx.AsyncClient(timeout=15) as client:
+        url = args["url"]
+        # SSRF guard: the model chooses this URL, so block anything that resolves
+        # to the host's own internals (metadata service, localhost, LAN) before
+        # we ever open the connection. DNS is resolved off the event loop.
+        loop = asyncio.get_running_loop()
+        ok, reason = await loop.run_in_executor(None, lambda: _url_ssrf_safe(url))
+        if not ok:
+            logger.warning("http_request_blocked", url=url[:200], reason=reason)
+            return {"error": f"URL blocked: {reason}"}
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             response = await client.request(
-                args["method"], args["url"],
+                args["method"], url,
                 headers=args.get("headers"),
                 content=args.get("body"),
             )
