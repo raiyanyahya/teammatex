@@ -756,9 +756,14 @@ class TestPluginsEndpoints:
         assert response.status_code == 200
         assert "plugins" in response.json()
 
-    async def test_discover_plugins(self, api_client):
-        response = await api_client.post("/api/plugins/discover")
+    async def test_discover_plugins(self, admin_client):
+        # Plugin management is admin-only (loading plugins runs third-party code).
+        response = await admin_client.post("/api/plugins/discover")
         assert response.status_code == 200
+
+    async def test_discover_plugins_forbidden_for_non_admin(self, api_client):
+        response = await api_client.post("/api/plugins/discover")
+        assert response.status_code == 403
 
     async def test_list_plugin_tools(self, api_client):
         response = await api_client.get("/api/plugins/tools")
@@ -768,8 +773,8 @@ class TestPluginsEndpoints:
         response = await api_client.get("/api/plugins/marketplace/search", params={"query": ""})
         assert response.status_code == 200
 
-    async def test_nonexistent_plugin_reload(self, api_client):
-        response = await api_client.post("/api/plugins/nonexistent/reload")
+    async def test_nonexistent_plugin_reload(self, admin_client):
+        response = await admin_client.post("/api/plugins/nonexistent/reload")
         assert response.status_code == 404
 
 

@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -35,10 +37,29 @@ class BulkRepoCreate(BaseModel):
     github_urls: list[str]
 
 
+# A clone directory name is used as a filesystem path component under
+# /data/repos, so it must not contain separators or "..". Without this a
+# local_name like "../../tmp/x" escapes the repos root on clone (and on delete's
+# rmtree). Keep it to a safe charset.
+_LOCAL_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _sanitize_local_name(name: str) -> str:
+    """Validate a clone directory name, raising 400 if it could traverse."""
+    name = (name or "").strip()
+    if name in ("", ".", "..") or not _LOCAL_NAME_RE.fullmatch(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid repository name: use only letters, digits, '.', '_' or '-' (no path separators).",
+        )
+    return name
+
+
 def _local_name_from_url(github_url: str) -> str:
     from urllib.parse import urlparse
     path = urlparse(github_url).path.strip("/")
-    return path.split("/")[-1].replace(".git", "") if "/" in path else github_url.replace(".git", "")
+    raw = path.split("/")[-1].replace(".git", "") if "/" in path else github_url.replace(".git", "")
+    return _sanitize_local_name(raw)
 
 
 @router.get("", response_model=list[RepoResponse])
@@ -246,7 +267,7 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
 
         added = []
         for r in gh_repos:
-            url = r["clone_url"]; name = r["name"]
+            url = r["clone_url"]; name = _sanitize_local_name(r["name"])
             existing_check = await db.execute(select(Repo).where(Repo.github_url == url))
             if existing_check.scalar_one_or_none(): continue
             repo = Repo(github_url=url, local_name=name)
@@ -261,6 +282,7 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
             start_onboarding(item["repo_id"], item["url"], item["name"])
         return {"org": org, "repos_added": len(added), "repos": [a["name"] for a in added]}
 
+    local_name = _sanitize_local_name(local_name)
     existing = await db.execute(
         select(Repo).where(Repo.github_url == payload.github_url)
     )

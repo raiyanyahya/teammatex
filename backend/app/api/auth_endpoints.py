@@ -3,18 +3,29 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import AUTH_COOKIE
+from app.api.deps import AUTH_COOKIE, require_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.utils.auth import (
     create_token, decode_token, first_run_check, hash_password,
-    verify_password, generate_default_password,
+    verify_password,
 )
+from app.utils.ratelimit import SlidingWindowLimiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # 30 days, matching the JWT exp in app.utils.auth.create_token.
 _COOKIE_MAX_AGE = 30 * 24 * 3600
+
+# Throttle failed logins: per-account is the strict guarantee (5 bad tries per
+# 15 min); the per-source-IP net is looser because behind a proxy many users
+# share one peer IP. Successful logins clear the counters.
+_login_email_limiter = SlidingWindowLimiter(max_events=5, window_seconds=900)
+_login_ip_limiter = SlidingWindowLimiter(max_events=50, window_seconds=900)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -69,16 +80,33 @@ async def check_first_run(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    email_key = f"email:{payload.email.lower()}"
+    ip_key = f"ip:{_client_ip(request)}"
+    if _login_email_limiter.is_blocked(email_key) or _login_ip_limiter.is_blocked(ip_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again in a few minutes.",
+        )
+
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(payload.password, user.hashed_password or ""):
+        _login_email_limiter.record(email_key)
+        _login_ip_limiter.record(ip_key)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
 
+    _login_email_limiter.reset(email_key)
+    _login_ip_limiter.reset(ip_key)
     token = create_token(str(user.id), user.email)
     _set_auth_cookie(response, token)
 
@@ -94,7 +122,14 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
 
 
 @router.post("/register", status_code=201)
-async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(
+    payload: RegisterRequest,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    # Admin-only: open, unauthenticated registration would let anyone create an
+    # account and then drive the agent (shell, plugin install, secret reads).
+    # The first-run bootstrap creates the initial admin; admins invite the rest.
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -108,11 +143,7 @@ async def register(payload: RegisterRequest, response: Response, db: AsyncSessio
     await db.commit()
     await db.refresh(user)
 
-    token = create_token(str(user.id), user.email)
-    _set_auth_cookie(response, token)
-
     return {
-        "token": token,
         "user": {
             "id": str(user.id),
             "email": user.email,

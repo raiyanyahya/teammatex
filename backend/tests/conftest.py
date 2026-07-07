@@ -396,6 +396,43 @@ async def api_client(api_db):
 
 
 @pytest_asyncio.fixture(loop_scope="session")
+async def admin_client(api_db):
+    """Like api_client but authenticated as a real admin user (seeded in the
+    api_db transaction). Use it for admin-gated endpoints (register, plugin
+    management) — the default api_client's user is a non-admin and gets 403."""
+    import uuid
+
+    from httpx import ASGITransport, AsyncClient
+
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.user import User
+    from app.utils.auth import create_token, hash_password
+
+    admin_id = str(uuid.uuid4())
+    api_db.add(User(
+        id=admin_id, email="admin-test@teammatex.local", name="Admin Test",
+        hashed_password=hash_password("x"), is_admin=True,
+    ))
+    await api_db.flush()
+
+    async def _override_get_db():
+        yield api_db
+
+    app.dependency_overrides[get_db] = _override_get_db
+    token = create_token(admin_id, "admin-test@teammatex.local")
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(
+            transport=transport, base_url="http://test",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest_asyncio.fixture(loop_scope="session")
 async def anon_client(api_db):
     """Like api_client but with NO credentials — for asserting that gated
     endpoints reject anonymous callers and that public ones still allow them."""

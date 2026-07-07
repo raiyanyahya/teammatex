@@ -5,6 +5,12 @@ scrape_configs:
   - job_name: "teammatex-api"
     static_configs:
       - targets: ["api:8000"]
+    # /metrics is token-gated. Set TEAMMATEX_METRICS_TOKEN in .env and paste the
+    # same value here (Prometheus can't read env vars in this file). Without a
+    # matching token the api will not expose /metrics at all.
+    authorization:
+      type: Bearer
+      credentials: "change-me-metrics-token"
 
   - job_name: "prometheus"
     static_configs:

@@ -1,9 +1,21 @@
+import re
 from dataclasses import dataclass
 
 import httpx
 from structlog import get_logger
 
 logger = get_logger(__name__)
+
+# A bare PyPI distribution name, optionally pinned with ==<version>. This is
+# deliberately strict: it rejects VCS/URL/path specs like
+# "git+https://evil/x.git", local dirs, and pip option injection ("--index-url
+# http://evil"), any of which would let `pip install` fetch and execute
+# arbitrary attacker code (setup.py / import time).
+_PACKAGE_SPEC_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(==[A-Za-z0-9][A-Za-z0-9.+!_-]{0,63})?$")
+
+
+def is_valid_package_spec(name: str) -> bool:
+    return bool(_PACKAGE_SPEC_RE.fullmatch((name or "").strip()))
 
 
 @dataclass
@@ -73,10 +85,17 @@ class PluginMarketplace:
             return None
 
     async def install(self, package_name: str) -> bool:
+        # Reject anything that isn't a plain PyPI name/version. Without this a
+        # caller could pass a git+https URL or a local path and get RCE via the
+        # installed package's setup.py.
+        if not is_valid_package_spec(package_name):
+            logger.warning("plugin_install_rejected", package=package_name[:120])
+            return False
         try:
             import subprocess
             result = subprocess.run(
-                ["pip", "install", package_name],
+                # "--" stops pip from treating a crafted name as an option flag.
+                ["pip", "install", "--no-input", "--disable-pip-version-check", "--", package_name],
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode == 0:

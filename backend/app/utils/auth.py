@@ -59,6 +59,7 @@ async def first_run_check(db) -> tuple[bool, str | None]:
         email="admin@teammatex.local",
         name="Admin",
         hashed_password=hash_password(password),
+        is_admin=True,
     )
     db.add(admin)
     await db.commit()

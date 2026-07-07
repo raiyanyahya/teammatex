@@ -4,28 +4,40 @@ from pathlib import Path
 import pygit2
 
 
+def _auth_callbacks(token: str):
+    """Supply the GitHub token as fetch/clone credentials instead of baking it
+    into the remote URL. Embedding ``x-access-token:<token>@`` in the URL wrote
+    the token in plaintext into every clone's ``.git/config`` — readable by the
+    agent's own file tools — so we pass it out-of-band here and leave a clean
+    remote URL on disk."""
+    if not token:
+        return None
+    return pygit2.RemoteCallbacks(
+        credentials=pygit2.UserPass("x-access-token", token)
+    )
+
+
 def clone_or_pull(
     url: str, path: str, branch: str = "main", token: str = "", bare: bool = False
 ) -> pygit2.Repository:
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    callbacks = _auth_callbacks(token)
 
     git_dir = os.path.join(path, ".git") if not bare else path
     if os.path.exists(git_dir if bare else os.path.join(path, ".git")):
         repo = pygit2.Repository(path if bare else os.path.join(path, ".git"))
-        _fetch_and_reset(repo, branch, bare)
+        _fetch_and_reset(repo, branch, bare, callbacks)
     else:
-        if token and "github.com" in url:
-            url = url.replace("https://", f"https://x-access-token:{token}@")
         if bare:
             repo = pygit2.init_repository(path, bare=True)
             repo.remotes.create("origin", url)
             remote = repo.remotes["origin"]
-            remote.fetch()
+            remote.fetch(callbacks=callbacks)
             ref = f"refs/remotes/origin/{branch}"
             if ref in repo.references:
                 repo.set_head(ref)
         else:
-            repo = pygit2.clone_repository(url, path)
+            repo = pygit2.clone_repository(url, path, callbacks=callbacks)
             head = repo.head.shorthand if not repo.head_is_unborn else "main"
             if head != branch:
                 try:
@@ -55,13 +67,13 @@ def read_file_from_bare(repo_path: str, file_path: str, ref: str = "HEAD") -> st
 
 
 def _fetch_and_reset(
-    repo: pygit2.Repository, branch: str, bare: bool = False
+    repo: pygit2.Repository, branch: str, bare: bool = False, callbacks=None
 ) -> None:
     try:
         remote = repo.remotes["origin"]
     except KeyError:
         return
-    remote.fetch()
+    remote.fetch(callbacks=callbacks)
     remote_branch = f"refs/remotes/origin/{branch}"
     try:
         if remote_branch in repo.references:

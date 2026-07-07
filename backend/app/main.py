@@ -81,7 +81,27 @@ app.include_router(api_router, prefix="/api")
 
 if settings.prometheus_enabled:
     try:
+        import hmac
+
+        from fastapi import HTTPException, Request, Response
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
         from prometheus_fastapi_instrumentator import Instrumentator
-        Instrumentator().instrument(app).expose(app)
+
+        # Collect metrics, but do NOT use .expose() — that mounts an
+        # unauthenticated /metrics. Serve it ourselves behind a token so it
+        # isn't world-readable (it leaks endpoint inventory + traffic volume).
+        Instrumentator().instrument(app)
+
+        if settings.metrics_token:
+            @app.get("/metrics", include_in_schema=False)
+            def metrics(request: Request):
+                auth = request.headers.get("Authorization", "")
+                provided = auth[7:] if auth.startswith("Bearer ") else request.query_params.get("token", "")
+                if not hmac.compare_digest(provided, settings.metrics_token):
+                    raise HTTPException(status_code=401, detail="Unauthorized")
+                return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+        else:
+            logger.info("metrics_endpoint_disabled",
+                        reason="set TEAMMATEX_METRICS_TOKEN to enable /metrics")
     except ImportError:
         pass

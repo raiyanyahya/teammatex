@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # default so local http://localhost development still works.
     cookie_secure: bool = False
 
+    # /metrics is exposed only when this token is set, and then only to callers
+    # presenting it (Bearer or ?token=). Empty (default) → the endpoint is not
+    # mounted at all, so metrics are never world-readable by default. Set the
+    # same value in docker/prometheus.yml's authorization block to scrape.
+    metrics_token: str = Field(default="", validation_alias="TEAMMATEX_METRICS_TOKEN")
+
     def validate_secret_key(self) -> None:
         if self.teammate_secret_key == "change-me" or len(self.teammate_secret_key) < 16:
             import warnings

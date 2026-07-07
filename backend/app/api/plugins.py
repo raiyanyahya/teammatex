@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.api.deps import require_admin
 from app.services.plugins.manager import plugin_manager, PluginStatus
 from app.services.plugins.marketplace import marketplace
 from app.services.plugins.manifest import discover_plugins
@@ -32,14 +33,17 @@ async def list_plugins(status: str | None = None):
     return {"plugins": result, "count": len(result)}
 
 
+# Loading/installing a plugin runs third-party code in-process with the app's
+# full privileges (there is no real isolation), so every mutating plugin action
+# is admin-only.
 @router.post("/discover")
-async def discover_new_plugins():
+async def discover_new_plugins(_admin: dict = Depends(require_admin)):
     manifests = discover_plugins()
     return {"discovered": len(manifests), "plugins": [m.name for m in manifests]}
 
 
 @router.post("/load-all")
-async def load_all_plugins():
+async def load_all_plugins(_admin: dict = Depends(require_admin)):
     results = plugin_manager.load_all()
     loaded = sum(1 for i in results.values() if i.status == PluginStatus.ACTIVE)
     failed = sum(1 for i in results.values() if i.status == PluginStatus.ERROR)
@@ -47,7 +51,7 @@ async def load_all_plugins():
 
 
 @router.post("/{plugin_name}/reload")
-async def reload_plugin(plugin_name: str):
+async def reload_plugin(plugin_name: str, _admin: dict = Depends(require_admin)):
     instance = plugin_manager.reload_plugin(plugin_name)
     if not instance:
         raise HTTPException(status_code=404, detail="Plugin not found")
@@ -55,7 +59,7 @@ async def reload_plugin(plugin_name: str):
 
 
 @router.post("/{plugin_name}/disable")
-async def disable_plugin(plugin_name: str):
+async def disable_plugin(plugin_name: str, _admin: dict = Depends(require_admin)):
     success = plugin_manager.unload_plugin(plugin_name)
     if not success:
         raise HTTPException(status_code=404, detail="Plugin not found")
@@ -87,10 +91,15 @@ async def get_marketplace_plugin(plugin_name: str):
 
 
 @router.post("/marketplace/install")
-async def install_marketplace_plugin(payload: PluginInstallRequest):
+async def install_marketplace_plugin(
+    payload: PluginInstallRequest, _admin: dict = Depends(require_admin)
+):
     success = await marketplace.install(payload.package_name)
     if not success:
-        raise HTTPException(status_code=500, detail="Installation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Installation failed (invalid package name or pip error).",
+        )
 
     manifests = discover_plugins()
     for m in manifests:

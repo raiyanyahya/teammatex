@@ -28,7 +28,14 @@ class GitCrawler:
     CLONE_ROOT = "/data/repos"
 
     def crawl(self, github_url: str, local_name: str) -> RepoInfo:
+        # Defense in depth: the API sanitizes local_name, but confirm the target
+        # still resolves inside CLONE_ROOT so a traversal name can never write a
+        # clone outside the repos volume.
+        root = Path(self.CLONE_ROOT).resolve()
         clone_path = str(Path(self.CLONE_ROOT) / local_name)
+        resolved = Path(clone_path).resolve()
+        if resolved != root and root not in resolved.parents:
+            raise GitError(f"Refusing to clone outside {self.CLONE_ROOT}: {local_name!r}")
         token = self._get_github_token()
         try:
             repo = clone_or_pull(github_url, clone_path, token=token)
