@@ -10,8 +10,10 @@ def test_known_model_uses_litellm_price():
 
 
 def test_unknown_model_falls_back_to_provider_rate():
-    # deepseek-v4-flash is NOT in litellm's map → fall back to the deepseek rate.
-    c = cost_cents("deepseek-v4-flash", 1_000_000, 0, provider="deepseek")
+    # A model litellm doesn't price → fall back to the deepseek provider rate.
+    # (Use a clearly-fictional name: litellm has since added deepseek-v4-flash to
+    # its map, so that name now takes the litellm path, not the fallback.)
+    c = cost_cents("deepseek-uncharted-v99", 1_000_000, 0, provider="deepseek")
     assert round(c, 4) == 28.0  # $0.28 = 28 cents
 
 

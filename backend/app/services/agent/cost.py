@@ -13,8 +13,8 @@ from __future__ import annotations
 import litellm
 
 # Real per-token USD rates (input, output) for models/providers litellm doesn't
-# price. deepseek-v4-flash isn't in litellm's map; use deepseek-chat's published
-# rate ($0.28/1M in, $0.42/1M out) as the deepseek fallback.
+# price. For any deepseek model missing from litellm's map, fall back to
+# deepseek-chat's published rate ($0.28/1M in, $0.42/1M out).
 _FALLBACK_RATES: dict[str, tuple[float, float]] = {
     "deepseek": (2.8e-7, 4.2e-7),
 }

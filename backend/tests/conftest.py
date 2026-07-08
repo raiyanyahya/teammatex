@@ -384,7 +384,10 @@ async def api_client(api_db):
 
     app.dependency_overrides[get_db] = _override_get_db
     token = create_token("test-user", "tester@teammatex.local")
-    transport = ASGITransport(app=app)
+    # raise_app_exceptions=False so an unhandled endpoint exception surfaces as a
+    # 500 response (what a real server returns) instead of propagating into the
+    # test as a raw exception — lets tests assert on status codes like a client.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     try:
         async with AsyncClient(
             transport=transport, base_url="http://test",
@@ -421,7 +424,10 @@ async def admin_client(api_db):
 
     app.dependency_overrides[get_db] = _override_get_db
     token = create_token(admin_id, "admin-test@teammatex.local")
-    transport = ASGITransport(app=app)
+    # raise_app_exceptions=False so an unhandled endpoint exception surfaces as a
+    # 500 response (what a real server returns) instead of propagating into the
+    # test as a raw exception — lets tests assert on status codes like a client.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     try:
         async with AsyncClient(
             transport=transport, base_url="http://test",
@@ -445,7 +451,10 @@ async def anon_client(api_db):
         yield api_db
 
     app.dependency_overrides[get_db] = _override_get_db
-    transport = ASGITransport(app=app)
+    # raise_app_exceptions=False so an unhandled endpoint exception surfaces as a
+    # 500 response (what a real server returns) instead of propagating into the
+    # test as a raw exception — lets tests assert on status codes like a client.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac

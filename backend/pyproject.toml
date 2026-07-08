@@ -42,7 +42,7 @@ watchfiles = "^1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
-pytest-asyncio = "^0.24"
+pytest-asyncio = "^0.26"
 pytest-cov = "^5.0"
 ruff = "^0.5"
 black = "^24.4"
@@ -71,6 +71,14 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Run every async test AND fixture on one shared session event loop. The API
+# fixtures (async engine, Neo4j driver) are session-scoped singletons; without a
+# single loop, interleaved function-loop tests make pytest-asyncio swap the loop
+# under them, so a later session-scoped test hits "got Future attached to a
+# different loop" (the conversation/upload tests passed alone but failed in the
+# full run). Both keys require pytest-asyncio >= 0.26.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 addopts = "-v --tb=short --strict-markers"
 markers = [

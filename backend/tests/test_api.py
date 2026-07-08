@@ -894,11 +894,15 @@ class TestWebhookEndpoints:
         import hmac
         import json
 
+        import time
+
         from app.config import settings
         secret = "slack-signing-secret"
         monkeypatch.setattr(settings, "slack_signing_secret", secret)
         body = json.dumps({"type": "url_verification", "challenge": "test-challenge-123"}).encode()
-        ts = "1700000000"
+        # Must be recent: the webhook rejects timestamps outside a 5-minute window
+        # (replay protection), so a hardcoded past value would always be stale.
+        ts = str(int(time.time()))
         sig = "v0=" + hmac.new(secret.encode(), f"v0:{ts}:{body.decode()}".encode(), hashlib.sha256).hexdigest()
         response = await api_client.post(
             "/api/webhooks/slack", content=body,
