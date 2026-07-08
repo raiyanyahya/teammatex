@@ -401,7 +401,8 @@ docker run --rm -v teammatex_postgres_data:/data -v "$PWD":/backup alpine \
 | `GITHUB_CLIENT_ID/SECRET`, `GITHUB_WEBHOOK_SECRET` | – | GitHub integration & webhooks |
 | `JIRA_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` | – | Jira integration |
 | `SLACK_BOT_TOKEN` / `SLACK_SIGNING_SECRET` / `SLACK_APP_TOKEN` | – | Slack integration |
-| `PROMETHEUS_ENABLED` | `true` | Toggle metrics endpoint |
+| `PROMETHEUS_ENABLED` | `true` | Enable Prometheus instrumentation of the API |
+| `TEAMMATEX_METRICS_TOKEN` | – | Bearer token required to read `/metrics`. **Unset → `/metrics` is not exposed at all.** Set it (and the matching value in `docker/prometheus.yml`) to let Prometheus scrape |
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana login |
 | `COOKIE_SECURE` | `false` | Set `true` in production (HTTPS) so the session cookie carries the `Secure` flag |
 
@@ -414,6 +415,7 @@ docker run --rm -v teammatex_postgres_data:/data -v "$PWD":/backup alpine \
 - **Authenticated API.** Every data/mutation endpoint requires a logged-in user. Auth travels as an **HttpOnly, `SameSite=Lax` cookie** (set at login, invisible to JavaScript → XSS can't steal it) or an `Authorization: Bearer <jwt>` header for programmatic clients. `/health` and webhook endpoints (signature-verified) are intentionally public.
 - **Set a strong `TEAMMATEX_SECRET_KEY`.** JWTs are HMAC-signed with it. The default `change-me` is public — anyone could forge a token. Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
 - **Secrets are masked.** `GET /api/config` never echoes stored API keys/tokens back to the client.
+- **Account creation is admin-only.** The first-run bootstrap creates the initial admin; `POST /auth/register` then requires an authenticated **admin**, so a reachable API can't be self-registered into. `/metrics` is likewise off unless you set `TEAMMATEX_METRICS_TOKEN`.
 - **Self-hosted.** Code, embeddings, and graph stay on your infrastructure. With local embeddings + a local Ollama model, **nothing leaves the box.**
 - **Webhooks are signature-verified** (GitHub/Slack), not user-authed.
 
@@ -438,7 +440,7 @@ cd frontend && npm install && npm run dev
 
 ```bash
 # The production image omits test deps — install them once:
-docker compose exec api pip install -q pytest pytest-asyncio
+docker compose exec api pip install -q pytest 'pytest-asyncio>=0.26' factory-boy
 docker compose exec api python -m pytest -q
 ```
 
@@ -452,7 +454,7 @@ Interactive docs at **`/docs`** (Swagger) and **`/redoc`**. A taste of the surfa
 
 | Area | Endpoints |
 |---|---|
-| **Auth** | `POST /auth/login` · `POST /auth/logout` · `POST /auth/register` · `GET /auth/me` · `POST /auth/change-password` |
+| **Auth** | `POST /auth/login` · `POST /auth/logout` · `POST /auth/register` *(admin-only)* · `GET /auth/me` · `POST /auth/change-password` |
 | **Agent** | `POST /agent/chat` · `POST /agent/plan` · `POST /agent/validate` · `GET /agent/tools` |
 | **Repos** | `GET /repos` · `POST /repos` · `POST /repos/bulk` · `GET /repos/activity` · `GET /repos/onboarding-summary` · `GET /repos/{id}/onboarding` · `POST /repos/{id}/retry` |
 | **Knowledge** | `GET /knowledge/contributors` · `GET /knowledge/concepts` · `POST /knowledge/search` · `GET /knowledge/suggested-questions` · `GET /knowledge/graph/*` · `GET /knowledge/costs/summary?period=today\|7d\|30d\|all` |
