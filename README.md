@@ -16,6 +16,11 @@ It clones your repositories, reads every line and every commit, builds a living 
 ![Bring your own LLM](https://img.shields.io/badge/LLM-bring%20your%20own-009688?style=flat-square)
 ![Private](https://img.shields.io/badge/your%20code-never%20leaves%20the%20box-0b7285?style=flat-square)
 
+<!-- CI / CD -->
+[![CI](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml)
+[![Docker](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml)
+
 <!-- Project status -->
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=flat-square)
 ![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-0b7285?style=flat-square)
@@ -50,7 +55,6 @@ It clones your repositories, reads every line and every commit, builds a living 
 
 - [Why TeammateX](#-why-teammatex)
 - [What it does (the 30-second version)](#-what-it-does-the-30-second-version)
-- [Screenshots](#-screenshots)
 - [Quickstart (local, 3 commands)](#-quickstart-local-3-commands)
 - [Every feature, explained](#-every-feature-explained)
 - [Architecture](#-architecture)
@@ -94,25 +98,6 @@ The result is a teammate that can say *"that retry logic lives in `queue/consume
 | 📊 **Stays observable** | Costs, audit trail, live container logs, Prometheus + Grafana + Loki |
 | 🗂️ **Gives each dev a workspace** | Per-user autosaving notepad + private file uploads |
 | 🔒 **Self-hosted & private** | Your servers, your LLM key, cookie-gated API, nothing phones home |
-
----
-
-## 📸 Screenshots
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/chat.png" alt="Chat"/><br/><em>Chat — grounded agent with capability cards</em></td>
-<td width="50%"><img src="docs/screenshots/knowledge.png" alt="Knowledge"/><br/><em>Knowledge — LLM-extracted concept cards</em></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/team.png" alt="Team"/><br/><em>Team — contributors & ownership from git history</em></td>
-<td width="50%"><img src="docs/screenshots/tasks.png" alt="Tasks"/><br/><em>Tasks — drag-and-drop board backed by a real API</em></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/logs.png" alt="Logs"/><br/><em>Logs — live, filterable container logs</em></td>
-<td width="50%"><img src="docs/screenshots/dashboard.png" alt="Dashboard"/><br/><em>Dashboard — indexed footprint, activity, standup</em></td>
-</tr>
-</table>
 
 ---
 
@@ -160,6 +145,8 @@ The heart of the product. The **Chat** page is a streaming conversation with an 
 
 > Capability cards on the empty state make the non-obvious powers discoverable: *"Who owns the billing module?"*, *"Trace this issue"*, *"Summarize this week's PRs."*
 
+<p align="center"><img src="docs/screenshots/chat.png" alt="Chat — grounded agent with capability cards, conversation history, and a toggle to show/hide tool calls" width="880"/></p>
+
 ### 2. Repository onboarding — the pipeline
 
 Adding a repo kicks off a Celery pipeline that turns source code into queryable knowledge:
@@ -171,6 +158,8 @@ Adding a repo kicks off a Celery pipeline that turns source code into queryable 
 5. **History mining** — git history is mined for **ownership** (who has touched each file most) and **pull requests** are pulled from the GitHub API and reconciled into the DB.
 
 Progress is shown per-stage on the **Onboarding** page with real status (not fake checkmarks). Failed stages can be retried. You can onboard one URL at a time, or click **"Browse my repositories"** to bulk-select from your GitHub account (forks and archived repos are auto-unchecked).
+
+<p align="center"><img src="docs/screenshots/onboarding.png" alt="Onboarding — the 12-stage ingestion pipeline, per-stage status, retry on failure" width="880"/></p>
 
 ### 3. The knowledge graph
 
@@ -193,6 +182,8 @@ Two complementary search modes, both exposed to the agent and the API:
 
 A real Kanban board (**To do / In progress / In review / Done**) backed by a persisted `tasks` table and a full REST API — **not** mock data. Drag-and-drop moves persist via `PATCH`, the **New task** composer creates real rows, cards delete, and the header counters are live. Priority and assignee render per card.
 
+<p align="center"><img src="docs/screenshots/tasks.png" alt="Tasks — drag-and-drop Kanban board backed by a real REST API" width="880"/></p>
+
 ### 6. Standup
 
 Standup as a **deterministic product surface**, not an LLM gamble. The `/standup` page renders three real columns:
@@ -203,13 +194,19 @@ Standup as a **deterministic product surface**, not an LLM gamble. The `/standup
 
 It can also be posted to Slack on a schedule.
 
+<p align="center"><img src="docs/screenshots/standup.png" alt="Standup — Yesterday / Today / Blockers as a deterministic product surface" width="880"/></p>
+
 ### 7. Team & ownership
 
 The **Team** page lists your AI teammate plus every human contributor **discovered from git history** — each with files owned, repos touched, and inferred languages/expertise. One row per person (duplicate git identities and multi-email contributors are merged), so the headcount is honest.
 
+<p align="center"><img src="docs/screenshots/team.png" alt="Team — the AI teammate plus human contributors and ownership mined from git history" width="880"/></p>
+
 ### 8. Repos management
 
 The **Repos** page shows every watched repository with file counts (from the graph), open-PR counts, onboarding progress, and a computed **health** score. Add, bulk-add, retry onboarding, or remove a repo (which cleans up its DB rows, on-disk clone, and graph subgraph).
+
+<p align="center"><img src="docs/screenshots/repos.png" alt="Repos — every watched repository with files indexed, open PRs, onboarding %, and health" width="880"/></p>
 
 ### 9. Costs & budget
 
@@ -219,17 +216,25 @@ Every LLM call is metered — **all of them**, not just chat: onboarding, concep
 - **Spend by activity** — a breakdown of where the tokens go (chat vs onboarding vs concept extraction vs …).
 - **Budget guardrail** — set an optional monthly USD and/or token limit (`PUT /api/config/cost_budget` with `{"monthly_usd_limit": 25, "monthly_token_limit": 5000000}`); the dashboard shows a progress bar that turns amber at 80% and red once you're over, so a self-hosted agent never becomes a surprise bill.
 
+<p align="center"><img src="docs/screenshots/costs.png" alt="Costs — total spend, tokens, spend-by-day, top cost drivers, and by-provider breakdown" width="880"/></p>
+
 ### 10. Audit log
 
 A first-class, queryable record of agent actions — what it did, when, status, and a summary — surfaced on the **Audit** page and the dashboard's "recent runs."
+
+<p align="center"><img src="docs/screenshots/audit.png" alt="Audit — a filterable, exportable record of every agent action with a risk level" width="880"/></p>
 
 ### 11. Live logs
 
 The **Logs** page tails real container logs (api, worker, frontend, postgres, neo4j) straight from the Docker socket, with **per-level filters** (INFO / OK / WARN / ERR / DBG), service switching, and pause/resume — a built-in `docker logs -f` for operators who don't want to SSH in.
 
+<p align="center"><img src="docs/screenshots/logs.png" alt="Logs — live container logs with per-level filters, service switching, and pause/resume" width="880"/></p>
+
 ### 12. Knowledge (concept cards)
 
 The **Knowledge** page renders LLM-extracted **concept cards** (auth, billing, queueing, etc.) drawn from the graph — a high-level, human-readable map of the subsystems the teammate has learned, plus notes.
+
+<p align="center"><img src="docs/screenshots/knowledge.png" alt="Knowledge — LLM-authored concept cards with refs, files, experts, and modules/subsystems/projects filters" width="880"/></p>
 
 ### 13. Settings & integrations
 
@@ -240,6 +245,8 @@ The **Knowledge** page renders LLM-extracted **concept cards** (auth, billing, q
 - **Setup checklist** — the dashboard shows a readiness card (LLM provider, GitHub, Jira, Slack), so a half-configured instance is obvious at a glance instead of failing silently.
 
 Controls that aren't wired yet are honestly disabled with a note, rather than pretending to work.
+
+<p align="center"><img src="docs/screenshots/settings.png" alt="Settings — pick the provider/model, manage integrations, permissions, persona, and updates" width="880"/></p>
 
 ### 14. Auto-sync (keeping the brain fresh)
 
@@ -257,9 +264,13 @@ Batteries included for running this for real: **Prometheus** (metrics), **Grafan
 
 A per-developer scratchpad at **`/notepad`** — a black, full-height editor that **autosaves** as you type (no Save button). One private note per user, persisted server-side, so it survives reloads and follows you across sessions.
 
+<p align="center"><img src="docs/screenshots/notepad.png" alt="Notepad — a per-user, autosaving, full-height scratchpad" width="880"/></p>
+
 ### 17. Uploads
 
 A private file area at **`/uploads`** where each developer can **drag-and-drop or pick files** (up to 25 MB), then download or delete them later. Files are scoped to the uploader (no one else sees them), stored under a generated name so the original filename can't traverse the filesystem, and always served as attachments. **Store-only — uploaded files are never executed.**
+
+<p align="center"><img src="docs/screenshots/uploads.png" alt="Uploads — a private, per-user file area; store-only, never executed" width="880"/></p>
 
 ---
 
@@ -445,6 +456,16 @@ docker compose exec api python -m pytest -q
 ```
 
 > **Dev loop note:** application code is **baked into the image** (no bind mount). For a quick change: `docker cp <file> teammatex-api-1:/app/...` then `docker compose restart api`. To persist: `docker compose build api worker frontend`.
+
+### Continuous integration & delivery
+
+Three GitHub Actions workflows run on every push and PR to `master` (badges at the top of this README):
+
+| Workflow | File | What it does |
+|---|---|---|
+| **CI** | [`ci.yml`](.github/workflows/ci.yml) | Backend: `ruff` + `black` + `mypy` (advisory) + `pytest` against **real Postgres/pgvector + Neo4j** service containers. Frontend: `eslint` + `tsc --noEmit` + `next build`. |
+| **CodeQL** | [`codeql.yml`](.github/workflows/codeql.yml) | SAST security scanning for Python and TypeScript/JavaScript (also weekly); findings land in the repo's **Security** tab. |
+| **Docker** | [`docker.yml`](.github/workflows/docker.yml) | Builds the `api`, `worker`, and `frontend` images on every PR; on push to `master` or a `v*` tag, publishes them to **GHCR** (`ghcr.io/<owner>/teammatex-<component>`) with layer caching. |
 
 ---
 

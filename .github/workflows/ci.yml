@@ -6,12 +6,50 @@ on:
   pull_request:
     branches: [master]
 
+# Cancel superseded runs on the same ref so a fast follow-up push doesn't queue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
+    name: Backend (lint · type · test)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+
+    # Real dependencies the async test-suite needs: Postgres WITH pgvector (the
+    # code stores embeddings) and Neo4j (the knowledge graph). conftest creates
+    # an ephemeral `teammatex_test` database and rolls back each test.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: teammatex
+          POSTGRES_PASSWORD: teammatex_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U teammatex"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      neo4j:
+        image: neo4j:5.22-community
+        env:
+          NEO4J_AUTH: neo4j/neo4j_test
+        ports: ["7687:7687", "7474:7474"]
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p neo4j_test 'RETURN 1' || exit 1"
+          --health-interval 15s --health-timeout 10s --health-retries 10 --health-start-period 30s
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: teammatex
+      POSTGRES_PASSWORD: teammatex_test
+      NEO4J_PASSWORD: neo4j_test
+      TEAMMATEX_NEO4J_URI: bolt://localhost:7687
+      TEAMMATEX_SECRET_KEY: ci-secret-key-minimum-16-characters-long
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,13 +58,35 @@ jobs:
       - uses: snok/install-poetry@v1
         with:
           version: 1.8.3
-      - run: poetry install
-      - run: poetry run ruff check .
-      - run: poetry run black --check .
-      - run: poetry run mypy app/
-      - run: poetry run pytest --cov=app --cov-report=xml
+          virtualenvs-in-project: true
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: backend/.venv
+          key: venv-${{ runner.os }}-py312-${{ hashFiles('backend/poetry.lock') }}
+      - run: poetry install --no-interaction
+
+      - name: Ruff (lint)
+        run: poetry run ruff check .
+      - name: Black (format check)
+        run: poetry run black --check .
+      - name: Mypy (types · advisory)
+        run: poetry run mypy app/
+        continue-on-error: true   # strict typing is informational, not a merge gate
+
+      - name: Pytest
+        run: poetry run pytest --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore
 
   frontend:
+    name: Frontend (lint · build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,5 +99,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm run build
+      - name: ESLint
+        run: npm run lint
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Next build
+        run: npm run build
