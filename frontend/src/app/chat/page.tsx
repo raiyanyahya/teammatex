@@ -7,6 +7,8 @@ import {
   Bug,
   Compass,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   GitPullRequest,
   ListChecks,
@@ -71,6 +73,12 @@ export default function ChatPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [attachment, setAttachment] = useState<{ id: string; filename: string } | null>(null);
   const [showAttach, setShowAttach] = useState(false);
+  // Tool-call rows (→ run_command · …) are collapsed by default — most people
+  // just want the answer — and revealed with the header toggle. Persisted so the
+  // choice sticks across reloads.
+  const [showTools, setShowTools] = useState<boolean>(
+    () => typeof window !== "undefined" && localStorage.getItem("chat_show_tools") === "1",
+  );
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -408,8 +416,42 @@ export default function ChatPage() {
             <div style={{ fontFamily: "var(--serif)", fontSize: 20, lineHeight: 1.2 }}>
               {messages.length === 0 ? "Ask about your codebase" : "This conversation"}
             </div>
-            <div className="font-mono" style={{ fontSize: 11, marginTop: 3, color: "var(--paper-4)" }}>
-              {messageCount} {messageCount === 1 ? "message" : "messages"} · {toolCount} tool{toolCount === 1 ? "" : "s"} used
+            <div
+              className="font-mono"
+              style={{ fontSize: 11, marginTop: 3, color: "var(--paper-4)", display: "flex", alignItems: "center", gap: 10 }}
+            >
+              <span>
+                {messageCount} {messageCount === 1 ? "message" : "messages"} · {toolCount} tool{toolCount === 1 ? "" : "s"} used
+              </span>
+              {/* Always visible so the preference is discoverable, even before a
+                  conversation has any tool calls. */}
+              <button
+                onClick={() =>
+                  setShowTools((v) => {
+                    const next = !v;
+                    if (typeof window !== "undefined")
+                      localStorage.setItem("chat_show_tools", next ? "1" : "0");
+                    return next;
+                  })
+                }
+                className="font-mono"
+                title={showTools ? "Hide tool-call steps" : "Show tool-call steps"}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: showTools ? "var(--ink-2)" : "transparent",
+                  border: "1px solid var(--line)",
+                  borderRadius: 4,
+                  color: showTools ? "var(--paper-1)" : "var(--paper-3)",
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  cursor: "pointer",
+                }}
+              >
+                {showTools ? <EyeOff size={11} /> : <Eye size={11} />}
+                {showTools ? "Hide tool calls" : "Show tool calls"}
+              </button>
             </div>
           </div>
         </div>
@@ -455,12 +497,12 @@ export default function ChatPage() {
               </div>
             )}
 
-            {messages.map((m, i) => (
-              <MessageRow key={i} m={m} />
-            ))}
+            {messages.map((m, i) =>
+              !showTools && m.role === "tool" ? null : <MessageRow key={i} m={m} />,
+            )}
 
             {streaming && (streamContent || activeTool) && (
-              <AgentThinking content={streamContent} tool={activeTool} />
+              <AgentThinking content={streamContent} tool={showTools ? activeTool : null} />
             )}
             {streaming && !streamContent && !activeTool && <AgentThinking content="" tool={null} />}
 
