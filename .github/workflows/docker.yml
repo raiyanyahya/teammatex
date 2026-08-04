@@ -21,16 +21,22 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # Build contexts mirror docker-compose: the backend Dockerfiles COPY from
+    # ./backend and the frontend Dockerfile from ./frontend, so the context must
+    # be that subdir (not the repo root) or the COPY steps can't find their files.
     strategy:
       fail-fast: false
       matrix:
         include:
           - component: api
             dockerfile: docker/Dockerfile.api
+            context: ./backend
           - component: worker
             dockerfile: docker/Dockerfile.worker
+            context: ./backend
           - component: frontend
             dockerfile: docker/Dockerfile.frontend
+            context: ./frontend
 
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +67,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}

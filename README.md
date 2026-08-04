@@ -8,26 +8,22 @@ It clones your repositories, reads every line and every commit, builds a living 
 
 <br/>
 
-<!-- What it is -->
+<!-- Line 1 · status -->
+[![CI](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml)
+[![Docker](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml)
+![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=flat-square)
+![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-0b7285?style=flat-square)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
+<!-- Line 2 · what it is -->
 ![AI teammate](https://img.shields.io/badge/🦾-AI%20teammate-6f42c1?style=flat-square)
 ![Agentic](https://img.shields.io/badge/agentic-28%20tools-8957e5?style=flat-square)
 ![Code knowledge graph](https://img.shields.io/badge/code-knowledge%20graph-008CC1?style=flat-square)
 ![Grounded RAG](https://img.shields.io/badge/RAG-pgvector%20%2B%20Neo4j-4169E1?style=flat-square)
 ![Bring your own LLM](https://img.shields.io/badge/LLM-bring%20your%20own-009688?style=flat-square)
-![Private](https://img.shields.io/badge/your%20code-never%20leaves%20the%20box-0b7285?style=flat-square)
 
-<!-- CI / CD -->
-[![CI](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml)
-[![Docker](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml)
-
-<!-- Project status -->
-![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=flat-square)
-![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-0b7285?style=flat-square)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
-![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4?style=flat-square)
-
-<!-- Stack -->
+<!-- Line 3 · stack -->
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Next.js 14](https://img.shields.io/badge/Next.js%2014-000000?style=flat-square&logo=nextdotjs&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
