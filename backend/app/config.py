@@ -42,8 +42,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.1-70b-versatile"
 
+    # Local embeddings run on fastembed (ONNX, no torch). bge-small-en-v1.5 is
+    # 384-dim and outscored all-MiniLM-L6-v2 on a retrieval bake-off of this repo.
     embedding_provider: str = "local"
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
 
     github_client_id: str = ""
     github_client_secret: str = ""

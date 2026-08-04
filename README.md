@@ -149,7 +149,7 @@ Adding a repo kicks off a Celery pipeline that turns source code into queryable 
 
 1. **Clone** — `git clone` into `/data/repos/<name>`.
 2. **Parse** — tree-sitter walks every file and extracts functions, classes, modules, and **call edges** across Python, JavaScript/TypeScript, Go, Rust, Java, and more.
-3. **Embed** — code chunks are vectorized into **pgvector**. Default embeddings are **local** (`all-MiniLM-L6-v2`, 384-dim, zero cost, nothing leaves the box); switch to OpenAI embeddings with one env var.
+3. **Embed** — code chunks are vectorized into **pgvector**. Default embeddings are **local** (`BAAI/bge-small-en-v1.5` via **fastembed/ONNX — no PyTorch**, 384-dim, zero cost, nothing leaves the box); switch to OpenAI embeddings with one env var.
 4. **Graph** — files/modules/functions/classes/concepts become nodes in **Neo4j**, wired with `PART_OF`, `CALLS`, and `OWNS` edges.
 5. **History mining** — git history is mined for **ownership** (who has touched each file most) and **pull requests** are pulled from the GitHub API and reconciled into the DB.
 
@@ -403,8 +403,8 @@ docker run --rm -v teammatex_postgres_data:/data -v "$PWD":/backup alpine \
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` | – | DeepSeek provider (cost-effective default) |
 | `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | `…11434` / `llama3.1:8b` | Local model, no key required |
 | `GROQ_API_KEY` / `GROQ_MODEL` | – | Groq provider |
-| `EMBEDDING_PROVIDER` | `local` | `local` (MiniLM, free) or `openai` |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model |
+| `EMBEDDING_PROVIDER` | `local` | `local` (fastembed/ONNX, free, no torch) or `openai` |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Local embedding model (fastembed); legacy `all-MiniLM-L6-v2` auto-maps |
 | `GITHUB_CLIENT_ID/SECRET`, `GITHUB_WEBHOOK_SECRET` | – | GitHub integration & webhooks |
 | `JIRA_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` | – | Jira integration |
 | `SLACK_BOT_TOKEN` / `SLACK_SIGNING_SECRET` / `SLACK_APP_TOKEN` | – | Slack integration |

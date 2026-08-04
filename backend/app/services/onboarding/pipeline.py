@@ -655,17 +655,16 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
         return {"files_scanned": 0, "chunks_created": 0, "chunks_stored": 0}
 
     try:
-        from sentence_transformers import SentenceTransformer
-
         from app.services.knowledge.embedding_schema import reconcile_embeddings_dim
+        from app.services.knowledge.embeddings import load_local_embedder
 
         engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
 
         # Load the model first so the table dimension matches what it actually
-        # emits (local all-MiniLM = 384, OpenAI = 1536). A mismatch makes every
-        # pgvector insert fail with "expected N dimensions".
-        model = SentenceTransformer(_s.embedding_model)
-        dim = model.get_sentence_embedding_dimension() or len(model.encode(["x"])[0])
+        # emits (bge-small = 384, OpenAI = 1536). A mismatch makes every pgvector
+        # insert fail with "expected N dimensions". fastembed (ONNX) — no torch.
+        model, _ = load_local_embedder(_s.embedding_model)
+        dim = len(next(iter(model.passage_embed(["probe"]))))
         chunker = CodeChunker()
 
         # Create the table at the right dimension, and reconcile an existing
@@ -731,7 +730,7 @@ def _build_embeddings_sync(repo_id: str, clone_path: str) -> dict:
         insert_errors: list[str] = []
         if all_chunks:
             texts = [c.text for c in all_chunks]
-            vectors = model.encode(texts, show_progress_bar=False).tolist()
+            vectors = [v.tolist() for v in model.passage_embed(texts)]
 
             # One savepoint per row: a single bad row no longer poisons the whole
             # transaction (the old code shared one transaction + swallowed every

@@ -2,8 +2,8 @@
 
 The pgvector column dimension MUST equal what the configured embedding model
 emits, or every insert fails with ``expected N dimensions``. The local default
-model (``all-MiniLM-L6-v2``) emits 384; OpenAI ``text-embedding-3-small`` emits
-1536. The DB schema was historically hardcoded to 1536, which silently broke the
+model (``BAAI/bge-small-en-v1.5``, via fastembed) emits 384; OpenAI
+``text-embedding-3-small`` emits 1536. The DB schema was historically hardcoded to 1536, which silently broke the
 local path (every insert raised and the error was swallowed → 0 rows stored).
 
 These helpers keep the schema and the model in agreement and let the onboarding
