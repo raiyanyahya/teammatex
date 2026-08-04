@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from sqlalchemy import select
@@ -29,8 +29,8 @@ def create_token(user_id: str, email: str) -> str:
     payload = {
         "sub": user_id,
         "email": email,
-        "exp": datetime.now(timezone.utc) + timedelta(days=30),
-        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(UTC) + timedelta(days=30),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, settings.teammate_secret_key, algorithm=ALGORITHM)
 
@@ -49,6 +49,7 @@ def generate_default_password(length: int = 16) -> str:
 async def first_run_check(db) -> tuple[bool, str | None]:
     """Check if this is the first run. Returns (is_first_run, default_password)."""
     from app.models.user import User
+
     result = await db.execute(select(User).limit(1))
     existing = result.scalar_one_or_none()
     if existing:
@@ -65,11 +66,11 @@ async def first_run_check(db) -> tuple[bool, str | None]:
     await db.commit()
 
     print(f"\n{'='*50}")
-    print(f"  TeammateX first run")
-    print(f"  Default admin created:")
-    print(f"  Email:    admin@teammatex.local")
+    print("  TeammateX first run")
+    print("  Default admin created:")
+    print("  Email:    admin@teammatex.local")
     print(f"  Password: {password}")
-    print(f"  Change this password after logging in.")
+    print("  Change this password after logging in.")
     print(f"{'='*50}\n")
 
     return True, password

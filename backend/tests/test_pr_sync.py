@@ -4,9 +4,7 @@ PRs live in the GitHub API, not in the cloned git repo, so onboarding never
 captured them and every repo showed 0 open PRs. These tests pin the parsing,
 pagination, and DB-reconcile behaviour of the sync that fixes that.
 """
-from datetime import datetime, timezone
 
-import pytest
 from sqlalchemy import select
 
 from app.models.pr import PR
@@ -15,7 +13,10 @@ from app.services.integrations import pr_sync
 
 
 def test_owner_repo_parses_clone_url():
-    assert pr_sync.owner_repo("https://github.com/charmbracelet/bubbletea.git") == "charmbracelet/bubbletea"
+    assert (
+        pr_sync.owner_repo("https://github.com/charmbracelet/bubbletea.git")
+        == "charmbracelet/bubbletea"
+    )
 
 
 def test_owner_repo_parses_web_url():
@@ -52,7 +53,13 @@ class _FakeClient:
 
 
 def _pr(number, title="t", ref="branch", created="2020-01-01T00:00:00Z"):
-    return {"number": number, "title": title, "head": {"ref": ref}, "created_at": created, "state": "open"}
+    return {
+        "number": number,
+        "title": title,
+        "head": {"ref": ref},
+        "created_at": created,
+        "state": "open",
+    }
 
 
 def test_fetch_open_prs_paginates_until_short_page():
@@ -121,8 +128,10 @@ def test_reconcile_closes_prs_no_longer_open(db_session):
     pr_sync.reconcile_prs(db_session, str(repo.id), [_pr(1), _pr(2)])
     # PR 2 merged/closed on GitHub → only 1 comes back open.
     pr_sync.reconcile_prs(db_session, str(repo.id), [_pr(1)])
-    rows = {p.github_pr_number: p.status for p in
-            db_session.execute(select(PR).where(PR.repo_id == str(repo.id))).scalars().all()}
+    rows = {
+        p.github_pr_number: p.status
+        for p in db_session.execute(select(PR).where(PR.repo_id == str(repo.id))).scalars().all()
+    }
     assert rows[1] == "open"
     assert rows[2] == "closed"
 
@@ -131,15 +140,19 @@ def test_reconcile_preserves_agent_created_prs(db_session):
     """A PR the agent opened (task_id set) must not be auto-closed just because
     it isn't in the externally-fetched open-PR snapshot."""
     repo = _make_repo(db_session)
-    agent_pr = PR(repo_id=str(repo.id), github_pr_number=999, title="agent pr",
-                  branch="teammatex/x", status="open",
-                  task_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    agent_pr = PR(
+        repo_id=str(repo.id),
+        github_pr_number=999,
+        title="agent pr",
+        branch="teammatex/x",
+        status="open",
+        task_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    )
     db_session.add(agent_pr)
     db_session.commit()
 
     # External sync returns no open PRs at all.
     pr_sync.reconcile_prs(db_session, str(repo.id), [])
 
-    refreshed = db_session.execute(
-        select(PR).where(PR.github_pr_number == 999)).scalar_one()
+    refreshed = db_session.execute(select(PR).where(PR.github_pr_number == 999)).scalar_one()
     assert refreshed.status == "open"

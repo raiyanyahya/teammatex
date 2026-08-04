@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from structlog import get_logger
 
@@ -62,8 +61,7 @@ class PluginRegistry:
 
     def get_active(self) -> dict[str, PluginInstance]:
         return {
-            name: inst for name, inst in self._plugins.items()
-            if inst.status == PluginStatus.ACTIVE
+            name: inst for name, inst in self._plugins.items() if inst.status == PluginStatus.ACTIVE
         }
 
     def get_tools(self) -> dict[str, "PluginInstance"]:
@@ -184,6 +182,7 @@ class PluginManager:
                 pass
         try:
             import importlib
+
             mod = importlib.import_module(instance.manifest.name)
             if hasattr(mod, "shutdown"):
                 mod.shutdown()

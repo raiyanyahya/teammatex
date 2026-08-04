@@ -1,12 +1,13 @@
 from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
 from app.config import settings
+from app.models.base import Base
 from app.services.knowledge.embedding_schema import expected_dim
 
 try:
     from pgvector.sqlalchemy import Vector
+
     _HAS_PGVECTOR = True
 except ImportError:
     Vector = None  # type: ignore

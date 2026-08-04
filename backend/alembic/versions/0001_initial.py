@@ -4,17 +4,18 @@ Revision ID: 0001_initial
 Revises:
 Create Date: 2026-05-23
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = "0001_initial"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -93,7 +94,9 @@ def upgrade() -> None:
         sa.Column("allowed_methods", postgresql.ARRAY(sa.String()), nullable=True),
         sa.Column("allowed_paths", postgresql.ARRAY(sa.String()), nullable=True),
         sa.Column("rate_limit_per_hour", sa.Integer(), nullable=True),
-        sa.Column("requires_approval", sa.Boolean(), nullable=True, server_default=sa.text("false")),
+        sa.Column(
+            "requires_approval", sa.Boolean(), nullable=True, server_default=sa.text("false")
+        ),
         sa.Column("added_by", sa.String(255), nullable=True),
         sa.Column("status", sa.String(20), nullable=True, server_default=sa.text("'active'")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
@@ -105,7 +108,9 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("github_url", sa.String(1024), nullable=False),
         sa.Column("local_name", sa.String(255), nullable=False),
-        sa.Column("default_branch", sa.String(255), nullable=True, server_default=sa.text("'main'")),
+        sa.Column(
+            "default_branch", sa.String(255), nullable=True, server_default=sa.text("'main'")
+        ),
         sa.Column("language_stats", postgresql.JSONB(), nullable=True),
         sa.Column("clone_path", sa.String(1024), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=True, server_default=sa.text("true")),

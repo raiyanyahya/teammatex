@@ -14,7 +14,8 @@ from app.services.agent.message_utils import (
 def _fake_tc(tid, name, args):
     """Mimic a litellm ChatCompletionMessageToolCall object."""
     return SimpleNamespace(
-        id=tid, type="function",
+        id=tid,
+        type="function",
         function=SimpleNamespace(name=name, arguments=args),
     )
 
@@ -29,8 +30,7 @@ class TestSerializeToolCall:
         }
 
     def test_handles_dict_input(self):
-        d = {"id": "x", "type": "function",
-             "function": {"name": "bash", "arguments": "{}"}}
+        d = {"id": "x", "type": "function", "function": {"name": "bash", "arguments": "{}"}}
         assert serialize_tool_call(d)["function"]["name"] == "bash"
 
     def test_non_string_arguments_become_json(self):
@@ -58,7 +58,8 @@ class TestAssistantMessage:
     def test_reasoning_content_included_when_present(self):
         # DeepSeek thinking models require reasoning_content be echoed back.
         msg = assistant_tool_calls_message(
-            [_fake_tc("c", "bash", "{}")], reasoning_content="let me think")
+            [_fake_tc("c", "bash", "{}")], reasoning_content="let me think"
+        )
         assert msg["reasoning_content"] == "let me think"
 
     def test_reasoning_content_omitted_when_absent(self):
@@ -69,20 +70,22 @@ class TestAssistantMessage:
 class TestToolResultMessage:
     def test_shape(self):
         assert tool_result_message("call_1", '{"ok": true}') == {
-            "role": "tool", "tool_call_id": "call_1", "content": '{"ok": true}',
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": '{"ok": true}',
         }
 
 
 class TestStripToolMarkup:
     # The exact garbage observed leaking to users from DeepSeek's synthesis turn.
     LEAKED = (
-        '<｜｜DSML｜｜tool_calls>\n'
+        "<｜｜DSML｜｜tool_calls>\n"
         '<｜｜DSML｜｜invoke name="run_command">\n'
         '<｜｜DSML｜｜parameter name="command" string="true">'
         'cd /data/repos/kit-fork && git add README.md && git commit -m "x"'
-        '</｜｜DSML｜｜parameter>\n'
-        '</｜｜DSML｜｜invoke>\n'
-        '</｜｜DSML｜｜tool_calls>'
+        "</｜｜DSML｜｜parameter>\n"
+        "</｜｜DSML｜｜invoke>\n"
+        "</｜｜DSML｜｜tool_calls>"
     )
 
     def test_removes_full_dsml_block(self):

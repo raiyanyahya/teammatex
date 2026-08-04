@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,9 @@ logger = get_logger(__name__)
 
 
 def _progress_for_status(status: str | None) -> int:
-    return {"in_progress": 50, "review": 80, "blocked": 25, "open": 10, "completed": 100}.get(status or "open", 10)
+    return {"in_progress": 50, "review": 80, "blocked": 25, "open": 10, "completed": 100}.get(
+        status or "open", 10
+    )
 
 
 def _who_from_branch(branch: str | None) -> str:
@@ -34,9 +36,11 @@ class StandupGenerator:
 
         return {
             "name": settings.teammate_name,
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "date": datetime.now(UTC).strftime("%Y-%m-%d"),
             "yesterday": self._format_prs(yesterday) if yesterday else "No PR activity.",
-            "today": self._format_tasks(today_planned) if today_planned else "Monitoring for new tasks.",
+            "today": (
+                self._format_tasks(today_planned) if today_planned else "Monitoring for new tasks."
+            ),
             "blockers": self._format_blockers(blockers),
             "prs": yesterday,
             "tasks": today_planned,
@@ -45,9 +49,10 @@ class StandupGenerator:
 
     async def _get_prs_since(self, db: AsyncSession, hours: int) -> list[dict]:
         from sqlalchemy import select
+
         from app.models.pr import PR
 
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         result = await db.execute(
             select(PR).where(PR.created_at >= cutoff).order_by(PR.created_at.desc()).limit(10)
         )
@@ -64,10 +69,14 @@ class StandupGenerator:
 
     async def _get_active_tasks(self, db: AsyncSession) -> list[dict]:
         from sqlalchemy import select
+
         from app.models.task import Task
 
         result = await db.execute(
-            select(Task).where(Task.status.in_(["open", "in_progress"])).order_by(Task.updated_at.desc()).limit(10)
+            select(Task)
+            .where(Task.status.in_(["open", "in_progress"]))
+            .order_by(Task.updated_at.desc())
+            .limit(10)
         )
         tasks = result.scalars().all()
         return [
@@ -92,7 +101,10 @@ class StandupGenerator:
         )
         blocked = result.scalars().all()
         return [
-            {"question": b.question, "created_at": b.created_at.isoformat() if b.created_at else None}
+            {
+                "question": b.question,
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+            }
             for b in blocked
         ]
 
@@ -167,15 +179,18 @@ Include:
     def _format_modules(self, modules: list[dict]) -> str:
         lines = []
         for m in modules:
-            lines.append(f"- {m.get('module', 'unknown')}: {m.get('file_count', 0)} files, {m.get('function_count', 0)} functions")
+            lines.append(
+                f"- {m.get('module', 'unknown')}: {m.get('file_count', 0)} files, {m.get('function_count', 0)} functions"
+            )
         return "\n".join(lines[:30])
 
 
 class ReleaseNotesGenerator:
-    async def generate(self, repo_name: str, commits: list[dict], previous_tag: str | None = None) -> str:
+    async def generate(
+        self, repo_name: str, commits: list[dict], previous_tag: str | None = None
+    ) -> str:
         commit_text = "\n".join(
-            f"- {c.get('hash', '')[:8]} {c.get('message', '')}"
-            for c in commits[:100]
+            f"- {c.get('hash', '')[:8]} {c.get('message', '')}" for c in commits[:100]
         )
 
         prompt = f"""Generate release notes for '{repo_name}'.
@@ -201,7 +216,11 @@ Include a summary at the top and migration guide for breaking changes.
 
 class TestGenerator:
     async def generate_tests(
-        self, code: str, language: str, function_name: str, test_framework: str = "pytest",
+        self,
+        code: str,
+        language: str,
+        function_name: str,
+        test_framework: str = "pytest",
     ) -> str:
         prompt = f"""Generate comprehensive unit tests for the following {language} function.
 

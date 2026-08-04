@@ -1,4 +1,5 @@
 """API tests for the per-user uploads and notepad features."""
+
 import pytest
 
 # Bind to the session event loop, matching the session-scoped api_client/api_db
@@ -52,6 +53,7 @@ class TestUploads:
 
     async def test_download_unknown_id_404(self, api_client):
         import uuid
+
         r = await api_client.get(f"/api/uploads/{uuid.uuid4()}/download")
         assert r.status_code == 404
 
@@ -70,7 +72,9 @@ class TestNotepad:
         assert r.json()["content"] == ""
 
     async def test_save_then_roundtrip(self, api_client):
-        saved = await api_client.post("/api/notepad", json={"content": "# my scratch\nremember this"})
+        saved = await api_client.post(
+            "/api/notepad", json={"content": "# my scratch\nremember this"}
+        )
         assert saved.status_code == 200
         assert saved.json()["content"] == "# my scratch\nremember this"
 

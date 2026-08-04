@@ -6,6 +6,7 @@ the user's message. A foreign/missing/malformed id is ignored (message sent
 as-is) so a bad attachment never fails the whole chat; binary or oversized files
 get a short note instead of garbled bytes.
 """
+
 from __future__ import annotations
 
 import uuid as _uuid
@@ -29,9 +30,9 @@ async def build_attached_message(
     except ValueError:
         return message
 
-    up = (await db.execute(
-        select(Upload).where(Upload.id == upload_id, Upload.owner_id == owner)
-    )).scalar_one_or_none()
+    up = (
+        await db.execute(select(Upload).where(Upload.id == upload_id, Upload.owner_id == owner))
+    ).scalar_one_or_none()
     if up is None:
         return message
 

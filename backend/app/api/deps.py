@@ -6,6 +6,7 @@ HttpOnly `tmx_token` cookie (set at login, sent automatically by the browser on
 same-origin calls) or, for programmatic clients, an `Authorization: Bearer <jwt>`
 header. Both carry the same JWT minted by app.utils.auth.create_token.
 """
+
 from fastapi import Depends, HTTPException, Request
 
 from app.config import settings

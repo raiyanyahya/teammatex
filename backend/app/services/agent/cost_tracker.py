@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 
 from structlog import get_logger
 
@@ -15,7 +16,8 @@ async def log_cost(
     cost_cents: float,
 ) -> None:
     try:
-        from sqlalchemy import create_engine, text
+        from sqlalchemy import create_engine
+
         from app.config import settings
 
         engine = create_engine(
@@ -23,14 +25,26 @@ async def log_cost(
             pool_pre_ping=True,
         )
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _sync_log_cost, engine, provider, model, call_type, tokens_in, tokens_out, cost_cents)
+        await loop.run_in_executor(
+            None,
+            _sync_log_cost,
+            engine,
+            provider,
+            model,
+            call_type,
+            tokens_in,
+            tokens_out,
+            cost_cents,
+        )
     except Exception:
         pass
 
 
 def _sync_log_cost(engine, provider, model, call_type, tokens_in, tokens_out, cost_cents):
-    from sqlalchemy import text
     import uuid
+
+    from sqlalchemy import text
+
     try:
         with engine.connect() as conn:
             conn.execute(
@@ -42,7 +56,7 @@ def _sync_log_cost(engine, provider, model, call_type, tokens_in, tokens_out, co
                     "id": str(uuid.uuid4()),
                     # Full timestamp, not just the date: the cost log is ordered
                     # and displayed by time, so same-day rows must be distinguishable.
-                    "date": datetime.now(timezone.utc),
+                    "date": datetime.now(UTC),
                     "provider": provider,
                     "model": model,
                     "call_type": call_type,
@@ -55,10 +69,8 @@ def _sync_log_cost(engine, provider, model, call_type, tokens_in, tokens_out, co
     except Exception:
         pass
     finally:
-        try:
+        with contextlib.suppress(Exception):
             engine.dispose()
-        except Exception:
-            pass
 
 
 async def record_llm_usage(provider: str, model: str, call_type: str, response) -> None:
@@ -75,8 +87,15 @@ async def record_llm_usage(provider: str, model: str, call_type: str, response) 
     if tokens_in == 0 and tokens_out == 0:
         return
     from app.services.agent.cost import cost_cents
-    await log_cost(provider, model, call_type, tokens_in, tokens_out,
-                   cost_cents(model, tokens_in, tokens_out, provider))
+
+    await log_cost(
+        provider,
+        model,
+        call_type,
+        tokens_in,
+        tokens_out,
+        cost_cents(model, tokens_in, tokens_out, provider),
+    )
 
 
 async def log_audit(
@@ -90,7 +109,8 @@ async def log_audit(
     status: str = "success",
 ) -> None:
     try:
-        from sqlalchemy import create_engine, text
+        from sqlalchemy import create_engine
+
         from app.config import settings
 
         engine = create_engine(
@@ -99,16 +119,29 @@ async def log_audit(
         )
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
-            None, _sync_log_audit, engine, action, entity_type, entity_id,
-            summary, llm_calls, tokens_used, cost_cents, status,
+            None,
+            _sync_log_audit,
+            engine,
+            action,
+            entity_type,
+            entity_id,
+            summary,
+            llm_calls,
+            tokens_used,
+            cost_cents,
+            status,
         )
     except Exception:
         pass
 
 
-def _sync_log_audit(engine, action, entity_type, entity_id, summary, llm_calls, tokens_used, cost_cents, status):
-    from sqlalchemy import text
+def _sync_log_audit(
+    engine, action, entity_type, entity_id, summary, llm_calls, tokens_used, cost_cents, status
+):
     import uuid
+
+    from sqlalchemy import text
+
     try:
         with engine.connect() as conn:
             conn.execute(
@@ -125,8 +158,8 @@ def _sync_log_audit(engine, action, entity_type, entity_id, summary, llm_calls, 
                     "llm_calls": llm_calls,
                     "tokens_used": tokens_used,
                     "cost": cost_cents,
-                    "started": datetime.now(timezone.utc),
-                    "completed": datetime.now(timezone.utc),
+                    "started": datetime.now(UTC),
+                    "completed": datetime.now(UTC),
                     "status": status,
                 },
             )
@@ -134,7 +167,5 @@ def _sync_log_audit(engine, action, entity_type, entity_id, summary, llm_calls, 
     except Exception:
         pass
     finally:
-        try:
+        with contextlib.suppress(Exception):
             engine.dispose()
-        except Exception:
-            pass

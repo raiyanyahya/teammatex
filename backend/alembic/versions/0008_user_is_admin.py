@@ -10,16 +10,17 @@ Revision ID: 0008_user_is_admin
 Revises: 0007_conversation_owner
 Create Date: 2026-07-08
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0008_user_is_admin"
-down_revision: Union[str, None] = "0007_conversation_owner"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0007_conversation_owner"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -29,9 +30,7 @@ def upgrade() -> None:
     )
     # Promote the bootstrap admin so an existing deployment isn't locked out of
     # registration/plugin management after this migration.
-    op.execute(
-        "UPDATE users SET is_admin = true WHERE email = 'admin@teammatex.local'"
-    )
+    op.execute("UPDATE users SET is_admin = true WHERE email = 'admin@teammatex.local'")
     # Fallback: if there's no bootstrap admin but users exist, promote one so
     # there is always at least one admin. (No created_at column, so order by id.)
     op.execute(

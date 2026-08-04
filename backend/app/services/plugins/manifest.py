@@ -2,7 +2,6 @@ import tomllib
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from structlog import get_logger
 

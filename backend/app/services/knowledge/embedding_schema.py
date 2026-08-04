@@ -40,12 +40,14 @@ def reconcile_embeddings_dim(conn, target_dim: int) -> str:
     """
     from sqlalchemy import text as t
 
-    row = conn.execute(t(
-        "SELECT format_type(a.atttypid, a.atttypmod) "
-        "FROM pg_attribute a "
-        "WHERE a.attrelid = to_regclass('code_embeddings') "
-        "AND a.attname = 'embedding' AND NOT a.attisdropped"
-    )).fetchone()
+    row = conn.execute(
+        t(
+            "SELECT format_type(a.atttypid, a.atttypmod) "
+            "FROM pg_attribute a "
+            "WHERE a.attrelid = to_regclass('code_embeddings') "
+            "AND a.attname = 'embedding' AND NOT a.attisdropped"
+        )
+    ).fetchone()
     if not row:
         return "absent"
     current = parse_vector_dim(row[0])

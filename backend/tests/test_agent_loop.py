@@ -15,8 +15,9 @@ from app.services.agent.loop import run_agent_loop
 
 
 def _tc(tid, name, args):
-    return SimpleNamespace(id=tid, type="function",
-                           function=SimpleNamespace(name=name, arguments=args))
+    return SimpleNamespace(
+        id=tid, type="function", function=SimpleNamespace(name=name, arguments=args)
+    )
 
 
 def _response(content=None, tool_calls=None):
@@ -47,39 +48,51 @@ async def _collect(gen):
 @pytest.mark.asyncio
 class TestAgentLoop:
     async def test_tool_then_final_text(self):
-        llm = _scripted_llm([
-            _response(tool_calls=[_tc("c1", "read_file", '{"file_path": "/a"}')]),
-            _response(content="The file says hello."),
-        ])
+        llm = _scripted_llm(
+            [
+                _response(tool_calls=[_tc("c1", "read_file", '{"file_path": "/a"}')]),
+                _response(content="The file says hello."),
+            ]
+        )
         msgs = [{"role": "user", "content": "read /a"}]
-        events = await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[{"x": 1}]))
+        events = await _collect(
+            run_agent_loop(llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[{"x": 1}])
+        )
         assert [e["type"] for e in events] == ["tool_start", "tool_end", "text", "sources"]
         assert events[-2]["content"] == "The file says hello."
 
     async def test_multiple_tool_calls_one_turn_all_run(self):
-        llm = _scripted_llm([
-            _response(tool_calls=[
-                _tc("c1", "read_file", '{"file_path": "/a"}'),
-                _tc("c2", "bash", '{"command": "ls"}'),
-            ]),
-            _response(content="done"),
-        ])
-        events = await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec,
-            messages=[{"role": "user", "content": "go"}], tools=[]))
+        llm = _scripted_llm(
+            [
+                _response(
+                    tool_calls=[
+                        _tc("c1", "read_file", '{"file_path": "/a"}'),
+                        _tc("c2", "bash", '{"command": "ls"}'),
+                    ]
+                ),
+                _response(content="done"),
+            ]
+        )
+        events = await _collect(
+            run_agent_loop(
+                llm_call=llm,
+                execute_tool=_ok_exec,
+                messages=[{"role": "user", "content": "go"}],
+                tools=[],
+            )
+        )
         starts = [e["tool"] for e in events if e["type"] == "tool_start"]
         assert starts == ["read_file", "bash"]
 
     async def test_message_history_has_grouped_assistant_then_tool_msgs(self):
-        llm = _scripted_llm([
-            _response(tool_calls=[
-                _tc("c1", "read_file", "{}"), _tc("c2", "bash", "{}")]),
-            _response(content="done"),
-        ])
+        llm = _scripted_llm(
+            [
+                _response(tool_calls=[_tc("c1", "read_file", "{}"), _tc("c2", "bash", "{}")]),
+                _response(content="done"),
+            ]
+        )
         msgs = [{"role": "user", "content": "go"}]
-        await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[]))
+        await _collect(run_agent_loop(llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[]))
         # one assistant message carrying BOTH tool calls, then two tool replies
         assistant = [m for m in msgs if m["role"] == "assistant" and m.get("tool_calls")]
         assert len(assistant) == 1
@@ -88,13 +101,20 @@ class TestAgentLoop:
         assert [m["tool_call_id"] for m in tool_msgs] == ["c1", "c2"]
 
     async def test_leaked_markup_in_final_text_is_stripped(self):
-        leaked = ('I committed it.\n\n<｜｜DSML｜｜tool_calls>\n'
-                  '<｜｜DSML｜｜invoke name="bash"></｜｜DSML｜｜invoke>\n'
-                  '</｜｜DSML｜｜tool_calls>')
+        leaked = (
+            "I committed it.\n\n<｜｜DSML｜｜tool_calls>\n"
+            '<｜｜DSML｜｜invoke name="bash"></｜｜DSML｜｜invoke>\n'
+            "</｜｜DSML｜｜tool_calls>"
+        )
         llm = _scripted_llm([_response(content=leaked)])
-        events = await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec,
-            messages=[{"role": "user", "content": "x"}], tools=[]))
+        events = await _collect(
+            run_agent_loop(
+                llm_call=llm,
+                execute_tool=_ok_exec,
+                messages=[{"role": "user", "content": "x"}],
+                tools=[],
+            )
+        )
         texts = [e["content"] for e in events if e["type"] == "text"]
         assert texts == ["I committed it."]
         # no event anywhere may contain raw markup
@@ -103,19 +123,31 @@ class TestAgentLoop:
     async def test_no_llm_response_yields_error(self):
         async def none_llm(messages, tools):
             return None
-        events = await _collect(run_agent_loop(
-            llm_call=none_llm, execute_tool=_ok_exec,
-            messages=[{"role": "user", "content": "x"}], tools=[]))
+
+        events = await _collect(
+            run_agent_loop(
+                llm_call=none_llm,
+                execute_tool=_ok_exec,
+                messages=[{"role": "user", "content": "x"}],
+                tools=[],
+            )
+        )
         assert events[-1]["type"] == "error"
 
     async def test_iteration_cap_terminates_with_text(self):
         # Model always calls a tool — loop must stop and still emit a final text.
         async def always_tool(messages, tools):
             return _response(tool_calls=[_tc("c", "bash", "{}")])
-        events = await _collect(run_agent_loop(
-            llm_call=always_tool, execute_tool=_ok_exec,
-            messages=[{"role": "user", "content": "x"}], tools=[],
-            max_iterations=3))
+
+        events = await _collect(
+            run_agent_loop(
+                llm_call=always_tool,
+                execute_tool=_ok_exec,
+                messages=[{"role": "user", "content": "x"}],
+                tools=[],
+                max_iterations=3,
+            )
+        )
         assert events[-1]["type"] == "sources"
         assert events[-2]["type"] == "text"
         # 3 iterations, each one tool call
@@ -132,9 +164,15 @@ class TestAgentLoop:
                 return _response(tool_calls=[_tc("c", "bash", "{}")])
             return _response(content="Edited the file but push failed: 403 permission denied.")
 
-        events = await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec,
-            messages=[{"role": "user", "content": "x"}], tools=[], max_iterations=3))
+        events = await _collect(
+            run_agent_loop(
+                llm_call=llm,
+                execute_tool=_ok_exec,
+                messages=[{"role": "user", "content": "x"}],
+                tools=[],
+                max_iterations=3,
+            )
+        )
         assert events[-1]["type"] == "sources"
         assert events[-2]["type"] == "text"
         assert "403" in events[-2]["content"]
@@ -143,27 +181,38 @@ class TestAgentLoop:
         # A thinking model returns reasoning_content alongside tool calls; it
         # must be echoed back or the next call 400s.
         def _resp_reasoning():
-            msg = SimpleNamespace(content=None, reasoning_content="thinking...",
-                                  tool_calls=[_tc("c", "bash", "{}")])
-            return SimpleNamespace(choices=[SimpleNamespace(message=msg)],
-                                   usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1))
+            msg = SimpleNamespace(
+                content=None, reasoning_content="thinking...", tool_calls=[_tc("c", "bash", "{}")]
+            )
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=msg)],
+                usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+            )
+
         llm = _scripted_llm([_resp_reasoning(), _response(content="done")])
         msgs = [{"role": "user", "content": "go"}]
-        await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[]))
+        await _collect(run_agent_loop(llm_call=llm, execute_tool=_ok_exec, messages=msgs, tools=[]))
         assistant = [m for m in msgs if m["role"] == "assistant" and m.get("tool_calls")][0]
         assert assistant["reasoning_content"] == "thinking..."
 
     async def test_tool_execution_error_is_reported_not_fatal(self):
         async def boom_exec(name, args):
             raise RuntimeError("kaboom")
-        llm = _scripted_llm([
-            _response(tool_calls=[_tc("c", "bash", "{}")]),
-            _response(content="recovered"),
-        ])
-        events = await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=boom_exec,
-            messages=[{"role": "user", "content": "x"}], tools=[]))
+
+        llm = _scripted_llm(
+            [
+                _response(tool_calls=[_tc("c", "bash", "{}")]),
+                _response(content="recovered"),
+            ]
+        )
+        events = await _collect(
+            run_agent_loop(
+                llm_call=llm,
+                execute_tool=boom_exec,
+                messages=[{"role": "user", "content": "x"}],
+                tools=[],
+            )
+        )
         end = [e for e in events if e["type"] == "tool_end"][0]
         assert "kaboom" in end["result"]
         text_events = [e for e in events if e["type"] == "text"]
@@ -177,12 +226,21 @@ from app.services.agent.runtime import _with_prompt_cache
 
 
 def _msgs_with_tool_turns(n):
-    msgs = [{"role": "system", "content": "sys"},
-            {"role": "user", "content": "go"}]
+    msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
     for i in range(n):
-        msgs.append({"role": "assistant", "content": None,
-                     "tool_calls": [{"id": f"c{i}", "type": "function",
-                                     "function": {"name": "bash", "arguments": "{}"}}]})
+        msgs.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"c{i}",
+                        "type": "function",
+                        "function": {"name": "bash", "arguments": "{}"},
+                    }
+                ],
+            }
+        )
         msgs.append({"role": "tool", "tool_call_id": f"c{i}", "content": "X" * 4000})
     return msgs
 
@@ -214,25 +272,28 @@ class TestToolResultPruning:
         async def big_exec(name, args):
             return {"data": big}
 
-        llm = _scripted_llm([
-            _response(tool_calls=[_tc("a", "bash", "{}")]),
-            _response(tool_calls=[_tc("b", "bash", "{}")]),
-            _response(tool_calls=[_tc("c", "bash", "{}")]),
-            _response(content="done"),
-        ])
+        llm = _scripted_llm(
+            [
+                _response(tool_calls=[_tc("a", "bash", "{}")]),
+                _response(tool_calls=[_tc("b", "bash", "{}")]),
+                _response(tool_calls=[_tc("c", "bash", "{}")]),
+                _response(content="done"),
+            ]
+        )
         msgs = [{"role": "user", "content": "x"}]
-        await _collect(run_agent_loop(
-            llm_call=llm, execute_tool=big_exec, messages=msgs, tools=[],
-            keep_tool_results=1))
+        await _collect(
+            run_agent_loop(
+                llm_call=llm, execute_tool=big_exec, messages=msgs, tools=[], keep_tool_results=1
+            )
+        )
         tools = [m for m in msgs if m["role"] == "tool"]
-        assert tools[-1]["content"] != _ELIDED          # most recent intact
+        assert tools[-1]["content"] != _ELIDED  # most recent intact
         assert all(t["content"] == _ELIDED for t in tools[:-1])  # rest elided
 
 
 class TestPromptCacheBreakpoint:
     def test_anthropic_system_gets_cache_control(self):
-        msgs = [{"role": "system", "content": "you are X"},
-                {"role": "user", "content": "hi"}]
+        msgs = [{"role": "system", "content": "you are X"}, {"role": "user", "content": "hi"}]
         out = _with_prompt_cache(msgs)
         assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
         assert out[0]["content"][0]["text"] == "you are X"

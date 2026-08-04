@@ -3,6 +3,7 @@
     python -m app.evals [--golden fixture.yaml] [--k 3] [--threshold 0.8]
 
 Exits non-zero if hit_rate < threshold, so it can act as a regression gate."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,13 +17,16 @@ def exit_code_for(summary: dict, threshold: float) -> int:
 def _print_report(report: dict) -> None:
     print(f"{'ID':<6} {'HIT':<4} {'RANK':<5} QUESTION")
     for it in report["items"]:
-        print(f"{it['id']:<6} {'YES' if it['hit'] else '-':<4} {str(it['rank'] or '-'):<5} {it['question']}")
+        print(
+            f"{it['id']:<6} {'YES' if it['hit'] else '-':<4} {str(it['rank'] or '-'):<5} {it['question']}"
+        )
     s = report["summary"]
     print(f"\n{s['count']} questions | hit-rate: {s['hit_rate']:.2f} | MRR: {s['mrr']:.2f}")
 
 
 async def _amain(args: argparse.Namespace) -> int:
     from pathlib import Path
+
     # Import the module, not the name: async_session_factory is None until
     # _init_engine() runs, so a `from ... import async_session_factory` would
     # capture None. Access it via the module after init.

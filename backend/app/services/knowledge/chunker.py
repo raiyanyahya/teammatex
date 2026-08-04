@@ -1,9 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from structlog import get_logger
-
-from app.config import settings
 
 logger = get_logger(__name__)
 
@@ -23,9 +20,7 @@ class CodeChunker:
     MAX_CHUNK_TOKENS = 1000
     OVERLAP_TOKENS = 100
 
-    def chunk_file(
-        self, content: str, file_path: str, language: str
-    ) -> list[CodeChunk]:
+    def chunk_file(self, content: str, file_path: str, language: str) -> list[CodeChunk]:
         lines = content.splitlines()
         if not lines:
             return []
@@ -72,15 +67,17 @@ class CodeChunker:
                 sub_chunks = self._chunk_by_windows(chunk_lines, file_path, language, start)
                 chunks.extend(sub_chunks)
             else:
-                chunks.append(CodeChunk(
-                    text=chunk_text,
-                    file_path=file_path,
-                    start_line=entity.start_line,
-                    end_line=entity.end_line,
-                    entity_type=entity.kind,
-                    language=language,
-                    entity_name=entity.name,
-                ))
+                chunks.append(
+                    CodeChunk(
+                        text=chunk_text,
+                        file_path=file_path,
+                        start_line=entity.start_line,
+                        end_line=entity.end_line,
+                        entity_type=entity.kind,
+                        language=language,
+                        entity_name=entity.name,
+                    )
+                )
 
         return chunks
 
@@ -94,14 +91,16 @@ class CodeChunker:
         while i < len(lines):
             end = min(i + chunk_size, len(lines))
             chunk_lines = lines[i:end]
-            chunks.append(CodeChunk(
-                text="\n".join(chunk_lines),
-                file_path=file_path,
-                start_line=line_offset + i + 1,
-                end_line=line_offset + end,
-                entity_type="window",
-                language=language,
-            ))
+            chunks.append(
+                CodeChunk(
+                    text="\n".join(chunk_lines),
+                    file_path=file_path,
+                    start_line=line_offset + i + 1,
+                    end_line=line_offset + end,
+                    entity_type="window",
+                    language=language,
+                )
+            )
             if end >= len(lines):
                 break
             i = end - overlap

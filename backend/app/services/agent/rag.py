@@ -1,8 +1,8 @@
 from structlog import get_logger
 
+from app.services.agent.confidence import compute_confidence, flag_if_low
 from app.services.knowledge.embeddings import EmbeddingService
 from app.services.knowledge.graph import KnowledgeGraph
-from app.services.agent.confidence import compute_confidence, is_low_confidence, flag_if_low
 from app.services.knowledge.incremental_graph import ImportCentrality
 
 logger = get_logger(__name__)
@@ -10,9 +10,40 @@ logger = get_logger(__name__)
 QUERY_INTENTS = {
     "exact_name": ["find", "locate", "where is", "show me the", "what file", "which file contains"],
     "config": ["config", "settings", "env", "parameter", "option", "how to configure", "setup"],
-    "wiring": ["depend", "import", "call", "connect", "what uses", "who uses", "reference", "where is X used", "what calls"],
-    "flow": ["how does", "what happens when", "flow", "pipeline", "process", "workflow", "step by step", "trigger", "event"],
-    "conceptual": ["what is", "explain", "architecture", "overview", "concept", "why", "design", "pattern", "strategy", "how should"],
+    "wiring": [
+        "depend",
+        "import",
+        "call",
+        "connect",
+        "what uses",
+        "who uses",
+        "reference",
+        "where is X used",
+        "what calls",
+    ],
+    "flow": [
+        "how does",
+        "what happens when",
+        "flow",
+        "pipeline",
+        "process",
+        "workflow",
+        "step by step",
+        "trigger",
+        "event",
+    ],
+    "conceptual": [
+        "what is",
+        "explain",
+        "architecture",
+        "overview",
+        "concept",
+        "why",
+        "design",
+        "pattern",
+        "strategy",
+        "how should",
+    ],
 }
 
 
@@ -75,7 +106,11 @@ class RAGPipeline:
                 similarity = chunk.get("similarity", 0.5)
                 confidence, tier = compute_confidence(similarity, category="search_result")
                 flag = flag_if_low(confidence, f"result {i}")
-                boost_note = f" [centrality_boost: +{chunk.get('centrality_boost', 0):.3f}]" if chunk.get("centrality_boost") else ""
+                boost_note = (
+                    f" [centrality_boost: +{chunk.get('centrality_boost', 0):.3f}]"
+                    if chunk.get("centrality_boost")
+                    else ""
+                )
                 context_parts.append(
                     f"### Result {i}: {chunk['file_path']}:{chunk['start_line']}-{chunk['end_line']} "
                     f"[confidence: {confidence:.2f} — {tier.value}{boost_note}]{' ' + flag if flag else ''}\n"

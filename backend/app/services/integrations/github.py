@@ -1,17 +1,16 @@
 import hashlib
 import hmac
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 import httpx
 from structlog import get_logger
 
 from app.config import settings
 from app.services.integrations.base import (
+    IntegrationRegistry,
     PRInfo,
     RepoInfo,
     SCMProvider,
-    IntegrationRegistry,
 )
 
 logger = get_logger(__name__)
@@ -98,23 +97,31 @@ class GitHubProvider(SCMProvider):
     async def get_file(self, repo: str, path: str, ref: str = "main") -> str | None:
         try:
             response = await self.client.get(
-                f"/repos/{repo}/contents/{path}", params={"ref": ref},
+                f"/repos/{repo}/contents/{path}",
+                params={"ref": ref},
             )
             response.raise_for_status()
             import base64
+
             return base64.b64decode(response.json()["content"]).decode()
         except httpx.HTTPStatusError:
             return None
 
     async def create_or_update_file(
-        self, repo: str, path: str, content: str, message: str, branch: str,
+        self,
+        repo: str,
+        path: str,
+        content: str,
+        message: str,
+        branch: str,
     ) -> dict:
         import base64
 
         sha = None
         try:
             existing = await self.client.get(
-                f"/repos/{repo}/contents/{path}", params={"ref": branch},
+                f"/repos/{repo}/contents/{path}",
+                params={"ref": branch},
             )
             if existing.status_code == 200:
                 sha = existing.json().get("sha")
@@ -179,7 +186,8 @@ class GitHubProvider(SCMProvider):
 
     async def list_prs(self, repo: str, state: str = "open") -> list[PRInfo]:
         response = await self.client.get(
-            f"/repos/{repo}/pulls", params={"state": state},
+            f"/repos/{repo}/pulls",
+            params={"state": state},
         )
         response.raise_for_status()
         prs = response.json()

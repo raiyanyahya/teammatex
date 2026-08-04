@@ -7,6 +7,7 @@ strings. No DB or Neo4j access here, so it is trivially unit-testable and can
 never invent a repo or module that doesn't exist — a template is only emitted
 when the data backing it is present.
 """
+
 from __future__ import annotations
 
 

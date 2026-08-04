@@ -9,16 +9,17 @@ Revision ID: 0007_conversation_owner
 Revises: 0006_uploads_and_notepad
 Create Date: 2026-06-01
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0007_conversation_owner"
-down_revision: Union[str, None] = "0006_uploads_and_notepad"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0006_uploads_and_notepad"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

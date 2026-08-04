@@ -1,6 +1,5 @@
 import re
 from enum import Enum
-from typing import Optional
 
 from structlog import get_logger
 
@@ -21,8 +20,17 @@ class GuardrailCheck:
 
 class GuardrailRunner:
     SECRET_PATTERNS = [
-        (re.compile(r"(?:api[_-]?key|apikey|secret|token|password|passwd)\s*[:=]\s*['\"][^'\"]{8,}['\"]", re.IGNORECASE), "critical"),
-        (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE), "critical"),
+        (
+            re.compile(
+                r"(?:api[_-]?key|apikey|secret|token|password|passwd)\s*[:=]\s*['\"][^'\"]{8,}['\"]",
+                re.IGNORECASE,
+            ),
+            "critical",
+        ),
+        (
+            re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
+            "critical",
+        ),
         (re.compile(r"(?:ghp_|github_pat_)[a-zA-Z0-9]{36,}", re.IGNORECASE), "critical"),
         (re.compile(r"AKIA[0-9A-Z]{16}", re.IGNORECASE), "critical"),
         (re.compile(r"s3cr3t|sk-[a-zA-Z0-9]{32,}", re.IGNORECASE), "high"),
@@ -40,8 +48,15 @@ class GuardrailRunner:
 
     # Path fragments that mark infrastructure / deploy-sensitive changes.
     CRITICAL_PATH_HINTS = (
-        "infra/", "terraform", ".tf", "migrations/", "alembic/",
-        "dockerfile", ".github/", "deploy", "secrets",
+        "infra/",
+        "terraform",
+        ".tf",
+        "migrations/",
+        "alembic/",
+        "dockerfile",
+        ".github/",
+        "deploy",
+        "secrets",
     )
 
     DANGEROUS_PATTERNS = [
@@ -55,36 +70,44 @@ class GuardrailRunner:
         findings: list[dict] = []
         for pattern, severity in self.SECRET_PATTERNS:
             for match in pattern.finditer(code):
-                findings.append({
-                    "type": "secret",
-                    "severity": severity,
-                    "match": match.group()[:60] + "..." if len(match.group()) > 60 else match.group(),
-                    "line": code[:match.start()].count("\n") + 1,
-                })
+                findings.append(
+                    {
+                        "type": "secret",
+                        "severity": severity,
+                        "match": (
+                            match.group()[:60] + "..." if len(match.group()) > 60 else match.group()
+                        ),
+                        "line": code[: match.start()].count("\n") + 1,
+                    }
+                )
         return findings
 
     def check_sql_injection(self, code: str) -> list[dict]:
         findings: list[dict] = []
         for pattern in self.SQL_INJECTION_PATTERNS:
             for match in pattern.finditer(code):
-                findings.append({
-                    "type": "sql_injection",
-                    "severity": "high",
-                    "match": match.group()[:100],
-                    "line": code[:match.start()].count("\n") + 1,
-                })
+                findings.append(
+                    {
+                        "type": "sql_injection",
+                        "severity": "high",
+                        "match": match.group()[:100],
+                        "line": code[: match.start()].count("\n") + 1,
+                    }
+                )
         return findings
 
     def check_dangerous_calls(self, code: str) -> list[dict]:
         findings: list[dict] = []
         for pattern in self.DANGEROUS_PATTERNS:
             for match in pattern.finditer(code):
-                findings.append({
-                    "type": "dangerous_call",
-                    "severity": "high",
-                    "match": match.group()[:100],
-                    "line": code[:match.start()].count("\n") + 1,
-                })
+                findings.append(
+                    {
+                        "type": "dangerous_call",
+                        "severity": "high",
+                        "match": match.group()[:100],
+                        "line": code[: match.start()].count("\n") + 1,
+                    }
+                )
         return findings
 
     def run_all_checks(self, code: str, file_path: str = "") -> GuardResult:
@@ -130,16 +153,20 @@ class GuardrailRunner:
         if is_deploy_freeze:
             return GuardResult.BLOCK, "Deploy freeze in effect — no merges permitted."
         if not branch.startswith("teammatex/"):
-            return (GuardResult.WARN,
-                    f"Branch '{branch}' does not follow the 'teammatex/' convention.")
+            return (
+                GuardResult.WARN,
+                f"Branch '{branch}' does not follow the 'teammatex/' convention.",
+            )
         if len(files_changed) > 50:
-            return (GuardResult.WARN,
-                    f"Large PR: {len(files_changed)} files. Consider splitting.")
-        critical = [f for f in files_changed
-                    if any(h in f.lower() for h in self.CRITICAL_PATH_HINTS)]
+            return (GuardResult.WARN, f"Large PR: {len(files_changed)} files. Consider splitting.")
+        critical = [
+            f for f in files_changed if any(h in f.lower() for h in self.CRITICAL_PATH_HINTS)
+        ]
         if critical:
-            return (GuardResult.WARN,
-                    f"Touches deploy-sensitive files ({', '.join(critical[:3])}); extra review needed.")
+            return (
+                GuardResult.WARN,
+                f"Touches deploy-sensitive files ({', '.join(critical[:3])}); extra review needed.",
+            )
         return GuardResult.PASS, "PR policy check passed."
 
 

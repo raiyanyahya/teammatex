@@ -1,15 +1,14 @@
-import hashlib
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
 
 from structlog import get_logger
 
-from app.services.knowledge.repo_manifest import RepoManifest
 from app.services.knowledge.graph import KnowledgeGraph
-from app.services.knowledge.graph_ids import node_id, edge_id, EXTRACTOR_VERSION
-from app.services.onboarding.code_parser import CodeParser, FileAnalysis
-from app.services.agent.confidence import compute_confidence
+from app.services.knowledge.graph_ids import EXTRACTOR_VERSION, node_id
+from app.services.knowledge.repo_manifest import RepoManifest
+from app.services.onboarding.code_parser import CodeParser
 
 logger = get_logger(__name__)
 
@@ -46,7 +45,9 @@ class IncrementalGraphUpdater:
     def _neo4j_auth(self) -> str:
         if self._auth is None:
             import base64
+
             from app.config import settings
+
             self._auth = base64.b64encode(
                 f"{settings.neo4j_user}:{settings.neo4j_password}".encode()
             ).decode()
@@ -63,13 +64,24 @@ class IncrementalGraphUpdater:
         rels = 0
 
         for file_path in root.rglob("*"):
-            if not file_path.is_file() or ".git" in file_path.parts or "node_modules" in file_path.parts:
+            if (
+                not file_path.is_file()
+                or ".git" in file_path.parts
+                or "node_modules" in file_path.parts
+            ):
                 continue
             if processed >= 500:
                 break
             processed += 1
             rel = str(file_path.relative_to(root))
-            lang_map = {".py": "python", ".js": "javascript", ".ts": "typescript", ".go": "go", ".rs": "rust", ".java": "java"}
+            lang_map = {
+                ".py": "python",
+                ".js": "javascript",
+                ".ts": "typescript",
+                ".go": "go",
+                ".rs": "rust",
+                ".java": "java",
+            }
             lang = lang_map.get(file_path.suffix, "")
 
             file_nid = node_id(self.repo_id, "File", rel)
@@ -79,7 +91,8 @@ class IncrementalGraphUpdater:
             size_val = info.get("size", 0)
 
             try:
-                await self._run_cypher("""
+                await self._run_cypher(
+                    """
                 MERGE (f:File {id: $id})
                 SET f.repo_id = $repo_id, f.path = $path, f.language = $lang,
                     f.sha256 = $sha, f.size = $size, f.role = $role,
@@ -87,14 +100,26 @@ class IncrementalGraphUpdater:
                 WITH f
                 MATCH (r:Repository {id: $repo_nid})
                 MERGE (f)-[:PART_OF]->(r)
-                """, id=file_nid, repo_id=self.repo_id, path=rel, lang=lang,
-                     sha=sha, size=size_val, role=role, lines=_count_lines(file_path),
-                     version=EXTRACTOR_VERSION,
-                     repo_nid=node_id(self.repo_id, "Repository", self.repo_name))
+                """,
+                    id=file_nid,
+                    repo_id=self.repo_id,
+                    path=rel,
+                    lang=lang,
+                    sha=sha,
+                    size=size_val,
+                    role=role,
+                    lines=_count_lines(file_path),
+                    version=EXTRACTOR_VERSION,
+                    repo_nid=node_id(self.repo_id, "Repository", self.repo_name),
+                )
             except Exception as e:
                 logger.debug("file_node_failed", path=rel, error=str(e)[:100])
 
-        return {"files_processed": processed, "entities_found": entities, "relationships_created": rels}
+        return {
+            "files_processed": processed,
+            "entities_found": entities,
+            "relationships_created": rels,
+        }
 
     async def incremental_sync(self) -> dict:
         stored = await self._load_manifest()
@@ -111,10 +136,8 @@ class IncrementalGraphUpdater:
 
         for rel in diff["removed"]:
             file_nid = node_id(self.repo_id, "File", rel)
-            try:
+            with contextlib.suppress(Exception):
                 await self._run_cypher("MATCH (f:File {id: $id}) DETACH DELETE f", id=file_nid)
-            except Exception:
-                pass
 
         current = self.manifest.scan()
         for rel in changed_files[:200]:
@@ -122,14 +145,21 @@ class IncrementalGraphUpdater:
             if not file_path.exists():
                 continue
             info = current.get(rel, {})
-            lang_map = {".py": "python", ".js": "javascript", ".ts": "typescript",
-                       ".go": "go", ".rs": "rust", ".java": "java"}
+            lang_map = {
+                ".py": "python",
+                ".js": "javascript",
+                ".ts": "typescript",
+                ".go": "go",
+                ".rs": "rust",
+                ".java": "java",
+            }
             lang = lang_map.get(file_path.suffix, "")
             role = RepoManifest.classify_path_role(rel)
             file_nid = node_id(self.repo_id, "File", rel)
 
             try:
-                await self._run_cypher("""
+                await self._run_cypher(
+                    """
                 MERGE (f:File {id: $id})
                 SET f.repo_id = $repo_id, f.path = $path, f.language = $lang,
                     f.sha256 = $sha, f.size = $size, f.role = $role,
@@ -137,38 +167,56 @@ class IncrementalGraphUpdater:
                 WITH f
                 MATCH (r:Repository {id: $repo_nid})
                 MERGE (f)-[:PART_OF]->(r)
-                """, id=file_nid, repo_id=self.repo_id, path=rel, lang=lang,
-                     sha=info.get("sha256", ""), size=info.get("size", 0),
-                     role=role, lines=_count_lines(file_path), version=EXTRACTOR_VERSION,
-                     repo_nid=node_id(self.repo_id, "Repository", self.repo_name))
+                """,
+                    id=file_nid,
+                    repo_id=self.repo_id,
+                    path=rel,
+                    lang=lang,
+                    sha=info.get("sha256", ""),
+                    size=info.get("size", 0),
+                    role=role,
+                    lines=_count_lines(file_path),
+                    version=EXTRACTOR_VERSION,
+                    repo_nid=node_id(self.repo_id, "Repository", self.repo_name),
+                )
             except Exception as e:
                 logger.debug("incr_file_failed", path=rel, error=str(e)[:100])
 
         await self._store_manifest(current)
 
-        return {"status": "updated", "changes": total_changes,
-                "added": len(diff["added"]), "changed": len(diff["changed"]),
-                "removed": len(diff["removed"]),
-                # Filename lists (consumers like auto_sync record which files moved).
-                "added_files": diff["added"], "changed_files": diff["changed"],
-                "removed_files": diff["removed"]}
+        return {
+            "status": "updated",
+            "changes": total_changes,
+            "added": len(diff["added"]),
+            "changed": len(diff["changed"]),
+            "removed": len(diff["removed"]),
+            # Filename lists (consumers like auto_sync record which files moved).
+            "added_files": diff["added"],
+            "changed_files": diff["changed"],
+            "removed_files": diff["removed"],
+        }
 
     async def _store_manifest(self, manifest: dict):
         key = f"{MANIFEST_PREFIX}{self.repo_id}"
-        try:
-            await self._run_cypher("""
+        with contextlib.suppress(Exception):
+            await self._run_cypher(
+                """
             MERGE (m:Manifest {key: $key})
             SET m.data = $data, m.updated_at = datetime()
-            """, key=key, data=json.dumps(manifest))
-        except Exception:
-            pass
+            """,
+                key=key,
+                data=json.dumps(manifest),
+            )
 
     async def _load_manifest(self) -> dict[str, dict[str, Any]]:
         key = f"{MANIFEST_PREFIX}{self.repo_id}"
         try:
-            records = await self._run_cypher("""
+            records = await self._run_cypher(
+                """
             MATCH (m:Manifest {key: $key}) RETURN m.data AS data
-            """, key=key)
+            """,
+                key=key,
+            )
             if records and records[0].get("data"):
                 data = records[0]["data"]
                 return json.loads(data) if isinstance(data, str) else data
@@ -178,6 +226,7 @@ class IncrementalGraphUpdater:
 
     async def _run_cypher(self, query: str, **params):
         from app.db.neo4j import get_neo4j_manager
+
         async with get_neo4j_manager().session() as session:
             result = await session.run(query, **params)
             return [dict(r) async for r in result]
@@ -188,13 +237,16 @@ class ImportCentrality:
         self.repo_id = repo_id
 
     async def compute_centrality(self) -> dict[str, int]:
-        records = await self._run("""
+        records = await self._run(
+            """
         MATCH (f:File {repo_id: $repo_id})
         OPTIONAL MATCH (f)<-[r:PART_OF]-(other:Function)
         RETURN f.path AS file, f.id AS id, coalesce(count(other), 0) AS in_degree
         ORDER BY in_degree DESC
         LIMIT 100
-        """, repo_id=self.repo_id)
+        """,
+            repo_id=self.repo_id,
+        )
         centrality: dict[str, int] = {}
         for r in records:
             centrality[r["file"]] = r["in_degree"]
@@ -217,6 +269,7 @@ class ImportCentrality:
 
     async def _run(self, query: str, **params):
         from app.db.neo4j import get_neo4j_manager
+
         async with get_neo4j_manager().session() as session:
             result = await session.run(query, **params)
             return [dict(r) async for r in result]

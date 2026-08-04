@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,9 +44,7 @@ async def list_registry(
     db: AsyncSession = Depends(get_db),
     status: str = "active",
 ):
-    result = await db.execute(
-        select(APIRegistryEntry).where(APIRegistryEntry.status == status)
-    )
+    result = await db.execute(select(APIRegistryEntry).where(APIRegistryEntry.status == status))
     entries = result.scalars().all()
     return {
         "entries": [
@@ -89,7 +87,7 @@ async def add_entry(
         requires_approval=payload.requires_approval,
         added_by="teammate",
         status="active",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(entry)
     await db.commit()
@@ -98,7 +96,8 @@ async def add_entry(
 
 @router.patch("/{entry_id}")
 async def update_entry(
-    entry_id: str, payload: RegistryEntryUpdate,
+    entry_id: str,
+    payload: RegistryEntryUpdate,
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -172,6 +171,7 @@ async def check_url(payload: CheckURLRequest, db: AsyncSession = Depends(get_db)
     path_allowed = False
     if entry.allowed_paths:
         from fnmatch import fnmatch
+
         path_allowed = any(fnmatch(path, p) for p in entry.allowed_paths)
     else:
         path_allowed = True
@@ -209,7 +209,7 @@ async def suggest_domain(payload: RegistryEntryCreate, db: AsyncSession = Depend
         requires_approval=True,
         added_by="teammate",
         status="pending",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(entry)
     await db.commit()

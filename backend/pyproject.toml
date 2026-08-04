@@ -59,6 +59,24 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",  # line length is owned by the formatter (black); don't double-flag
+    "B008",  # FastAPI relies on `= Depends(...)` / `= Query(...)` in defaults
+    "E712",  # `== True/False` is how SQLAlchemy filters render `= true` in SQL
+    "E402",  # a few deliberate late imports (sys.path setup, circular-import breaks)
+    "E741",  # occasional short loop/lambda names; low signal
+    "N806",  # local names like `Session = sessionmaker()` read fine
+    "N812",  # idiomatic aliased imports (e.g. `functional as F`)
+    "N814",  # camelCase re-imported as a constant, intentionally
+    "B904",  # explicit `raise ... from` not enforced across the tree
+    "B007",  # unused loop variables are readable as-is
+    "B028",  # warnings.warn stacklevel is not required here
+    "SIM117",  # nested `with` blocks are sometimes clearer than one combined line
+    "SIM113",  # manual counters over enumerate() where it reads better
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]  # re-exports are intentional in package inits
 
 [tool.black]
 line-length = 100

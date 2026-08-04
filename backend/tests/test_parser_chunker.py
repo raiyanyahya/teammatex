@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.services.onboarding.code_parser import CodeParser
 from app.services.knowledge.chunker import CodeChunker
+from app.services.onboarding.code_parser import CodeParser
 
 
 class TestCodeParser:

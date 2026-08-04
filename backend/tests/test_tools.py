@@ -1,9 +1,7 @@
 """Test tool registry, tool definitions, and path safety."""
 
-import pytest
-
-from app.services.agent.tools import ToolRegistry, ToolDefinition, tool_registry
 from app.services.agent.runtime import _is_safe_path
+from app.services.agent.tools import ToolDefinition, ToolRegistry, tool_registry
 
 
 class TestToolRegistry:
@@ -12,14 +10,30 @@ class TestToolRegistry:
         assert len(tools) >= 20, f"Expected at least 20 tools, got {len(tools)}"
 
         expected_tools = [
-            "read_file", "write_file", "edit_file", "list_directory",
-            "glob_search", "grep_search", "semantic_search",
-            "find_owner", "find_dependents", "find_dependencies",
-            "get_architecture", "search_notes", "write_note",
-            "create_branch", "commit_files", "create_pr",
-            "get_diff", "get_blame", "get_commit_log",
-            "run_command", "run_tests", "run_lint",
-            "http_request", "schedule_task",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "list_directory",
+            "glob_search",
+            "grep_search",
+            "semantic_search",
+            "find_owner",
+            "find_dependents",
+            "find_dependencies",
+            "get_architecture",
+            "search_notes",
+            "write_note",
+            "create_branch",
+            "commit_files",
+            "create_pr",
+            "get_diff",
+            "get_blame",
+            "get_commit_log",
+            "run_command",
+            "run_tests",
+            "run_lint",
+            "http_request",
+            "schedule_task",
         ]
         for tool_name in expected_tools:
             assert tool_name in tools, f"Missing tool: {tool_name}"
@@ -101,7 +115,7 @@ class TestPathSafety:
 class TestCustomToolRegistration:
     def test_register_custom_tool(self):
         registry = ToolRegistry()
-        initial_count = len(registry.get_all())
+        len(registry.get_all())
 
         custom_tool = ToolDefinition(
             name="test_custom_tool",
@@ -115,7 +129,7 @@ class TestCustomToolRegistration:
 
     def test_overwrite_existing_tool(self):
         registry = ToolRegistry()
-        count_before = len(registry.get_all())
+        len(registry.get_all())
 
         new_tool = ToolDefinition(
             name="read_file",

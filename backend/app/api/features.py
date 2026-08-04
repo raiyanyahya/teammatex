@@ -4,16 +4,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.agent.proactive import (
-    StandupGenerator,
     DocumentationGenerator,
     ReleaseNotesGenerator,
+    StandupGenerator,
     TestGenerator,
 )
-from app.services.agent.self_extension import SelfExtension
 from app.services.agent.proactive_extras import (
-    SprintRetrospectiveAssistant,
     GitHygieneAutomation,
+    SprintRetrospectiveAssistant,
 )
+from app.services.agent.self_extension import SelfExtension
 
 router = APIRouter(prefix="/features", tags=["features"])
 standup = StandupGenerator()
@@ -60,6 +60,7 @@ class SelfExtensionScanRequest(BaseModel):
 
 # ─── Standup ──────────────────────────────────────────
 
+
 @router.get("/standup")
 @router.post("/standup")
 async def generate_standup(db: AsyncSession = Depends(get_db)):
@@ -69,10 +70,13 @@ async def generate_standup(db: AsyncSession = Depends(get_db)):
 
 # ─── Documentation ────────────────────────────────────
 
+
 @router.post("/docs/module")
 async def generate_module_docs(payload: DocGenRequest):
     docs = await doc_gen.generate_module_docs(
-        payload.module_name, payload.code_summary, payload.entities,
+        payload.module_name,
+        payload.code_summary,
+        payload.entities,
     )
     return {"docs": docs}
 
@@ -85,6 +89,7 @@ async def generate_architecture_docs(payload: ArchitectureDocRequest):
 
 # ─── Release Notes ────────────────────────────────────
 
+
 @router.post("/release-notes")
 async def generate_release_notes(payload: ReleaseNotesRequest):
     notes = await release_gen.generate(payload.repo_name, payload.commits, payload.previous_tag)
@@ -93,10 +98,14 @@ async def generate_release_notes(payload: ReleaseNotesRequest):
 
 # ─── Tests ────────────────────────────────────────────
 
+
 @router.post("/tests/generate")
 async def generate_tests(payload: TestGenRequest):
     tests = await test_gen.generate_tests(
-        payload.code, payload.language, payload.function_name, payload.test_framework,
+        payload.code,
+        payload.language,
+        payload.function_name,
+        payload.test_framework,
     )
     return {"tests": tests}
 
@@ -119,13 +128,17 @@ class GitHygieneRequest(BaseModel):
 
 # ─── Sprint Retrospective ───────────────────────────────
 
+
 @router.post("/retro/generate")
 async def generate_retrospective(payload: RetroRequest):
-    summary = await retro.generate_retrospective(payload.sprint_name, payload.completed, payload.planned)
+    summary = await retro.generate_retrospective(
+        payload.sprint_name, payload.completed, payload.planned
+    )
     return {"retrospective": summary}
 
 
 # ─── Git Hygiene ────────────────────────────────────────
+
 
 @router.post("/git-hygiene/analyze")
 async def analyze_git_hygiene(payload: GitHygieneRequest):

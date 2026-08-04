@@ -1,5 +1,4 @@
 import json
-from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -58,6 +57,7 @@ class ReviewRequest(BaseModel):
 
 # ─── Chat (Streaming) ────────────────────────────────────
 
+
 def _capture_text(raw: str, parts: list[str]) -> None:
     """Pull the assistant's final text out of the SSE chunk(s) so we can persist
     it. The loop emits the answer as ``{"type": "text", ...}`` events."""
@@ -106,6 +106,7 @@ async def chat(
 
 # ─── Plan ────────────────────────────────────────────────
 
+
 @router.post("/plan")
 async def plan_task(payload: PlanRequest, db: AsyncSession = Depends(get_db)):
     plan = await agent_runtime.plan_task(payload.task, payload.repo_id, db)
@@ -114,15 +115,19 @@ async def plan_task(payload: PlanRequest, db: AsyncSession = Depends(get_db)):
 
 # ─── Code Generation ─────────────────────────────────────
 
+
 @router.post("/generate-code")
 async def generate_code(payload: CodeGenRequest):
     code = await agent_runtime.generate_code(
-        payload.task, payload.language, payload.context_files,
+        payload.task,
+        payload.language,
+        payload.context_files,
     )
     return {"language": payload.language, "code": code}
 
 
 # ─── Validate Code ───────────────────────────────────────
+
 
 @router.post("/validate")
 async def validate_code(payload: ValidateRequest):
@@ -132,15 +137,19 @@ async def validate_code(payload: ValidateRequest):
 
 # ─── Self Review ─────────────────────────────────────────
 
+
 @router.post("/review")
 async def self_review(payload: ReviewRequest):
     result = await agent_runtime.self_review(
-        payload.summary, payload.files, payload.diff,
+        payload.summary,
+        payload.files,
+        payload.diff,
     )
     return {"review": result}
 
 
 # ─── Execute Tool ────────────────────────────────────────
+
 
 @router.post("/tool")
 async def execute_tool(payload: ToolExecuteRequest, db: AsyncSession = Depends(get_db)):
@@ -162,13 +171,18 @@ async def execute_tool(payload: ToolExecuteRequest, db: AsyncSession = Depends(g
 
 # ─── List Tools ──────────────────────────────────────────
 
+
 @router.get("/tools")
 async def list_tools():
     tools = agent_runtime.tools.get_all()
     return {
         "tools": [
-            {"name": name, "description": t.description, "category": t.category,
-             "requires_confirmation": t.requires_confirmation}
+            {
+                "name": name,
+                "description": t.description,
+                "category": t.category,
+                "requires_confirmation": t.requires_confirmation,
+            }
             for name, t in tools.items()
         ]
     }

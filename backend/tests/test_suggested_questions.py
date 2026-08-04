@@ -4,6 +4,7 @@ The builder is pure (facts in → question strings out), so these tests pin the
 exact behavior without a DB: it never emits a question for data that isn't
 there, and it never invents a repo or module.
 """
+
 from app.services.knowledge.suggested_questions import build_suggested_questions
 
 

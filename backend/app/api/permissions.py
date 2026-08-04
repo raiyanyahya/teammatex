@@ -33,15 +33,18 @@ class PermissionSet(BaseModel):
 async def list_permissions(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Permission))).scalars().all()
     stored = {r.capability: r.enabled for r in rows}
-    return {"permissions": [
-        {"capability": cap, "label": _LABELS[cap], "enabled": stored.get(cap, default)}
-        for cap, default in _DEFAULTS.items()
-    ]}
+    return {
+        "permissions": [
+            {"capability": cap, "label": _LABELS[cap], "enabled": stored.get(cap, default)}
+            for cap, default in _DEFAULTS.items()
+        ]
+    }
 
 
 @router.put("/{capability}")
 async def set_permission(
-    capability: str, payload: PermissionSet,
+    capability: str,
+    payload: PermissionSet,
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -51,12 +54,16 @@ async def set_permission(
     if capability not in _DEFAULTS:
         raise HTTPException(status_code=404, detail=f"Unknown capability: {capability}")
 
-    row = (await db.execute(
-        select(Permission).where(Permission.capability == capability)
-    )).scalar_one_or_none()
+    row = (
+        await db.execute(select(Permission).where(Permission.capability == capability))
+    ).scalar_one_or_none()
     if row:
         row.enabled = payload.enabled
     else:
-        db.add(Permission(capability=capability, enabled=payload.enabled, description=_LABELS[capability]))
+        db.add(
+            Permission(
+                capability=capability, enabled=payload.enabled, description=_LABELS[capability]
+            )
+        )
     await db.commit()
     return {"capability": capability, "enabled": payload.enabled}

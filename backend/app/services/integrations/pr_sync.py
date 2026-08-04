@@ -10,9 +10,10 @@ Kept fully synchronous (httpx.Client + a SQLAlchemy Session) so it is trivially
 testable and runnable as a one-off backfill. The async poll loop calls it from a
 worker thread (see app.services.agent.auto_sync).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -54,14 +55,16 @@ def owner_repo(github_url: str) -> str | None:
 
 def _parse_dt(value: str | None) -> datetime:
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
-def fetch_open_prs(full_name: str, token: str | None, client: httpx.Client | None = None) -> list[dict]:
+def fetch_open_prs(
+    full_name: str, token: str | None, client: httpx.Client | None = None
+) -> list[dict]:
     """All open PRs for `owner/name`, following pagination (100/page)."""
     own_client = client is None
     if own_client:
@@ -113,14 +116,16 @@ def reconcile_prs(db, repo_id: str, gh_prs: list[dict]) -> dict:
 
         pr = existing.get(number)
         if pr is None:
-            db.add(PR(
-                repo_id=repo_id,
-                github_pr_number=number,
-                title=title,
-                branch=branch,
-                status=_OPEN,
-                created_at=_parse_dt(gh.get("created_at")),
-            ))
+            db.add(
+                PR(
+                    repo_id=repo_id,
+                    github_pr_number=number,
+                    title=title,
+                    branch=branch,
+                    status=_OPEN,
+                    created_at=_parse_dt(gh.get("created_at")),
+                )
+            )
             added += 1
         else:
             changed = False
@@ -168,7 +173,9 @@ def sync_repo_prs_by_id(repo_id: str) -> dict:
     from app.config import settings
     from app.models.repo import Repo
 
-    engine = create_engine(settings.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
+    engine = create_engine(
+        settings.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True
+    )
     try:
         with Session(engine) as db:
             repo = db.get(Repo, repo_id)
@@ -187,12 +194,16 @@ def sync_all_prs() -> dict:
     from app.config import settings
     from app.models.repo import Repo
 
-    engine = create_engine(settings.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
+    engine = create_engine(
+        settings.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True
+    )
     totals = {"repos": 0, "added": 0, "updated": 0, "closed": 0, "open": 0, "errors": 0}
     try:
         with Session(engine) as db:
             token = github_token(db)
-            repos = db.execute(select(Repo).where(Repo.is_active == True)).scalars().all()  # noqa: E712
+            repos = (
+                db.execute(select(Repo).where(Repo.is_active == True)).scalars().all()
+            )  # noqa: E712
             for repo in repos:
                 totals["repos"] += 1
                 try:

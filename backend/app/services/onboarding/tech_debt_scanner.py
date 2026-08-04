@@ -37,7 +37,7 @@ class TechDebtScanner:
             rel_path = str(file_path.relative_to(root))
 
             try:
-                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                with open(fpath, encoding="utf-8", errors="replace") as f:
                     lines = f.readlines()
             except Exception:
                 continue
@@ -48,27 +48,35 @@ class TechDebtScanner:
                     if match:
                         description = match.group(1).strip()
                         severity = "high" if tag_type in ("FIXME", "BUG") else "medium"
-                        items.append({
-                            "repo_id": repo_id,
-                            "file_path": rel_path,
-                            "line_number": i,
-                            "title": f"{tag_type}: {description[:100]}" if description else f"{tag_type}",
-                            "type": tag_type,
-                            "severity": severity,
-                            "description": description[:500] if description else line.strip(),
-                        })
+                        items.append(
+                            {
+                                "repo_id": repo_id,
+                                "file_path": rel_path,
+                                "line_number": i,
+                                "title": (
+                                    f"{tag_type}: {description[:100]}"
+                                    if description
+                                    else f"{tag_type}"
+                                ),
+                                "type": tag_type,
+                                "severity": severity,
+                                "description": description[:500] if description else line.strip(),
+                            }
+                        )
 
                 for pattern in DEPRECATED_INDICATORS:
                     if pattern.search(line):
-                        items.append({
-                            "repo_id": repo_id,
-                            "file_path": rel_path,
-                            "line_number": i,
-                            "title": "Deprecated usage",
-                            "type": "DEPRECATED",
-                            "severity": "medium",
-                            "description": line.strip()[:500],
-                        })
+                        items.append(
+                            {
+                                "repo_id": repo_id,
+                                "file_path": rel_path,
+                                "line_number": i,
+                                "title": "Deprecated usage",
+                                "type": "DEPRECATED",
+                                "severity": "medium",
+                                "description": line.strip()[:500],
+                            }
+                        )
 
         logger.info("tech_debt_scanned", repo_id=repo_id, items=len(items))
         return items

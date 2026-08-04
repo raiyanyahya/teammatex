@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,8 @@ from app.services.knowledge.graph import KnowledgeGraph
 from app.services.knowledge.notes import NotesService
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+from datetime import UTC
+
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -38,6 +40,7 @@ class SearchQuery(BaseModel):
 
 # ─── Semantic Search ─────────────────────────────────────
 
+
 @router.post("/search")
 async def semantic_search(payload: SearchQuery, db: AsyncSession = Depends(get_db)):
     results = await embedder.search(
@@ -52,6 +55,7 @@ async def semantic_search(payload: SearchQuery, db: AsyncSession = Depends(get_d
 
 
 # ─── Graph Queries ───────────────────────────────────────
+
 
 @router.get("/graph/owner")
 async def find_owner(repo_id: str, file_path: str):
@@ -98,9 +102,10 @@ async def list_concepts(db: AsyncSession = Depends(get_db)):
     summary, file count, ref count, and an experts list resolved to actual
     contributors. Empty when no repo has been processed yet; the frontend
     surfaces a "Generate concepts" CTA in that case."""
+    from sqlalchemy import select as sa_select
+
     from app.models.concept import Concept
     from app.models.repo import Repo
-    from sqlalchemy import select as sa_select
 
     rows = (
         await db.execute(
@@ -112,26 +117,26 @@ async def list_concepts(db: AsyncSession = Depends(get_db)):
 
     concepts = []
     for c, repo_name in rows:
-        concepts.append({
-            "id": str(c.id),
-            "name": c.name,
-            "cat": c.cat,
-            "summary": c.summary,
-            "files": c.files,
-            "refs": c.refs,
-            "experts": c.experts or [],
-            "repo": repo_name,
-            "repo_id": c.repo_id,
-            "generated_at": str(c.generated_at) if c.generated_at else None,
-        })
+        concepts.append(
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "cat": c.cat,
+                "summary": c.summary,
+                "files": c.files,
+                "refs": c.refs,
+                "experts": c.experts or [],
+                "repo": repo_name,
+                "repo_id": c.repo_id,
+                "generated_at": str(c.generated_at) if c.generated_at else None,
+            }
+        )
 
     return {"concepts": concepts, "count": len(concepts)}
 
 
 @router.post("/concepts/generate")
-async def generate_concepts(
-    db: AsyncSession = Depends(get_db), repo_id: str | None = None
-):
+async def generate_concepts(db: AsyncSession = Depends(get_db), repo_id: str | None = None):
     """Run the LLM concept extractor. Pass `?repo_id=<id>` to scope to one
     repo, omit to process every active repo. Returns per-repo counts."""
     from app.services.agent.concept_extractor import ConceptExtractor
@@ -166,7 +171,8 @@ async def suggested_questions(repo_id: str | None = None, db: AsyncSession = Dep
     data about the active repo (its name, whether it has PRs, its most-populated
     module, whether the graph knows any contributors). Returns ``[]`` when no
     repo is onboarded yet, so the UI shows a setup hint instead of fake repos."""
-    from sqlalchemy import func, select as sa_select
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
 
     from app.models.code_embedding import CodeEmbedding
     from app.models.pr import PR
@@ -180,21 +186,23 @@ async def suggested_questions(repo_id: str | None = None, db: AsyncSession = Dep
     if repo is None:
         return {"repo": None, "questions": []}
 
-    has_prs = bool((await db.execute(
-        sa_select(func.count(PR.id)).where(PR.repo_id == repo.id)
-    )).scalar() or 0)
+    has_prs = bool(
+        (await db.execute(sa_select(func.count(PR.id)).where(PR.repo_id == repo.id))).scalar() or 0
+    )
 
     # Most-populated top-level directory in the embedded code = a real module to
     # ask about. Restrict to paths with a "/" so we get a directory, not a
     # loose top-level file.
     dir_expr = func.split_part(CodeEmbedding.file_path, "/", 1)
-    top_row = (await db.execute(
-        sa_select(dir_expr.label("dir"), func.count())
-        .where(CodeEmbedding.repo_id == repo.id, CodeEmbedding.file_path.like("%/%"))
-        .group_by(dir_expr)
-        .order_by(func.count().desc())
-        .limit(1)
-    )).first()
+    top_row = (
+        await db.execute(
+            sa_select(dir_expr.label("dir"), func.count())
+            .where(CodeEmbedding.repo_id == repo.id, CodeEmbedding.file_path.like("%/%"))
+            .group_by(dir_expr)
+            .order_by(func.count().desc())
+            .limit(1)
+        )
+    ).first()
     top_module = top_row[0] if top_row and top_row[0] else None
 
     # Best-effort: a Neo4j blip must not break the dashboard, so a failed
@@ -216,11 +224,22 @@ async def suggested_questions(repo_id: str | None = None, db: AsyncSession = Dep
 
 # ─── Notes ───────────────────────────────────────────────
 
+
 @router.get("/notes")
 async def list_notes(db: AsyncSession = Depends(get_db), limit: int = 50):
     notes = await notes_service.list_notes(db, limit=limit)
-    return {"notes": [{"id": n.id, "title": n.title, "entity_type": n.entity_type,
-                        "entity_id": n.entity_id, "updated_at": str(n.updated_at)} for n in notes]}
+    return {
+        "notes": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "entity_type": n.entity_type,
+                "entity_id": n.entity_id,
+                "updated_at": str(n.updated_at),
+            }
+            for n in notes
+        ]
+    }
 
 
 @router.post("/notes", status_code=201)
@@ -237,8 +256,13 @@ async def get_note(note_id: str, db: AsyncSession = Depends(get_db)):
     note = await notes_service.get(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    return {"id": str(note.id), "title": note.title, "content": note.content,
-            "entity_type": note.entity_type, "entity_id": note.entity_id}
+    return {
+        "id": str(note.id),
+        "title": note.title,
+        "content": note.content,
+        "entity_type": note.entity_type,
+        "entity_id": note.entity_id,
+    }
 
 
 @router.patch("/notes/{note_id}")
@@ -258,21 +282,26 @@ async def get_notes_by_entity(entity_type: str, entity_id: str, db: AsyncSession
 @router.get("/notes/search")
 async def search_notes(query: str, db: AsyncSession = Depends(get_db), limit: int = 20):
     notes = await notes_service.search(db, query, limit=limit)
-    return {"query": query, "results": [{"id": str(n.id), "title": n.title, "snippet": n.content[:200]} for n in notes]}
+    return {
+        "query": query,
+        "results": [{"id": str(n.id), "title": n.title, "snippet": n.content[:200]} for n in notes],
+    }
 
 
 # ─── Costs & Audit ─────────────────────────────────────
+
 
 async def _budget_status(db: AsyncSession, mtd_tokens: int, mtd_cost_cents: float) -> dict:
     """Compare month-to-date usage against the optional `cost_budget` config
     (set via PUT /api/config/cost_budget {monthly_usd_limit?, monthly_token_limit?}).
     status: unset (no limit) | ok (<80%) | warn (80-99%) | over (>=100%)."""
     from sqlalchemy import select as sa_select
+
     from app.models.app_config import AppConfig
 
-    row = (await db.execute(
-        sa_select(AppConfig).where(AppConfig.key == "cost_budget")
-    )).scalar_one_or_none()
+    row = (
+        await db.execute(sa_select(AppConfig).where(AppConfig.key == "cost_budget"))
+    ).scalar_one_or_none()
     cfg = row.value if row and isinstance(row.value, dict) else {}
     usd_limit = cfg.get("monthly_usd_limit")
     token_limit = cfg.get("monthly_token_limit")
@@ -289,10 +318,7 @@ async def _budget_status(db: AsyncSession, mtd_tokens: int, mtd_cost_cents: floa
     tok_pct = _pct(mtd_tokens, token_limit)
     worst = max([p for p in (usd_pct, tok_pct) if p is not None], default=None)
     status = (
-        "unset" if worst is None
-        else "over" if worst >= 100
-        else "warn" if worst >= 80
-        else "ok"
+        "unset" if worst is None else "over" if worst >= 100 else "warn" if worst >= 80 else "ok"
     )
     return {
         "monthly_usd_limit": usd_limit,
@@ -313,11 +339,14 @@ async def get_costs_summary(period: str = "all", db: AsyncSession = Depends(get_
     by-provider and by-call-type breakdown, and a month-to-date budget status
     (independent of `period`) so the UI can warn before the bill runs away.
     """
-    from datetime import datetime, timezone, timedelta
-    from sqlalchemy import func, select as sa_select
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
+
     from app.models.audit import CostLog
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = {
         "today": now.replace(hour=0, minute=0, second=0, microsecond=0),
         "7d": now - timedelta(days=7),
@@ -327,28 +356,48 @@ async def get_costs_summary(period: str = "all", db: AsyncSession = Depends(get_
     def _scoped(stmt):
         return stmt.where(CostLog.date >= since) if since is not None else stmt
 
-    total_tokens, total_cost = (await db.execute(_scoped(sa_select(
-        func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
-        func.coalesce(func.sum(CostLog.cost_cents), 0),
-    )))).one()
+    total_tokens, total_cost = (
+        await db.execute(
+            _scoped(
+                sa_select(
+                    func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
+                    func.coalesce(func.sum(CostLog.cost_cents), 0),
+                )
+            )
+        )
+    ).one()
 
-    by_provider = (await db.execute(_scoped(
-        sa_select(CostLog.provider, func.sum(CostLog.cost_cents)).group_by(CostLog.provider)
-    ))).all()
+    by_provider = (
+        await db.execute(
+            _scoped(
+                sa_select(CostLog.provider, func.sum(CostLog.cost_cents)).group_by(CostLog.provider)
+            )
+        )
+    ).all()
 
-    by_call_type = (await db.execute(_scoped(
-        sa_select(
-            CostLog.call_type,
-            func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
-            func.coalesce(func.sum(CostLog.cost_cents), 0),
-        ).group_by(CostLog.call_type).order_by(func.sum(CostLog.cost_cents).desc())
-    ))).all()
+    by_call_type = (
+        await db.execute(
+            _scoped(
+                sa_select(
+                    CostLog.call_type,
+                    func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
+                    func.coalesce(func.sum(CostLog.cost_cents), 0),
+                )
+                .group_by(CostLog.call_type)
+                .order_by(func.sum(CostLog.cost_cents).desc())
+            )
+        )
+    ).all()
 
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    mtd_tokens, mtd_cost = (await db.execute(sa_select(
-        func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
-        func.coalesce(func.sum(CostLog.cost_cents), 0),
-    ).where(CostLog.date >= month_start))).one()
+    mtd_tokens, mtd_cost = (
+        await db.execute(
+            sa_select(
+                func.coalesce(func.sum(CostLog.tokens_in + CostLog.tokens_out), 0),
+                func.coalesce(func.sum(CostLog.cost_cents), 0),
+            ).where(CostLog.date >= month_start)
+        )
+    ).one()
 
     return {
         "period": period,
@@ -365,39 +414,61 @@ async def get_costs_summary(period: str = "all", db: AsyncSession = Depends(get_
 
 @router.get("/costs/log")
 async def get_costs_log(db: AsyncSession = Depends(get_db), limit: int = 20):
-    from app.models.audit import CostLog
     from sqlalchemy import select as sa_select
 
-    result = await db.execute(
-        sa_select(CostLog).order_by(CostLog.date.desc()).limit(limit)
-    )
+    from app.models.audit import CostLog
+
+    result = await db.execute(sa_select(CostLog).order_by(CostLog.date.desc()).limit(limit))
     logs = result.scalars().all()
-    return [{"provider": l.provider, "model": l.model, "call_type": l.call_type,
-             "tokens_in": l.tokens_in, "tokens_out": l.tokens_out,
-             "cost_cents": float(l.cost_cents), "date": str(l.date)} for l in logs]
+    return [
+        {
+            "provider": l.provider,
+            "model": l.model,
+            "call_type": l.call_type,
+            "tokens_in": l.tokens_in,
+            "tokens_out": l.tokens_out,
+            "cost_cents": float(l.cost_cents),
+            "date": str(l.date),
+        }
+        for l in logs
+    ]
 
 
 @router.get("/audit")
 async def get_audit_log(db: AsyncSession = Depends(get_db), limit: int = 50):
-    from app.models.audit import AuditLog
     from sqlalchemy import select as sa_select
+
+    from app.models.audit import AuditLog
 
     result = await db.execute(
         sa_select(AuditLog).order_by(AuditLog.completed_at.desc().nulls_last()).limit(limit)
     )
     logs = result.scalars().all()
-    return [{"action": l.action, "entity_type": l.entity_type, "entity_id": l.entity_id,
-             "summary": l.summary, "status": l.status,
-             "completed_at": str(l.completed_at) if l.completed_at else None} for l in logs]
+    return [
+        {
+            "action": l.action,
+            "entity_type": l.entity_type,
+            "entity_id": l.entity_id,
+            "summary": l.summary,
+            "status": l.status,
+            "completed_at": str(l.completed_at) if l.completed_at else None,
+        }
+        for l in logs
+    ]
 
 
 # ─── User list ─────────────────────────────────────────
 
+
 @router.get("/users")
 async def list_users(db: AsyncSession = Depends(get_db)):
-    from app.models.user import User
     from sqlalchemy import select as sa_select
+
+    from app.models.user import User
 
     result = await db.execute(sa_select(User).where(User.is_active == True))
     users = result.scalars().all()
-    return [{"id": str(u.id), "email": u.email, "name": u.name, "github_username": u.github_username} for u in users]
+    return [
+        {"id": str(u.id), "email": u.email, "name": u.name, "github_username": u.github_username}
+        for u in users
+    ]

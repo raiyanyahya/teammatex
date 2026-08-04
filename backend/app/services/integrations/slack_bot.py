@@ -1,4 +1,3 @@
-import json
 import aiohttp
 from structlog import get_logger
 
@@ -28,8 +27,9 @@ class SlackBot:
             payload["thread_ts"] = thread_ts
 
         try:
-            async with session.post("https://slack.com/api/chat.postMessage",
-                                     headers=headers, json=payload, timeout=10) as resp:
+            async with session.post(
+                "https://slack.com/api/chat.postMessage", headers=headers, json=payload, timeout=10
+            ) as resp:
                 result = await resp.json()
                 if not result.get("ok"):
                     logger.warning("slack_post_failed", error=result.get("error"))
@@ -43,39 +43,53 @@ class SlackBot:
             return {"skipped": True}
 
         blocks = []
-        blocks.append({
-            "type": "header",
-            "text": {"type": "plain_text", "text": f"Code Review — {review.get('repo', '')}"},
-        })
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": review.get("summary", "")},
-        })
+        blocks.append(
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"Code Review — {review.get('repo', '')}"},
+            }
+        )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": review.get("summary", "")},
+            }
+        )
 
         for issue in review.get("issues", [])[:10]:
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*[{issue.get('severity', 'low').upper()}]* {issue.get('message')} — `{issue.get('file', '')}`",
-                },
-            })
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*[{issue.get('severity', 'low').upper()}]* {issue.get('message')} — `{issue.get('file', '')}`",
+                    },
+                }
+            )
 
         if pr_url:
-            blocks.append({
-                "type": "actions",
-                "elements": [{
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "View PR"},
-                    "url": pr_url,
-                }],
-            })
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "View PR"},
+                            "url": pr_url,
+                        }
+                    ],
+                }
+            )
 
         session = await self._get_session()
         headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
         try:
-            async with session.post("https://slack.com/api/chat.postMessage",
-                                     headers=headers, json={"channel": channel, "blocks": blocks}, timeout=10) as resp:
+            async with session.post(
+                "https://slack.com/api/chat.postMessage",
+                headers=headers,
+                json={"channel": channel, "blocks": blocks},
+                timeout=10,
+            ) as resp:
                 return await resp.json()
         except Exception as e:
             logger.error("slack_review_error", error=str(e))
@@ -86,23 +100,27 @@ class SlackBot:
             return "Slack bot not enabled."
 
         from litellm import acompletion
-        from app.services.llm.provider import LLMProvider
+
         from app.services.agent.rag import RAGPipeline
+        from app.services.llm.provider import LLMProvider
 
         rag = RAGPipeline()
         try:
-            from sqlalchemy import create_engine
+            from sqlalchemy import create_engine, select
             from sqlalchemy.orm import Session
+
             from app.models.repo import Repo
-            from sqlalchemy import select
 
             engine = create_engine(settings.database_url.replace("+asyncpg", "+psycopg2"))
-            repo_name = ""
             repo_id = ""
             try:
                 with Session(engine) as db:
-                    repos = db.execute(select(Repo).where(Repo.is_active == True).limit(5)).scalars().all()
-                    repo_name = repos[0].local_name if repos else ""
+                    repos = (
+                        db.execute(select(Repo).where(Repo.is_active == True).limit(5))
+                        .scalars()
+                        .all()
+                    )
+                    repos[0].local_name if repos else ""
                     repo_id = str(repos[0].id) if repos else ""
             finally:
                 engine.dispose()
@@ -114,16 +132,24 @@ class SlackBot:
         providers = await LLMProvider._get_available_providers()
         for provider, model, key in providers:
             try:
-                actual_model = "deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}"
+                actual_model = (
+                    "deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}"
+                )
                 resp = await acompletion(
                     model=actual_model,
                     messages=[
-                        {"role": "system", "content": f"You are TeammateX. Answer concisely based on the codebase. Context:\n{context}"},
+                        {
+                            "role": "system",
+                            "content": f"You are TeammateX. Answer concisely based on the codebase. Context:\n{context}",
+                        },
                         {"role": "user", "content": f"User {user} asks: {question}"},
                     ],
-                    api_key=key, temperature=0.3, max_tokens=1000,
+                    api_key=key,
+                    temperature=0.3,
+                    max_tokens=1000,
                 )
                 from app.services.agent.cost_tracker import record_llm_usage
+
                 await record_llm_usage(provider, model, "slack", resp)
                 answer = resp.choices[0].message.content or ""
                 if answer:

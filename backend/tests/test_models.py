@@ -1,42 +1,76 @@
 """Verify all 22 models instantiate and have correct table names."""
 
-import pytest
 from sqlalchemy import inspect
 
-from app.models.base import Base, UUIDMixin, TimestampMixin, utcnow
-from app.models.user import User
-from app.models.repo import Repo, RepoOnboardingState
-from app.models.task import Task
-from app.models.pr import PR
-from app.models.conversation import Conversation, Message
-from app.models.note import Note
-from app.models.integration import Integration
-from app.models.audit import AuditLog, Feedback, CostLog
-from app.models.tech_debt import TechDebtItem
-from app.models.dependency import DependencySnapshot
-from app.models.permission import Permission
-from app.models.trust import TrustLevel, TrustMetrics
-from app.models.blocked import BlockedTask
 from app.models.api_registry import APIRegistryEntry
 from app.models.app_config import AppConfig
+from app.models.audit import AuditLog, CostLog, Feedback
+from app.models.base import utcnow
+from app.models.blocked import BlockedTask
 from app.models.code_embedding import CodeEmbedding
 from app.models.concept import Concept
-
+from app.models.conversation import Conversation, Message
+from app.models.dependency import DependencySnapshot
+from app.models.integration import Integration
+from app.models.note import Note
+from app.models.permission import Permission
+from app.models.pr import PR
+from app.models.repo import Repo, RepoOnboardingState
+from app.models.task import Task
+from app.models.tech_debt import TechDebtItem
+from app.models.trust import TrustLevel, TrustMetrics
+from app.models.user import User
 
 EXPECTED_TABLES = {
-    "users", "repos", "repo_onboarding_state", "tasks", "prs",
-    "conversations", "messages", "notes", "integrations",
-    "audit_log", "feedback", "cost_log", "tech_debt_items",
-    "dependency_snapshots", "permissions", "trust_level",
-    "trust_metrics", "blocked_tasks", "api_registry", "app_config",
-    "code_embeddings", "concepts", "uploads", "notepad",
+    "users",
+    "repos",
+    "repo_onboarding_state",
+    "tasks",
+    "prs",
+    "conversations",
+    "messages",
+    "notes",
+    "integrations",
+    "audit_log",
+    "feedback",
+    "cost_log",
+    "tech_debt_items",
+    "dependency_snapshots",
+    "permissions",
+    "trust_level",
+    "trust_metrics",
+    "blocked_tasks",
+    "api_registry",
+    "app_config",
+    "code_embeddings",
+    "concepts",
+    "uploads",
+    "notepad",
 }
 
 ALL_MODELS = [
-    User, Repo, RepoOnboardingState, Task, PR, Conversation, Message,
-    Note, Integration, AuditLog, Feedback, CostLog, TechDebtItem,
-    DependencySnapshot, Permission, TrustLevel, TrustMetrics,
-    BlockedTask, APIRegistryEntry, AppConfig, CodeEmbedding, Concept,
+    User,
+    Repo,
+    RepoOnboardingState,
+    Task,
+    PR,
+    Conversation,
+    Message,
+    Note,
+    Integration,
+    AuditLog,
+    Feedback,
+    CostLog,
+    TechDebtItem,
+    DependencySnapshot,
+    Permission,
+    TrustLevel,
+    TrustMetrics,
+    BlockedTask,
+    APIRegistryEntry,
+    AppConfig,
+    CodeEmbedding,
+    Concept,
 ]
 
 
@@ -50,7 +84,9 @@ class TestAllModels:
     def test_all_tables_match_expected(self, sqlite_engine, sqlite_session):
         inspector = inspect(sqlite_engine)
         tables = set(inspector.get_table_names())
-        assert tables == EXPECTED_TABLES, f"Missing: {EXPECTED_TABLES - tables}, Extra: {tables - EXPECTED_TABLES}"
+        assert (
+            tables == EXPECTED_TABLES
+        ), f"Missing: {EXPECTED_TABLES - tables}, Extra: {tables - EXPECTED_TABLES}"
 
     def test_all_models_instantiate(self, db_session):
         for model_cls in ALL_MODELS:
@@ -80,7 +116,12 @@ class TestAllModels:
         db_session.add(task)
         db_session.commit()
 
-        pr = PR(task_id=task.id, repo_id="d0e45e5a-1234-4abc-9def-123456789abc", branch="teammatex/feature", title="Add feature")
+        pr = PR(
+            task_id=task.id,
+            repo_id="d0e45e5a-1234-4abc-9def-123456789abc",
+            branch="teammatex/feature",
+            title="Add feature",
+        )
         db_session.add(pr)
         db_session.commit()
 
@@ -118,7 +159,7 @@ class TestAllModels:
         db_session.add(trust)
         db_session.commit()
 
-        invalid = TrustLevel(level=5, level_name="Invalid")
+        TrustLevel(level=5, level_name="Invalid")
 
     def test_app_config_kv(self, db_session):
         config = AppConfig(key="test_key", value={"foo": "bar"})

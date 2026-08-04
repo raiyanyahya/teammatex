@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import DateTime, func
@@ -11,7 +11,7 @@ class Base(DeclarativeBase):
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TimestampMixin:
@@ -24,4 +24,6 @@ class TimestampMixin:
 
 
 class UUIDMixin:
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )

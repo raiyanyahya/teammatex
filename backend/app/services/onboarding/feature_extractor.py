@@ -23,10 +23,12 @@ class FeatureExtractor:
         for indicator in self.FEATURE_INDICATORS:
             path = root / indicator
             if path.exists():
-                features.append({
-                    "name": indicator.replace("/", "_").replace(".md", ""),
-                    "source": str(path.relative_to(root)),
-                    "type": "documentation",
-                })
+                features.append(
+                    {
+                        "name": indicator.replace("/", "_").replace(".md", ""),
+                        "source": str(path.relative_to(root)),
+                        "type": "documentation",
+                    }
+                )
 
         return features

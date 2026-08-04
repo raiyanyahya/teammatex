@@ -21,8 +21,16 @@ router = APIRouter(prefix="/config", tags=["config"])
 # "github_pat", "my_api_key" or "jira_access_token" are redacted too — under-
 # masking leaks a credential, so we deliberately err toward masking.
 _SECRET_SUBSTRINGS = (
-    "token", "secret", "password", "passwd", "pwd",
-    "api_key", "apikey", "credential", "private_key", "privatekey",
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "pwd",
+    "api_key",
+    "apikey",
+    "credential",
+    "private_key",
+    "privatekey",
     "access_key",
 )
 _MASK = "********"
@@ -43,8 +51,7 @@ def _mask_secrets(value):
     credential apart from one that's simply unset."""
     if isinstance(value, dict):
         return {
-            k: (_MASK if (_is_secret_key(k) and v) else _mask_secrets(v))
-            for k, v in value.items()
+            k: (_MASK if (_is_secret_key(k) and v) else _mask_secrets(v)) for k, v in value.items()
         }
     if isinstance(value, list):
         return [_mask_secrets(v) for v in value]
@@ -58,8 +65,9 @@ def _unmask_secrets(new_value, old_value):
     if isinstance(new_value, dict):
         old = old_value if isinstance(old_value, dict) else {}
         return {
-            k: (old.get(k) if (_is_secret_key(k) and v == _MASK)
-                else _unmask_secrets(v, old.get(k)))
+            k: (
+                old.get(k) if (_is_secret_key(k) and v == _MASK) else _unmask_secrets(v, old.get(k))
+            )
             for k, v in new_value.items()
         }
     return new_value
@@ -106,7 +114,8 @@ async def get_config(key: str, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{key}")
 async def set_config(
-    key: str, payload: ConfigSetRequest,
+    key: str,
+    payload: ConfigSetRequest,
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -136,7 +145,11 @@ async def list_llm_providers(db: AsyncSession = Depends(get_db)):
     return {
         "providers": RECOMMENDED_MODELS,
         "default_provider": "deepseek",
-        "active": {"provider": active.get("provider"), "model": active.get("model")} if isinstance(active, dict) else None,
+        "active": (
+            {"provider": active.get("provider"), "model": active.get("model")}
+            if isinstance(active, dict)
+            else None
+        ),
     }
 
 

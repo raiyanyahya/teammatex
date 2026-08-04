@@ -6,6 +6,7 @@ Pure: input is a list of {"tool", "args", "result"} dicts (result is the
 execute_tool envelope {"success": True, "data": ...}); output is Source dicts.
 No DB, no LLM.
 """
+
 from __future__ import annotations
 
 # Tools whose `file_path` argument names a specific source file.

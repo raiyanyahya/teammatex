@@ -47,8 +47,12 @@ class PeopleProfiler:
 
                 profile = profiles[email]
                 profile.commit_count += 1
-                profile.lines_added += getattr(commit, 'lines', 0) or getattr(commit, 'lines_added', 0) or 0
-                profile.lines_deleted += getattr(commit, 'deletions', 0) or getattr(commit, 'lines_deleted', 0) or 0
+                profile.lines_added += (
+                    getattr(commit, "lines", 0) or getattr(commit, "lines_added", 0) or 0
+                )
+                profile.lines_deleted += (
+                    getattr(commit, "deletions", 0) or getattr(commit, "lines_deleted", 0) or 0
+                )
                 profile.last_commit = str(commit.author_date)
 
                 for modified in commit.modified_files:

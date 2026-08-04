@@ -3,6 +3,7 @@
 Writes happen in the chat stream (app.api.agent); this router lists, loads, and
 deletes. Everything is scoped to the caller's JWT ``sub``.
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,8 +45,11 @@ async def export_(
     if md is None:
         raise HTTPException(status_code=404, detail="Not found")
     return PlainTextResponse(
-        md, media_type="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="conversation-{conversation_id[:8]}.md"'},
+        md,
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="conversation-{conversation_id[:8]}.md"'
+        },
     )
 
 

@@ -1,7 +1,7 @@
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, UUIDMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class Note(Base, UUIDMixin, TimestampMixin):

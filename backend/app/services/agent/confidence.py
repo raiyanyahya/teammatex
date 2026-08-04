@@ -1,6 +1,5 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from math import log
 
 
 class ConfidenceTier(str, Enum):
@@ -38,10 +37,10 @@ def compute_confidence(
     if verified_at is not None:
         half_life_days = HALF_LIFE_DAYS.get(category, HALF_LIFE_DAYS["default"])
         if half_life_days is not None:
-            age = datetime.now(timezone.utc) - verified_at
+            age = datetime.now(UTC) - verified_at
             half_life = timedelta(days=half_life_days)
             elapsed_half_lives = age / half_life
-            confidence *= 0.5 ** elapsed_half_lives
+            confidence *= 0.5**elapsed_half_lives
 
     if evidence_count > 1:
         confidence = 1.0 - (1.0 - confidence) / evidence_count

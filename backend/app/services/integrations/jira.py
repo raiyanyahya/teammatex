@@ -1,5 +1,4 @@
 import base64
-from typing import Optional
 
 import httpx
 from structlog import get_logger
@@ -7,10 +6,10 @@ from structlog import get_logger
 from app.config import settings
 from app.services.integrations.base import (
     BoardInfo,
+    IntegrationRegistry,
     IssueInfo,
     ProjectMgmtProvider,
     SprintInfo,
-    IntegrationRegistry,
 )
 
 logger = get_logger(__name__)
@@ -37,14 +36,11 @@ class JiraProvider(ProjectMgmtProvider):
     async def list_projects(self) -> list[dict]:
         response = await self.client.get("/project")
         response.raise_for_status()
-        return [
-            {"key": p["key"], "name": p["name"], "id": p["id"]}
-            for p in response.json()
-        ]
+        return [{"key": p["key"], "name": p["name"], "id": p["id"]} for p in response.json()]
 
     async def list_boards(self, project_key: str) -> list[BoardInfo]:
         response = await self.client.get(
-            f"../agile/1.0/board",
+            "../agile/1.0/board",
             params={"projectKeyOrId": project_key},
         )
         response.raise_for_status()
@@ -61,7 +57,11 @@ class JiraProvider(ProjectMgmtProvider):
 
         response = await self.client.get(
             "/search",
-            params={"jql": jql, "maxResults": 50, "fields": "summary,status,assignee,priority,description,sprint"},
+            params={
+                "jql": jql,
+                "maxResults": 50,
+                "fields": "summary,status,assignee,priority,description,sprint",
+            },
         )
         response.raise_for_status()
         issues = response.json().get("issues", [])
@@ -73,7 +73,11 @@ class JiraProvider(ProjectMgmtProvider):
                 status=i["fields"].get("status", {}).get("name", ""),
                 assignee=(i["fields"].get("assignee") or {}).get("displayName"),
                 priority=(i["fields"].get("priority") or {}).get("name"),
-                sprint=(i["fields"].get("sprint") or {}).get("name") if i["fields"].get("sprint") else None,
+                sprint=(
+                    (i["fields"].get("sprint") or {}).get("name")
+                    if i["fields"].get("sprint")
+                    else None
+                ),
                 url=f"{self.base_url}/browse/{i['key']}",
             )
             for i in issues
@@ -118,17 +122,15 @@ class JiraProvider(ProjectMgmtProvider):
         if body.get("fields") or body.get("transition"):
             endpoint = "/issue/{}/transitions" if "transition" in body else "/issue/{}"
             response = await self.client.put(
-                endpoint.format(key), json=body,
+                endpoint.format(key),
+                json=body,
             )
             response.raise_for_status()
 
     async def _get_transitions(self, key: str) -> list[dict]:
         response = await self.client.get(f"/issue/{key}/transitions")
         response.raise_for_status()
-        return [
-            {"id": t["id"], "name": t["name"]}
-            for t in response.json().get("transitions", [])
-        ]
+        return [{"id": t["id"], "name": t["name"]} for t in response.json().get("transitions", [])]
 
     async def comment_on_issue(self, key: str, body: str) -> None:
         response = await self.client.post(
@@ -164,7 +166,11 @@ class JiraProvider(ProjectMgmtProvider):
     async def get_sprint_issues(self, sprint_id: str) -> list[IssueInfo]:
         response = await self.client.get(
             "/search",
-            params={"jql": f"sprint = {sprint_id}", "maxResults": 100, "fields": "summary,status,assignee,priority"},
+            params={
+                "jql": f"sprint = {sprint_id}",
+                "maxResults": 100,
+                "fields": "summary,status,assignee,priority",
+            },
         )
         response.raise_for_status()
         issues = response.json().get("issues", [])
@@ -218,7 +224,9 @@ class JiraProvider(ProjectMgmtProvider):
         await self.client.aclose()
 
 
-def init_jira(url: str | None = None, email: str | None = None, token: str | None = None) -> JiraProvider:
+def init_jira(
+    url: str | None = None, email: str | None = None, token: str | None = None
+) -> JiraProvider:
     provider = JiraProvider(url, email, token)
     IntegrationRegistry.register_pm(provider)
     return provider

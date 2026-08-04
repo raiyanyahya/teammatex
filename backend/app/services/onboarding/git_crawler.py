@@ -53,8 +53,10 @@ class GitCrawler:
 
     def _get_github_token(self) -> str:
         try:
+            from sqlalchemy import create_engine, select
+
             from app.models.app_config import AppConfig
-            from sqlalchemy import create_engine, select, text
+
             engine = create_engine(
                 settings.database_url.replace("+asyncpg", "+psycopg2"),
                 pool_pre_ping=True,
@@ -68,9 +70,7 @@ class GitCrawler:
             pass
         return ""
 
-    def _extract_info(
-        self, repo, github_url: str, local_name: str, clone_path: str
-    ) -> RepoInfo:
+    def _extract_info(self, repo, github_url: str, local_name: str, clone_path: str) -> RepoInfo:
         info = RepoInfo()
         info.name = local_name
         info.url = github_url
@@ -98,6 +98,7 @@ class GitCrawler:
         contributors: set[str] = set()
         try:
             from pydriller import Repository as DrillerRepo
+
             for commit in DrillerRepo(clone_path).traverse_commits():
                 commit_count += 1
                 contributors.add(commit.author.email)

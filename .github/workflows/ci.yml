@@ -66,16 +66,12 @@ jobs:
           key: venv-${{ runner.os }}-py312-${{ hashFiles('backend/poetry.lock') }}
       - run: poetry install --no-interaction
 
-      # Lint / format / types are reported but non-blocking: the tree carries
-      # substantial pre-existing debt (ruff findings, files not yet black-formatted,
-      # strict-mypy gaps). The hard merge gate is the test suite below. Run
-      # `ruff check --fix . && black .` locally to start paying this down.
-      - name: Ruff (lint · advisory)
+      # Lint + format are hard gates (the tree is now ruff-clean and black-formatted).
+      # Mypy stays advisory: strict typing has a real backlog to pay down separately.
+      - name: Ruff (lint)
         run: poetry run ruff check .
-        continue-on-error: true
-      - name: Black (format check · advisory)
+      - name: Black (format check)
         run: poetry run black --check .
-        continue-on-error: true
       - name: Mypy (types · advisory)
         run: poetry run mypy app/
         continue-on-error: true

@@ -38,8 +38,13 @@ class EmbeddingBuilder:
 
             ext = file_path.suffix.lower()
             lang_map = {
-                ".py": "python", ".js": "javascript", ".ts": "typescript",
-                ".tsx": "typescript", ".go": "go", ".rs": "rust", ".java": "java",
+                ".py": "python",
+                ".js": "javascript",
+                ".ts": "typescript",
+                ".tsx": "typescript",
+                ".go": "go",
+                ".rs": "rust",
+                ".java": "java",
             }
             language = lang_map.get(ext)
             if not language:
@@ -47,7 +52,7 @@ class EmbeddingBuilder:
 
             fpath = str(file_path)
             try:
-                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                with open(fpath, encoding="utf-8", errors="replace") as f:
                     content = f.read()
             except Exception:
                 continue

@@ -1,17 +1,17 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-import json
-
 from app.api.config_endpoints import _mask_secrets
 from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.integration import Integration
 from app.services.integrations.base import IntegrationRegistry
-from app.utils.crypto import encrypt, decrypt
+from app.utils.crypto import decrypt, encrypt
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,7 @@ class IntegrationStatus(BaseModel):
 
 
 # ─── CRUD ────────────────────────────────────────────────
+
 
 def _redacted_config(credentials) -> dict:
     """The `config` column is only ever surfaced for display, while the real
@@ -67,9 +68,7 @@ async def configure_integration(
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    existing = await db.execute(
-        select(Integration).where(Integration.provider == payload.provider)
-    )
+    existing = await db.execute(select(Integration).where(Integration.provider == payload.provider))
     integration = existing.scalar_one_or_none()
 
     if integration:
@@ -99,9 +98,7 @@ async def remove_integration(
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Integration).where(Integration.provider == provider)
-    )
+    result = await db.execute(select(Integration).where(Integration.provider == provider))
     integration = result.scalar_one_or_none()
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
@@ -121,9 +118,18 @@ async def integration_status(db: AsyncSession = Depends(get_db)):
     integrations = {i.provider: i for i in result.scalars().all()}
 
     return {
-        "github": {"enabled": integrations.get("github", Integration()).enabled, "connected": scm is not None},
-        "jira": {"enabled": integrations.get("jira", Integration()).enabled, "connected": pm is not None},
-        "slack": {"enabled": integrations.get("slack", Integration()).enabled, "connected": chat is not None},
+        "github": {
+            "enabled": integrations.get("github", Integration()).enabled,
+            "connected": scm is not None,
+        },
+        "jira": {
+            "enabled": integrations.get("jira", Integration()).enabled,
+            "connected": pm is not None,
+        },
+        "slack": {
+            "enabled": integrations.get("slack", Integration()).enabled,
+            "connected": chat is not None,
+        },
     }
 
 
@@ -132,6 +138,7 @@ async def integration_health():
     """Readiness checklist for the dashboard: which capabilities are configured.
     The LLM provider is the only hard requirement — without it nothing answers."""
     from app.services.llm.provider import LLMProvider
+
     try:
         providers = await LLMProvider._get_available_providers()
     except Exception:
@@ -142,19 +149,36 @@ async def integration_health():
     pm = IntegrationRegistry.get_pm()
     chat = IntegrationRegistry.get_chat()
     checks = [
-        {"name": "LLM provider", "ok": llm_ok,
-         "detail": providers[0][0] if providers else "no API key set", "required": True},
-        {"name": "GitHub", "ok": scm is not None,
-         "detail": "connected" if scm else "not configured", "required": False},
-        {"name": "Jira", "ok": pm is not None,
-         "detail": "connected" if pm else "not configured", "required": False},
-        {"name": "Slack", "ok": chat is not None,
-         "detail": "connected" if chat else "not configured", "required": False},
+        {
+            "name": "LLM provider",
+            "ok": llm_ok,
+            "detail": providers[0][0] if providers else "no API key set",
+            "required": True,
+        },
+        {
+            "name": "GitHub",
+            "ok": scm is not None,
+            "detail": "connected" if scm else "not configured",
+            "required": False,
+        },
+        {
+            "name": "Jira",
+            "ok": pm is not None,
+            "detail": "connected" if pm else "not configured",
+            "required": False,
+        },
+        {
+            "name": "Slack",
+            "ok": chat is not None,
+            "detail": "connected" if chat else "not configured",
+            "required": False,
+        },
     ]
     return {"checks": checks, "ready": llm_ok}
 
 
 # ─── Provider Actions ────────────────────────────────────
+
 
 def _map_gh_repo(r: dict) -> dict:
     """Map a GitHub /user/repos entry to the shape the frontend selector needs.
@@ -227,7 +251,10 @@ async def list_jira_sprints(board_id: str):
     if not pm:
         raise HTTPException(status_code=400, detail="Jira integration not configured")
     sprints = await pm.list_sprints(board_id)
-    return {"board_id": board_id, "sprints": [{"id": s.id, "name": s.name, "state": s.state} for s in sprints]}
+    return {
+        "board_id": board_id,
+        "sprints": [{"id": s.id, "name": s.name, "state": s.state} for s in sprints],
+    }
 
 
 @router.get("/jira/active-sprint/{board_id}")
@@ -260,13 +287,16 @@ async def list_slack_channels():
 async def _initialize_provider(provider: str, credentials: dict) -> None:
     if provider == "github":
         from app.services.integrations.github import init_github
+
         init_github(credentials.get("token"))
         logger.info("github_initialized")
     elif provider == "jira":
         from app.services.integrations.jira import init_jira
+
         init_jira(credentials.get("url"), credentials.get("email"), credentials.get("token"))
         logger.info("jira_initialized")
     elif provider == "slack":
         from app.services.integrations.slack import init_slack
+
         init_slack(credentials.get("token"))
         logger.info("slack_initialized")

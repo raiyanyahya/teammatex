@@ -23,24 +23,31 @@ def reconcile_repos(db_repos, disk_names) -> list[dict]:
     out = []
     for name in sorted(disk_names):
         meta = by_name.get(name, {})
-        out.append({
-            "name": name,
-            "path": f"{REPOS_ROOT}/{name}",
-            "language": meta.get("language") or "unknown",
-            "default_branch": meta.get("default_branch") or "main",
-            "github_url": meta.get("github_url") or "",
-            "entries": [],
-        })
+        out.append(
+            {
+                "name": name,
+                "path": f"{REPOS_ROOT}/{name}",
+                "language": meta.get("language") or "unknown",
+                "default_branch": meta.get("default_branch") or "main",
+                "github_url": meta.get("github_url") or "",
+                "entries": [],
+            }
+        )
     return out
 
 
 def format_environment_block(repos: list[dict]) -> str:
     if not repos:
-        return ("## Local environment\n"
-                "There are currently no repositories cloned under "
-                f"{REPOS_ROOT}/. Ask the user to onboard one first.")
-    lines = ["## Local environment",
-             f"{len(repos)} repository(ies) are cloned and ready under {REPOS_ROOT}/:", ""]
+        return (
+            "## Local environment\n"
+            "There are currently no repositories cloned under "
+            f"{REPOS_ROOT}/. Ask the user to onboard one first."
+        )
+    lines = [
+        "## Local environment",
+        f"{len(repos)} repository(ies) are cloned and ready under {REPOS_ROOT}/:",
+        "",
+    ]
     for r in repos:
         lines.append(
             f"- **{r['name']}** — `{r['path']}` "
@@ -60,7 +67,8 @@ async def build_environment_context(db, repos_root: str = REPOS_ROOT) -> str:
     root = Path(repos_root)
     disk_names = (
         {p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")}
-        if root.exists() else set()
+        if root.exists()
+        else set()
     )
 
     db_repos: list[dict] = []
@@ -68,14 +76,17 @@ async def build_environment_context(db, repos_root: str = REPOS_ROOT) -> str:
         from sqlalchemy import select
 
         from app.models.repo import Repo
+
         result = await db.execute(select(Repo).where(Repo.is_active == True))  # noqa: E712
         for r in result.scalars().all():
-            db_repos.append({
-                "local_name": r.local_name,
-                "language": getattr(r, "language", None),
-                "default_branch": r.default_branch,
-                "github_url": r.github_url,
-            })
+            db_repos.append(
+                {
+                    "local_name": r.local_name,
+                    "language": getattr(r, "language", None),
+                    "default_branch": r.default_branch,
+                    "github_url": r.github_url,
+                }
+            )
     except Exception:
         pass
 

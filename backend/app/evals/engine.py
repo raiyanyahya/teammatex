@@ -1,6 +1,7 @@
 """Deterministic retrieval eval: score a ranked list of file paths against the
 expected source file(s) for a question. Scores the retrieval primitive directly
 (EmbeddingService.search), so results are reproducible and token-free."""
+
 from __future__ import annotations
 
 
@@ -43,8 +44,12 @@ async def run_eval(db, embedder, golden: list[dict], k: int = 3) -> dict:
     report: {"items": [...per question...], "summary": aggregate(...)}."""
     items = []
     for q in golden:
-        results = await embedder.search(db, query=q["question"], repo_id=q["repo"], limit=max(k * 3, 10))
+        results = await embedder.search(
+            db, query=q["question"], repo_id=q["repo"], limit=max(k * 3, 10)
+        )
         ranked = [r["file_path"] for r in results]
         scored = score_item(ranked, q["expect_files"], k)
-        items.append({"id": q["id"], "question": q["question"], **scored, "top": _unique(ranked)[:k]})
+        items.append(
+            {"id": q["id"], "question": q["question"], **scored, "top": _unique(ranked)[:k]}
+        )
     return {"items": items, "summary": aggregate([{"hit": i["hit"], "rr": i["rr"]} for i in items])}

@@ -14,15 +14,15 @@ DEFAULT_PERSONA = "senior"
 
 PERSONA_STYLES = {
     "senior": "Work like a thorough senior engineer: explain your reasoning where it "
-              "helps the user learn, and call out risks you notice. No fluff.",
+    "helps the user learn, and call out risks you notice. No fluff.",
     "junior": "Work like an enthusiastic junior engineer: when requirements are "
-              "ambiguous, ask a clarifying question instead of guessing.",
+    "ambiguous, ask a clarifying question instead of guessing.",
     "reviewer": "Work like a strict reviewer: insist on types, tests, and edge cases, "
-                "and flag anything risky before it ships.",
+    "and flag anything risky before it ships.",
     "pragmatic": "Work pragmatically: favor shipping a working change over perfection, "
-                 "keep scope tight, and note follow-ups rather than gold-plating.",
+    "keep scope tight, and note follow-ups rather than gold-plating.",
     "architect": "Work like an architect: think in systems — call out module "
-                 "boundaries, dependencies, and design trade-offs before diving in.",
+    "boundaries, dependencies, and design trade-offs before diving in.",
 }
 
 

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import require_admin
-from app.services.plugins.manager import plugin_manager, PluginStatus
-from app.services.plugins.marketplace import marketplace
+from app.services.plugins.manager import PluginStatus, plugin_manager
 from app.services.plugins.manifest import discover_plugins
+from app.services.plugins.marketplace import marketplace
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
 
@@ -74,11 +74,25 @@ async def list_plugin_tools():
 
 # ─── Marketplace ───────────────────────────────────────
 
+
 @router.get("/marketplace/search")
 async def search_marketplace(query: str = "", limit: int = 20):
     results = await marketplace.search(query, limit)
-    return {"query": query, "results": [{"name": p.name, "version": p.version, "description": p.description,
-            "author": p.author, "rating": p.rating, "installs": p.installs, "verified": p.verified} for p in results]}
+    return {
+        "query": query,
+        "results": [
+            {
+                "name": p.name,
+                "version": p.version,
+                "description": p.description,
+                "author": p.author,
+                "rating": p.rating,
+                "installs": p.installs,
+                "verified": p.verified,
+            }
+            for p in results
+        ],
+    }
 
 
 @router.get("/marketplace/{plugin_name}")
@@ -86,8 +100,14 @@ async def get_marketplace_plugin(plugin_name: str):
     plugin = await marketplace.get_plugin(plugin_name)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found in marketplace")
-    return {"name": plugin.name, "version": plugin.version, "description": plugin.description,
-            "author": plugin.author, "rating": plugin.rating, "installs": plugin.installs}
+    return {
+        "name": plugin.name,
+        "version": plugin.version,
+        "description": plugin.description,
+        "author": plugin.author,
+        "rating": plugin.rating,
+        "installs": plugin.installs,
+    }
 
 
 @router.post("/marketplace/install")

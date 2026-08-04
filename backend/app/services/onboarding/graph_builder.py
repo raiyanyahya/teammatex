@@ -21,7 +21,6 @@ class GraphBuilder:
         files_processed = 0
         entities_found = 0
         relationships_created = 0
-        errors: list[str] = []
 
         root = Path(clone_path)
         for file_path in root.rglob("*"):
@@ -43,20 +42,30 @@ class GraphBuilder:
                 entities_found += 1
                 if entity.kind == "function":
                     await self.graph.ensure_function_node(
-                        repo_id, rel_path, entity.name,
-                        entity.start_line, entity.end_line,
-                        lang, entity.signature,
+                        repo_id,
+                        rel_path,
+                        entity.name,
+                        entity.start_line,
+                        entity.end_line,
+                        lang,
+                        entity.signature,
                     )
                 elif entity.kind == "class":
                     await self.graph.ensure_class_node(
-                        repo_id, rel_path, entity.name,
-                        entity.start_line, entity.end_line, lang,
+                        repo_id,
+                        rel_path,
+                        entity.name,
+                        entity.start_line,
+                        entity.end_line,
+                        lang,
                     )
 
             for dep in analysis.dependencies:
                 if dep.kind == "imports":
                     if dep.target:
-                        for mod_name in dep.target.replace("import ", "").replace("from ", "").split(","):
+                        for mod_name in (
+                            dep.target.replace("import ", "").replace("from ", "").split(",")
+                        ):
                             clean = mod_name.strip().strip("\"'").split()[0].lstrip(".")
                             if clean and not clean.startswith("."):
                                 try:
@@ -64,17 +73,20 @@ class GraphBuilder:
                                     relationships_created += 1
                                 except Exception:
                                     pass
-                elif dep.kind == "calls":
-                    if dep.target:
-                        for entity in analysis.entities:
-                            if entity.kind == "function" and dep.source:
-                                try:
-                                    await self.graph.add_call_relationship(
-                                        repo_id, rel_path, entity.name, entity.start_line, dep.target,
-                                    )
-                                    relationships_created += 1
-                                except Exception:
-                                    pass
+                elif dep.kind == "calls" and dep.target:
+                    for entity in analysis.entities:
+                        if entity.kind == "function" and dep.source:
+                            try:
+                                await self.graph.add_call_relationship(
+                                    repo_id,
+                                    rel_path,
+                                    entity.name,
+                                    entity.start_line,
+                                    dep.target,
+                                )
+                                relationships_created += 1
+                            except Exception:
+                                pass
 
         # Build contributor graph
         profiles = self.profiler.profile_repo(clone_path)
@@ -83,7 +95,10 @@ class GraphBuilder:
             for owned_file in profile.owned_files:
                 try:
                     await self.graph.add_ownership(
-                        email, repo_id, owned_file, weight=1.0,
+                        email,
+                        repo_id,
+                        owned_file,
+                        weight=1.0,
                     )
                     relationships_created += 1
                 except Exception:

@@ -12,9 +12,7 @@ def _auth_callbacks(token: str):
     remote URL on disk."""
     if not token:
         return None
-    return pygit2.RemoteCallbacks(
-        credentials=pygit2.UserPass("x-access-token", token)
-    )
+    return pygit2.RemoteCallbacks(credentials=pygit2.UserPass("x-access-token", token))
 
 
 def clone_or_pull(
@@ -81,9 +79,7 @@ def _fetch_and_reset(
                 repo.set_head(remote_branch)
             else:
                 repo.checkout(remote_branch)
-                repo.reset(
-                    repo.lookup_reference(remote_branch).target, pygit2.GIT_RESET_HARD
-                )
+                repo.reset(repo.lookup_reference(remote_branch).target, pygit2.GIT_RESET_HARD)
     except Exception:
         pass
 

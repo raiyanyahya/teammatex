@@ -1,4 +1,5 @@
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from litellm import acompletion, completion_cost
 from structlog import get_logger
@@ -20,13 +21,29 @@ FALLBACK_CHAIN = [
 # saving an llm_config row: PUT /api/config/llm_config {provider, api_key, model}.
 RECOMMENDED_MODELS = {
     "deepseek": [
-        {"model": "deepseek-v4-flash", "tier": "cheap-default", "note": "Fast, non-thinking — best for tool loops."},
-        {"model": "deepseek-v4-pro", "tier": "balanced", "note": "Thinking model; stronger reasoning, higher cost/latency."},
+        {
+            "model": "deepseek-v4-flash",
+            "tier": "cheap-default",
+            "note": "Fast, non-thinking — best for tool loops.",
+        },
+        {
+            "model": "deepseek-v4-pro",
+            "tier": "balanced",
+            "note": "Thinking model; stronger reasoning, higher cost/latency.",
+        },
     ],
     "anthropic": [
-        {"model": "claude-sonnet-4-6", "tier": "high-reliability", "note": "Excellent tool calling; recommended upgrade."},
+        {
+            "model": "claude-sonnet-4-6",
+            "tier": "high-reliability",
+            "note": "Excellent tool calling; recommended upgrade.",
+        },
         {"model": "claude-opus-4-7", "tier": "max", "note": "Most capable; highest cost."},
-        {"model": "claude-haiku-4-5-20251001", "tier": "cheap", "note": "Fast, inexpensive Claude."},
+        {
+            "model": "claude-haiku-4-5-20251001",
+            "tier": "cheap",
+            "note": "Fast, inexpensive Claude.",
+        },
     ],
     "openai": [
         {"model": "gpt-4o", "tier": "high-reliability", "note": "Strong, reliable tool calling."},
@@ -47,10 +64,13 @@ class LLMProvider:
     async def _get_db_config(cls) -> dict | None:
         try:
             from sqlalchemy import select
+
             from app.db.session import _init_engine
             from app.models.app_config import AppConfig
+
             _init_engine()
             from app.db.session import async_session_factory
+
             async with async_session_factory() as db:
                 result = await db.execute(select(AppConfig).where(AppConfig.key == "llm_config"))
                 row = result.scalar_one_or_none()
@@ -92,7 +112,10 @@ class LLMProvider:
 
         if not providers:
             from app.config import settings as s
-            providers.append(("ollama", "llama3.1:8b", s.ollama_base_url or "http://localhost:11434"))
+
+            providers.append(
+                ("ollama", "llama3.1:8b", s.ollama_base_url or "http://localhost:11434")
+            )
 
         return providers
 
@@ -109,8 +132,12 @@ class LLMProvider:
 
     @classmethod
     async def chat(
-        cls, messages: list[dict], temperature: float = 0.2,
-        max_tokens: int = 4096, stream: bool = False, tools: list[dict] | None = None,
+        cls,
+        messages: list[dict],
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+        stream: bool = False,
+        tools: list[dict] | None = None,
         call_type: str = "completion",
     ) -> dict:
         providers = await cls._get_available_providers()
@@ -119,8 +146,10 @@ class LLMProvider:
         for provider, model, api_key in providers:
             actual_model = cls._get_model_name(provider, model)
             kwargs: dict[str, Any] = {
-                "model": actual_model, "messages": messages,
-                "temperature": temperature, "max_tokens": max_tokens,
+                "model": actual_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
                 "api_key": api_key,
             }
             if tools:
@@ -130,6 +159,7 @@ class LLMProvider:
                 # Count every non-chat-loop LLM call (onboarding, proactive,
                 # generate/validate/review, …) in the dashboard's token totals.
                 from app.services.agent.cost_tracker import record_llm_usage
+
                 await record_llm_usage(provider, model, call_type, response)
                 try:
                     cost = completion_cost(completion_response=response)
@@ -143,7 +173,9 @@ class LLMProvider:
                     "provider": provider,
                     "usage": {
                         "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
-                        "completion_tokens": response.usage.completion_tokens if response.usage else 0,
+                        "completion_tokens": (
+                            response.usage.completion_tokens if response.usage else 0
+                        ),
                     },
                     "cost_cents": int(cost * 100) if cost else 0,
                     "tool_calls": getattr(response.choices[0].message, "tool_calls", None),
@@ -156,7 +188,10 @@ class LLMProvider:
 
     @classmethod
     async def chat_stream(
-        cls, messages: list[dict], temperature: float = 0.2, max_tokens: int = 4096,
+        cls,
+        messages: list[dict],
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
     ) -> AsyncIterator[str]:
         providers = await cls._get_available_providers()
         last_error = None
@@ -164,8 +199,11 @@ class LLMProvider:
             actual_model = cls._get_model_name(provider, model)
             try:
                 response = await acompletion(
-                    model=actual_model, messages=messages,
-                    temperature=temperature, max_tokens=max_tokens, api_key=api_key,
+                    model=actual_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    api_key=api_key,
                     stream=True,
                 )
                 async for chunk in response:
@@ -180,10 +218,15 @@ class LLMProvider:
         raise RuntimeError(f"All streaming providers failed: {last_error}")
 
     @classmethod
-    async def simple_prompt(cls, system: str, user: str, temperature: float = 0.2,
-                            call_type: str = "completion") -> str:
-        result = await cls.chat([
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ], temperature=temperature, call_type=call_type)
+    async def simple_prompt(
+        cls, system: str, user: str, temperature: float = 0.2, call_type: str = "completion"
+    ) -> str:
+        result = await cls.chat(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            call_type=call_type,
+        )
         return result["content"]

@@ -7,19 +7,23 @@ class Synthesizer:
     def synthesize(self, repo_info: dict) -> list[dict]:
         notes: list[dict] = []
 
-        notes.append({
-            "title": f"Architecture Overview — {repo_info.get('name', 'Unknown')}",
-            "content": self._generate_architecture_note(repo_info),
-            "entity_type": "repo",
-        })
+        notes.append(
+            {
+                "title": f"Architecture Overview — {repo_info.get('name', 'Unknown')}",
+                "content": self._generate_architecture_note(repo_info),
+                "entity_type": "repo",
+            }
+        )
 
         if repo_info.get("contributor_count", 0) > 0:
-            notes.append({
-                "title": "Team Structure",
-                "content": f"This repository has {repo_info.get('contributor_count')} contributors "
-                           f"across {repo_info.get('commit_count', 0)} commits.",
-                "entity_type": "contributor",
-            })
+            notes.append(
+                {
+                    "title": "Team Structure",
+                    "content": f"This repository has {repo_info.get('contributor_count')} contributors "
+                    f"across {repo_info.get('commit_count', 0)} commits.",
+                    "entity_type": "contributor",
+                }
+            )
 
         return notes
 
@@ -39,10 +43,12 @@ class Synthesizer:
         ):
             lines.append(f"- **{lang}**: {count} files")
 
-        lines.extend([
-            "",
-            "## Branches",
-            ", ".join(info.get("branches", [])[:20]),
-        ])
+        lines.extend(
+            [
+                "",
+                "## Branches",
+                ", ".join(info.get("branches", [])[:20]),
+            ]
+        )
 
         return "\n".join(lines)

@@ -31,6 +31,7 @@ async def github_webhook(request: Request):
     body = await request.body()
 
     from app.services.integrations.github import GitHubProvider
+
     if not GitHubProvider.verify_webhook_signature(body, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
@@ -39,9 +40,11 @@ async def github_webhook(request: Request):
 
     if event == "push" and settings.auto_sync_webhook_enabled:
         from app.services.agent.auto_sync import auto_sync
+
         repo_name = payload.get("repository", {}).get("name", "")
         if repo_name:
             import asyncio
+
             asyncio.create_task(auto_sync.handle_webhook_push(repo_name))
             logger.info("auto_sync_webhook_triggered", repo=repo_name)
 
@@ -58,6 +61,7 @@ async def jira_webhook(request: Request):
 
     payload = json.loads(body)
     from app.services.integrations.jira import JiraProvider
+
     result = await JiraProvider.handle_webhook(payload)
     logger.info("jira_webhook_processed", result=str(result)[:200])
     return {"received": True}
@@ -106,8 +110,10 @@ async def slack_webhook(request: Request):
             user = event.get("user", "")
             logger.info("slack_mention_for_agent", channel=channel, user=user, text=text[:200])
 
-            from app.services.integrations.slack_bot import slack_bot
             import asyncio
+
+            from app.services.integrations.slack_bot import slack_bot
+
             question = text.replace("<@U", "").replace(">", "").strip()
             asyncio.create_task(slack_bot.answer_question(channel, user, question))
 

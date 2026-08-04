@@ -4,6 +4,7 @@ Mirrors the uploads/notepad ownership model: ``owner_id`` is a free string, so
 this never casts to uuid or hits a FK. Only user/assistant *text* is stored —
 tool calls and sources are ephemeral and not reloaded on an old thread.
 """
+
 from __future__ import annotations
 
 import uuid as _uuid
@@ -32,11 +33,13 @@ def _valid_uuid(value: str | None) -> bool:
 async def _owned(db: AsyncSession, owner: str, conversation_id: str | None) -> Conversation | None:
     if not _valid_uuid(conversation_id):
         return None
-    return (await db.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id, Conversation.owner_id == owner
+    return (
+        await db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id, Conversation.owner_id == owner
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
 
 
 async def get_or_create(
@@ -66,21 +69,18 @@ async def list_conversations(db: AsyncSession, owner: str, q: str | None = None)
     stmt = select(Conversation).where(Conversation.owner_id == owner)
     if q and q.strip():
         like = f"%{q.strip()}%"
-        matching_convo_ids = (
-            select(Message.conversation_id).where(Message.content.ilike(like))
-        )
-        stmt = stmt.where(
-            Conversation.title.ilike(like) | Conversation.id.in_(matching_convo_ids)
-        )
+        matching_convo_ids = select(Message.conversation_id).where(Message.content.ilike(like))
+        stmt = stmt.where(Conversation.title.ilike(like) | Conversation.id.in_(matching_convo_ids))
     rows = (await db.execute(stmt.order_by(Conversation.created_at.desc()))).scalars().all()
     return [
-        {"id": c.id, "title": c.title,
-         "created_at": str(c.created_at) if c.created_at else None}
+        {"id": c.id, "title": c.title, "created_at": str(c.created_at) if c.created_at else None}
         for c in rows
     ]
 
 
-async def export_conversation_markdown(db: AsyncSession, owner: str, conversation_id: str) -> str | None:
+async def export_conversation_markdown(
+    db: AsyncSession, owner: str, conversation_id: str
+) -> str | None:
     """Render an owned conversation as Markdown for download, or None if not found."""
     convo = await get_conversation(db, owner, conversation_id)
     if convo is None:
@@ -98,18 +98,27 @@ async def get_conversation(db: AsyncSession, owner: str, conversation_id: str) -
     convo = await _owned(db, owner, conversation_id)
     if convo is None:
         return None
-    msgs = (await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc())
-    )).scalars().all()
+    msgs = (
+        (
+            await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return {
         "id": convo.id,
         "title": convo.title,
         "created_at": str(convo.created_at) if convo.created_at else None,
         "messages": [
-            {"role": m.role, "content": m.content,
-             "created_at": str(m.created_at) if m.created_at else None}
+            {
+                "role": m.role,
+                "content": m.content,
+                "created_at": str(m.created_at) if m.created_at else None,
+            }
             for m in msgs
         ],
     }

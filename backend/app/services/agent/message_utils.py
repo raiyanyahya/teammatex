@@ -33,8 +33,7 @@ _BLOCK_PATTERNS = [
     # DeepSeek native: <｜tool▁calls▁begin｜> … <｜tool▁calls▁end｜>
     # (▁ is U+2581; tolerate _ or space variants too)
     re.compile(
-        r"<｜tool[▁_ ]calls[▁_ ]begin｜>.*?"
-        r"(?:<｜tool[▁_ ]calls[▁_ ]end｜>|$)",
+        r"<｜tool[▁_ ]calls[▁_ ]begin｜>.*?" r"(?:<｜tool[▁_ ]calls[▁_ ]end｜>|$)",
         re.DOTALL,
     ),
 ]
@@ -56,8 +55,7 @@ def serialize_tool_call(tc) -> dict:
         tid = tc.id
     if not isinstance(args, str):
         args = json.dumps(args or {})
-    return {"id": tid, "type": "function",
-            "function": {"name": name, "arguments": args}}
+    return {"id": tid, "type": "function", "function": {"name": name, "arguments": args}}
 
 
 def assistant_tool_calls_message(tool_calls, reasoning_content=None) -> dict:

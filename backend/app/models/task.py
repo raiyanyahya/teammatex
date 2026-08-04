@@ -1,9 +1,12 @@
-from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, UUIDMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.pr import PR
 
 
 class Task(Base, UUIDMixin, TimestampMixin):

@@ -1,32 +1,32 @@
 import asyncio
+import contextlib
 import json
 import os
 import re as _re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path as _Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.config import settings
-from app.services.agent.guardrails import guardrails, GuardResult
+from app.services.agent.cost_tracker import log_audit, log_cost, record_llm_usage
+from app.services.agent.guardrails import GuardResult, guardrails
 from app.services.agent.memory import MemoryManager
 from app.services.agent.prompts import (
-    PERSONA_PROMPTS,
-    TOOL_USE_SYSTEM_PROMPT,
-    PLANNING_PROMPT,
     CODE_GENERATION_PROMPT,
-    SELF_REVIEW_PROMPT,
     DEFAULT_PERSONA,
+    PERSONA_PROMPTS,
     PERSONA_STYLES,
+    PLANNING_PROMPT,
+    SELF_REVIEW_PROMPT,
     persona_directive,
 )
 from app.services.agent.rag import RAGPipeline
-from app.services.agent.tools import ToolRegistry, tool_registry
-from app.services.agent.confidence import ConfidenceTier, is_low_confidence, flag_if_low
-from app.services.agent.cost_tracker import log_cost, log_audit, record_llm_usage
+from app.services.agent.tools import tool_registry
 from app.services.llm.provider import LLMProvider
 
 
@@ -47,8 +47,7 @@ def _with_prompt_cache(messages: list[dict]) -> list[dict]:
     cached_system = {
         "role": "system",
         "content": [
-            {"type": "text", "text": content,
-             "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}},
         ],
     }
     return [cached_system, *messages[1:]]
@@ -56,21 +55,27 @@ def _with_prompt_cache(messages: list[dict]) -> list[dict]:
 
 def _get_github_token() -> str:
     from app.config import settings as _s
+
     token = _s.github_client_secret or _s.github_webhook_secret
     if not token:
         try:
             from sqlalchemy import create_engine, text
+
             engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"))
             with engine.connect() as conn:
-                row = conn.execute(text("SELECT value FROM app_config WHERE key = 'github_token'")).fetchone()
+                row = conn.execute(
+                    text("SELECT value FROM app_config WHERE key = 'github_token'")
+                ).fetchone()
                 if row and row[0]:
                     import json as _json
+
                     data = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
                     token = data.get("token", "")
             engine.dispose()
         except Exception:
             pass
     return token
+
 
 logger = get_logger(__name__)
 
@@ -104,8 +109,7 @@ def _resolve_repo_path(ctx: "AgentContext | None", args: dict) -> str | None:
     name = (args.get("repo_name") or (getattr(ctx, "repo_name", None) or "")).strip().strip("/")
     if not name:
         try:
-            dirs = [p for p in os.listdir(root)
-                    if os.path.isdir(os.path.join(root, p, ".git"))]
+            dirs = [p for p in os.listdir(root) if os.path.isdir(os.path.join(root, p, ".git"))]
         except OSError:
             dirs = []
         if len(dirs) == 1:
@@ -162,8 +166,14 @@ def _url_ssrf_safe(url: str) -> tuple[bool, str]:
             ip = ipaddress.ip_address(addr.split("%")[0])
         except ValueError:
             return False, f"unparseable address {addr}"
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
             return False, f"host resolves to non-public address {ip}"
     return True, ""
 
@@ -195,17 +205,30 @@ class AgentContext:
 # ungated. read_code / write_code / create_pr line up with the Settings toggles;
 # merge_pr and autonomous have no tools yet (no merge tool; autonomy is a mode).
 TOOL_CAPABILITY: dict[str, str] = {
-    "read_file": "read_code", "list_directory": "read_code",
-    "glob_search": "read_code", "grep_search": "read_code",
-    "get_diff": "read_code", "get_blame": "read_code", "get_commit_log": "read_code",
-    "semantic_search": "read_code", "graph_query": "read_code",
-    "find_owner": "read_code", "find_dependents": "read_code",
-    "find_dependencies": "read_code", "get_architecture": "read_code",
-    "search_notes": "read_code", "list_prs": "read_code", "trace_issue": "read_code",
-    "write_file": "write_code", "edit_file": "write_code",
-    "commit_files": "write_code", "create_branch": "write_code",
+    "read_file": "read_code",
+    "list_directory": "read_code",
+    "glob_search": "read_code",
+    "grep_search": "read_code",
+    "get_diff": "read_code",
+    "get_blame": "read_code",
+    "get_commit_log": "read_code",
+    "semantic_search": "read_code",
+    "graph_query": "read_code",
+    "find_owner": "read_code",
+    "find_dependents": "read_code",
+    "find_dependencies": "read_code",
+    "get_architecture": "read_code",
+    "search_notes": "read_code",
+    "list_prs": "read_code",
+    "trace_issue": "read_code",
+    "write_file": "write_code",
+    "edit_file": "write_code",
+    "commit_files": "write_code",
+    "create_branch": "write_code",
     "create_pr": "create_pr",
-    "run_command": "execute", "run_lint": "execute", "run_tests": "execute",
+    "run_command": "execute",
+    "run_lint": "execute",
+    "run_tests": "execute",
 }
 
 
@@ -222,11 +245,13 @@ class AgentRuntime:
         persona = settings.teammate_persona
         if db is not None:
             from sqlalchemy import select as _sel
+
             from app.models.app_config import AppConfig
+
             try:
-                row = (await db.execute(
-                    _sel(AppConfig).where(AppConfig.key == "persona")
-                )).scalar_one_or_none()
+                row = (
+                    await db.execute(_sel(AppConfig).where(AppConfig.key == "persona"))
+                ).scalar_one_or_none()
                 if row and isinstance(row.value, dict) and row.value.get("persona"):
                     persona = row.value["persona"]
             except Exception:
@@ -243,28 +268,44 @@ class AgentRuntime:
     # now that the embeddings + graph pipelines actually return data — they let
     # the agent jump straight to relevant code instead of brute-force grepping.
     CORE_TOOLS = {
-        "read_file", "write_file", "edit_file", "list_directory",
-        "glob_search", "grep_search", "run_command", "web_search",
-        "semantic_search", "graph_query", "get_architecture",
-        "find_dependents", "find_dependencies", "find_owner",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_directory",
+        "glob_search",
+        "grep_search",
+        "run_command",
+        "web_search",
+        "semantic_search",
+        "graph_query",
+        "get_architecture",
+        "find_dependents",
+        "find_dependencies",
+        "find_owner",
         # Persistent team memory (remember/recall decisions) + issue tracing
         # via the call graph — capabilities a plain RAG bot doesn't have.
-        "write_note", "search_notes", "trace_issue",
+        "write_note",
+        "search_notes",
+        "trace_issue",
     }
 
     def _curated_tools(self) -> list[dict]:
-        return [t for t in self.tools.get_openai_tools()
-                if t["function"]["name"] in self.CORE_TOOLS]
+        return [
+            t for t in self.tools.get_openai_tools() if t["function"]["name"] in self.CORE_TOOLS
+        ]
 
     async def _github_token_present(self, db: AsyncSession | None) -> bool:
         from app.config import settings as _s
+
         if _s.github_client_secret or _s.github_webhook_secret:
             return True
         if db is None:
             return False
         try:
             from sqlalchemy import select
+
             from app.models.app_config import AppConfig
+
             result = await db.execute(select(AppConfig).where(AppConfig.key == "github_token"))
             row = result.scalar_one_or_none()
             if row and row.value:
@@ -274,16 +315,16 @@ class AgentRuntime:
             pass
         return False
 
-    def _build_system_prompt(self, context: str, env_block: str,
-                             github_connected: bool,
-                             persona: str = DEFAULT_PERSONA) -> str:
+    def _build_system_prompt(
+        self, context: str, env_block: str, github_connected: bool, persona: str = DEFAULT_PERSONA
+    ) -> str:
         name = settings.teammate_name
         git_caps = (
             "git is installed and configured, and the `gh` GitHub CLI is installed "
             "and authenticated — so you can branch, edit, commit, push, and open "
             "real pull requests entirely on your own by running commands."
-            if github_connected else
-            "git is installed for local work; pushing or opening a PR needs a GitHub "
+            if github_connected
+            else "git is installed for local work; pushing or opening a PR needs a GitHub "
             "token, so if the user asks for a PR and one isn't configured, tell them "
             "to add a token in Settings."
         )
@@ -321,11 +362,15 @@ class AgentRuntime:
         return "\n".join(parts)
 
     async def chat(
-        self, db: AsyncSession, user_message: str,
-        repo_id: str | None = None, conversation_history: list[dict] | None = None,
+        self,
+        db: AsyncSession,
+        user_message: str,
+        repo_id: str | None = None,
+        conversation_history: list[dict] | None = None,
     ) -> AsyncIterator[str]:
-        from litellm import acompletion
         import json
+
+        from litellm import acompletion
 
         ctx = AgentContext(repo_id=repo_id, db=db)
 
@@ -333,6 +378,7 @@ class AgentRuntime:
         # API restart (otherwise the agent thrashes on push with no credentials).
         try:
             from app.services.agent.git_setup import ensure_gh_ready
+
             await ensure_gh_ready(db)
         except Exception:
             pass
@@ -344,6 +390,7 @@ class AgentRuntime:
 
         try:
             from app.services.agent.environment import build_environment_context
+
             env_block = await build_environment_context(db)
         except Exception:
             env_block = ""
@@ -361,8 +408,13 @@ class AgentRuntime:
 
         tools = self._curated_tools()
 
-        usage = {"in": 0, "out": 0, "calls": 0,
-                 "provider": "deepseek", "model": "deepseek-v4-flash"}
+        usage = {
+            "in": 0,
+            "out": 0,
+            "calls": 0,
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+        }
 
         async def llm_call(msgs, tls):
             providers = await LLMProvider._get_available_providers()
@@ -371,8 +423,12 @@ class AgentRuntime:
                     actual_model = LLMProvider._get_model_name(provider, model)
                     send_msgs = _with_prompt_cache(msgs) if provider == "anthropic" else msgs
                     resp = await acompletion(
-                        model=actual_model, messages=send_msgs, api_key=key,
-                        temperature=0.2, max_tokens=2000, tools=tls,
+                        model=actual_model,
+                        messages=send_msgs,
+                        api_key=key,
+                        temperature=0.2,
+                        max_tokens=2000,
+                        tools=tls,
                     )
                     usage["calls"] += 1
                     usage["provider"], usage["model"] = provider, model
@@ -389,26 +445,35 @@ class AgentRuntime:
             return await self.execute_tool(ctx, name, args)
 
         from app.services.agent.loop import run_agent_loop
+
         async for ev in run_agent_loop(
-            llm_call=llm_call, execute_tool=do_tool,
-            messages=messages, tools=tools, max_iterations=25,
+            llm_call=llm_call,
+            execute_tool=do_tool,
+            messages=messages,
+            tools=tools,
+            max_iterations=25,
         ):
             yield f"data: {json.dumps(ev)}\n\n"
 
         if usage["in"] > 0:
             from app.services.agent.cost import cost_cents
+
             total_cost = cost_cents(usage["model"], usage["in"], usage["out"], usage["provider"])
-            try:
-                await log_cost(usage["provider"], usage["model"], "chat",
-                               usage["in"], usage["out"], total_cost)
-            except Exception:
-                pass
-            try:
-                await log_audit("chat_query", "conversation", "",
-                                f"Chat: {user_message[:80]}", usage["calls"],
-                                usage["in"] + usage["out"], total_cost, "success")
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                await log_cost(
+                    usage["provider"], usage["model"], "chat", usage["in"], usage["out"], total_cost
+                )
+            with contextlib.suppress(Exception):
+                await log_audit(
+                    "chat_query",
+                    "conversation",
+                    "",
+                    f"Chat: {user_message[:80]}",
+                    usage["calls"],
+                    usage["in"] + usage["out"],
+                    total_cost,
+                    "success",
+                )
 
         yield "data: [DONE]\n\n"
 
@@ -421,8 +486,10 @@ class AgentRuntime:
             if ctx.db:
                 context = await self.rag.build_context_for_task(ctx.db, task, repo_id)
                 # Add repo list
-                from app.models.repo import Repo
                 from sqlalchemy import select
+
+                from app.models.repo import Repo
+
                 result = await ctx.db.execute(select(Repo).where(Repo.is_active == True).limit(10))
                 repos = result.scalars().all()
                 if repos:
@@ -434,9 +501,8 @@ class AgentRuntime:
         persona = await self._resolve_persona(ctx.db)
 
         # Use direct LiteLLM call that's proven to work
+
         from litellm import acompletion
-        from app.config import settings as s
-        import asyncio
 
         providers = await self.llm._get_available_providers()
         for provider, model, key in providers:
@@ -447,9 +513,13 @@ class AgentRuntime:
                 # 2026-07-24 — so planning 500'd on the default provider.
                 response = await acompletion(
                     model=LLMProvider._get_model_name(provider, model),
-                    messages=[{"role": "system", "content": self._get_persona_prompt(persona)},
-                              {"role": "user", "content": prompt}],
-                    api_key=key, temperature=0.2, max_tokens=2000,
+                    messages=[
+                        {"role": "system", "content": self._get_persona_prompt(persona)},
+                        {"role": "user", "content": prompt},
+                    ],
+                    api_key=key,
+                    temperature=0.2,
+                    max_tokens=2000,
                 )
                 await record_llm_usage(provider, model, "plan", response)
                 return response.choices[0].message.content or ""
@@ -497,7 +567,10 @@ class AgentRuntime:
     async def validate_code(self, code: str, file_path: str = "generated.py") -> tuple[bool, str]:
         result = guardrails.run_all_checks(code, file_path)
         if result == GuardResult.BLOCK:
-            return False, "Code blocked by guardrails: contains secrets or critical security issues."
+            return (
+                False,
+                "Code blocked by guardrails: contains secrets or critical security issues.",
+            )
         if result == GuardResult.WARN:
             return True, "Code passed with warnings. Review the flagged items before merging."
 
@@ -516,7 +589,9 @@ class AgentRuntime:
         denied = await self._capability_denied(ctx, tool_name)
         if denied:
             logger.info("tool_denied", tool=tool_name, capability=denied)
-            return {"error": f"Permission denied: the '{denied}' capability is disabled in Settings."}
+            return {
+                "error": f"Permission denied: the '{denied}' capability is disabled in Settings."
+            }
 
         logger.info("tool_executing", tool=tool_name, args=str(arguments)[:200])
 
@@ -535,19 +610,31 @@ class AgentRuntime:
         if not capability or ctx.db is None:
             return None
         from sqlalchemy import select as _sel
+
         from app.models.permission import Permission
 
-        row = (await ctx.db.execute(
-            _sel(Permission).where(Permission.capability == capability)
-        )).scalar_one_or_none()
+        row = (
+            await ctx.db.execute(_sel(Permission).where(Permission.capability == capability))
+        ).scalar_one_or_none()
         return capability if (row is not None and not row.enabled) else None
 
     async def _dispatch_tool(self, ctx: AgentContext, tool_name: str, args: dict) -> Any:
-        if tool_name in ("semantic_search", "find_owner", "find_dependents",
-                         "find_dependencies", "get_architecture", "search_notes",
-                         "write_note", "read_file", "list_directory", "glob_search",
-                         "run_command", "graph_query",
-                         "trace_issue", "list_prs"):
+        if tool_name in (
+            "semantic_search",
+            "find_owner",
+            "find_dependents",
+            "find_dependencies",
+            "get_architecture",
+            "search_notes",
+            "write_note",
+            "read_file",
+            "list_directory",
+            "glob_search",
+            "run_command",
+            "graph_query",
+            "trace_issue",
+            "list_prs",
+        ):
             return await self._dispatch_legacy(tool_name, args, ctx)
         elif tool_name == "write_file":
             return await self._tool_write_file(args, ctx)
@@ -584,7 +671,9 @@ class AgentRuntime:
         if not _is_safe_path(args["file_path"]):
             return {"error": "Path outside allowed directories"}
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: _Path(args["file_path"]).write_text(args["content"]))
+        await loop.run_in_executor(
+            None, lambda: _Path(args["file_path"]).write_text(args["content"])
+        )
         return {"written": True, "file_path": args["file_path"]}
 
     async def _tool_edit_file(self, args: dict, ctx: AgentContext) -> dict:
@@ -600,6 +689,7 @@ class AgentRuntime:
 
     async def _tool_web_search(self, args: dict) -> dict:
         from app.services.agent.web_search import web_search
+
         return await web_search(args["query"], args.get("max_results", 5))
 
     async def _tool_grep_search(self, args: dict) -> dict:
@@ -607,11 +697,14 @@ class AgentRuntime:
         base = _Path(args.get("path") or "/data/repos")
         if not _is_safe_path(str(base)):
             return {"error": "Path outside allowed directories"}
-        results = await loop.run_in_executor(None, lambda: self._sync_grep(base, args["pattern"], args.get("include")))
+        results = await loop.run_in_executor(
+            None, lambda: self._sync_grep(base, args["pattern"], args.get("include"))
+        )
         return {"matches": results[:50], "count": len(results)}
 
     def _sync_grep(self, base, pattern, include):
         import fnmatch
+
         results = []
         compiled = _re.compile(pattern)
         for fp in base.rglob("*"):
@@ -631,11 +724,13 @@ class AgentRuntime:
     async def _tool_create_branch(self, args: dict, ctx: AgentContext) -> dict:
         loop = asyncio.get_running_loop()
         from app.utils.git import create_branch
+
         name = args["name"]
         base = args.get("base", "main")
         repo_path = f"/data/repos/{ctx.repo_name or 'unknown'}"
         ref = await loop.run_in_executor(
-            None, lambda: create_branch(repo_path, name, base),
+            None,
+            lambda: create_branch(repo_path, name, base),
         )
         ctx.branch = name
         return {"branch": name, "ref": ref}
@@ -645,6 +740,7 @@ class AgentRuntime:
             return {"error": "No active branch. Create a branch first."}
         loop = asyncio.get_running_loop()
         import pygit2
+
         def _commit():
             repo_path = f"/data/repos/{ctx.repo_name or ''}"
             repo = pygit2.Repository(repo_path)
@@ -655,12 +751,19 @@ class AgentRuntime:
             repo.index.add_all()
             repo.index.write()
             tree = repo.index.write_tree()
-            sig = pygit2.Signature(settings.teammate_name, f"{settings.teammate_name.lower()}@teammatex.local")
+            sig = pygit2.Signature(
+                settings.teammate_name, f"{settings.teammate_name.lower()}@teammatex.local"
+            )
             oid = repo.create_commit(
-                f"refs/heads/{ctx.branch}", sig, sig, args["message"], tree,
+                f"refs/heads/{ctx.branch}",
+                sig,
+                sig,
+                args["message"],
+                tree,
                 [repo.head.target],
             )
             return str(oid)
+
         oid = await loop.run_in_executor(None, _commit)
         ctx.files_modified.extend(args["files"].keys())
         return {"commit": oid, "files": len(args["files"])}
@@ -669,6 +772,7 @@ class AgentRuntime:
         scm = None
         try:
             from app.services.integrations.base import IntegrationRegistry
+
             scm = IntegrationRegistry.get_scm()
         except Exception:
             pass
@@ -678,13 +782,16 @@ class AgentRuntime:
             return {"error": "No active branch"}
         pr = await scm.create_pr(
             ctx.repo_name or "unknown",
-            args["title"], args["body"],
-            ctx.branch, args.get("base", "main"),
+            args["title"],
+            args["body"],
+            ctx.branch,
+            args.get("base", "main"),
         )
         return {"pr_number": pr.number, "title": pr.title, "url": pr.url}
 
     async def _tool_create_pr_with_changes(self, args: dict, ctx: AgentContext) -> dict:
         import pygit2
+
         repo_name = args["repo_name"]
         branch = args["branch"]
         files = args.get("files", {})
@@ -708,6 +815,7 @@ class AgentRuntime:
                 return {"error": f"Branch failed: {e}"}
 
             from pathlib import Path as _P
+
             written = []
             for fpath, content in files.items():
                 abs_path = _P(repo_path) / fpath
@@ -719,12 +827,12 @@ class AgentRuntime:
             repo.index.write()
             tree = repo.index.write_tree()
             sig = pygit2.Signature("TeammateX", "teammatex@local")
-            oid = repo.create_commit(
-                f"refs/heads/{branch}", sig, sig, commit_msg, tree, [base]
-            )
+            oid = repo.create_commit(f"refs/heads/{branch}", sig, sig, commit_msg, tree, [base])
 
             return {
-                "branch": branch, "commit": str(oid)[:8], "files": written,
+                "branch": branch,
+                "commit": str(oid)[:8],
+                "files": written,
                 "repo": repo_name,
             }
 
@@ -740,6 +848,7 @@ class AgentRuntime:
             return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
+
         def _diff():
             repo = pygit2.Repository(repo_path)
             base_ref = args.get("base", "HEAD~1")
@@ -748,6 +857,7 @@ class AgentRuntime:
             head = repo.revparse_single(head_ref)
             diff = repo.diff(base, head)
             return diff.patch or ""
+
         patch = await loop.run_in_executor(None, _diff)
         return {"diff": patch[:5000]}
 
@@ -757,6 +867,7 @@ class AgentRuntime:
             return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
+
         def _blame():
             repo = pygit2.Repository(repo_path)
             blame = repo.blame(args["file_path"])
@@ -765,12 +876,15 @@ class AgentRuntime:
                 start = max(args.get("start_line", 1) - 1, 0)
                 end = min(args.get("end_line", 999999), start + 50)
                 if hunk.final_start_line_number >= start and hunk.final_start_line_number <= end:
-                    results.append({
-                        "line": hunk.final_start_line_number,
-                        "commit": str(hunk.final_commit_id)[:8],
-                        "author": hunk.final_committer.name,
-                    })
+                    results.append(
+                        {
+                            "line": hunk.final_start_line_number,
+                            "commit": str(hunk.final_commit_id)[:8],
+                            "author": hunk.final_committer.name,
+                        }
+                    )
             return results[:50]
+
         entries = await loop.run_in_executor(None, _blame)
         return {"blame": entries}
 
@@ -780,20 +894,24 @@ class AgentRuntime:
             return {"error": "Repo not found — pass repo_name (the clone under /data/repos)."}
         loop = asyncio.get_running_loop()
         import pygit2
+
         def _log():
             repo = pygit2.Repository(repo_path)
             limit = args.get("limit", 20)
             commits = []
             for commit in repo.walk(repo.head.target):
-                commits.append({
-                    "hash": str(commit.id)[:8],
-                    "message": commit.message.strip()[:200],
-                    "author": commit.author.name,
-                    "time": str(commit.author.time),
-                })
+                commits.append(
+                    {
+                        "hash": str(commit.id)[:8],
+                        "message": commit.message.strip()[:200],
+                        "author": commit.author.name,
+                        "time": str(commit.author.time),
+                    }
+                )
                 if len(commits) >= limit:
                     break
             return commits
+
         commits = await loop.run_in_executor(None, _log)
         return {"commits": commits}
 
@@ -805,15 +923,19 @@ class AgentRuntime:
         path = (args.get("path") or "").strip()
         if not _is_safe_path(path):
             return {"error": "Path outside allowed directories"}
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         process = await asyncio.create_subprocess_exec(
-            "ruff", "check", "--", path,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            "ruff",
+            "check",
+            "--",
+            path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             env=_scrubbed_env(),
         )
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             return {"error": "Lint timed out"}
@@ -833,15 +955,24 @@ class AgentRuntime:
             return True, ""
         try:
             from sqlalchemy import select as _sel
+
             from app.models.api_registry import APIRegistryEntry
-            rows = (await ctx.db.execute(
-                _sel(APIRegistryEntry).where(APIRegistryEntry.status == "active")
-            )).scalars().all()
+
+            rows = (
+                (
+                    await ctx.db.execute(
+                        _sel(APIRegistryEntry).where(APIRegistryEntry.status == "active")
+                    )
+                )
+                .scalars()
+                .all()
+            )
         except Exception:
             return True, ""  # registry unavailable — fall back to SSRF guard only
         if not rows:
             return True, ""
         from urllib.parse import urlparse
+
         host = urlparse(url).hostname or ""
         entry = next((r for r in rows if r.domain == host), None)
         if not entry:
@@ -852,6 +983,7 @@ class AgentRuntime:
         paths = entry.allowed_paths or []
         if paths:
             from fnmatch import fnmatch
+
             req_path = urlparse(url).path or "/"
             if not any(fnmatch(req_path, p) for p in paths):
                 return False, f"path {req_path} not allowed for {host}"
@@ -859,6 +991,7 @@ class AgentRuntime:
 
     async def _tool_http_request(self, args: dict, ctx: AgentContext) -> dict:
         import httpx
+
         url = args["url"]
         # SSRF guard: the model chooses this URL, so block anything that resolves
         # to the host's own internals (metadata service, localhost, LAN) before
@@ -879,7 +1012,8 @@ class AgentRuntime:
         _MAX_BODY = 1024 * 1024  # 1 MB read ceiling; response is truncated below
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             async with client.stream(
-                args["method"], url,
+                args["method"],
+                url,
                 headers=args.get("headers"),
                 content=args.get("body"),
             ) as response:
@@ -902,13 +1036,16 @@ class AgentRuntime:
 
     async def _tool_schedule_task(self, args: dict, ctx: AgentContext) -> dict:
         from datetime import datetime
+
         from app.workers.celery_app import celery_app
 
         action = args.get("action") or {}
         task_name = action.get("task") if isinstance(action, dict) else None
         if task_name not in self._SCHEDULABLE_TASKS:
-            return {"error": f"Only these tasks can be scheduled: "
-                             f"{sorted(self._SCHEDULABLE_TASKS)}. Got task={task_name!r}."}
+            return {
+                "error": f"Only these tasks can be scheduled: "
+                f"{sorted(self._SCHEDULABLE_TASKS)}. Got task={task_name!r}."
+            }
 
         trigger = (args.get("trigger_time") or "").strip()
         eta = None
@@ -916,38 +1053,53 @@ class AgentRuntime:
             try:
                 eta = datetime.fromisoformat(trigger.replace("Z", "+00:00"))
             except ValueError:
-                return {"error": f"trigger_time must be an ISO-8601 datetime "
-                                 f"(cron expressions aren't supported); got {trigger!r}."}
+                return {
+                    "error": f"trigger_time must be an ISO-8601 datetime "
+                    f"(cron expressions aren't supported); got {trigger!r}."
+                }
 
         try:
             result = celery_app.send_task(
-                task_name, eta=eta, kwargs=action.get("kwargs") or {},
+                task_name,
+                eta=eta,
+                kwargs=action.get("kwargs") or {},
             )
         except Exception as e:
             return {"error": f"Failed to enqueue task: {str(e)[:200]}"}
-        return {"scheduled": True, "name": args["name"], "task": task_name,
-                "id": str(result.id), "eta": trigger or "now"}
+        return {
+            "scheduled": True,
+            "name": args["name"],
+            "task": task_name,
+            "id": str(result.id),
+            "eta": trigger or "now",
+        }
 
     async def _dispatch_legacy(self, tool_name: str, args: dict, ctx: AgentContext) -> Any:
         if tool_name == "semantic_search":
             if not ctx.db:
                 return []
             return await self.rag.embedder.search(
-                ctx.db, query=args["query"], repo_id=args.get("repo_id") or ctx.repo_id,
-                entity_type=args.get("entity_type"), language=args.get("language"),
+                ctx.db,
+                query=args["query"],
+                repo_id=args.get("repo_id") or ctx.repo_id,
+                entity_type=args.get("entity_type"),
+                language=args.get("language"),
                 limit=args.get("limit", 10),
             )
         elif tool_name == "find_owner":
             return await self.rag.graph.find_owner(
-                args.get("repo_id") or ctx.repo_id or "", args["file_path"],
+                args.get("repo_id") or ctx.repo_id or "",
+                args["file_path"],
             )
         elif tool_name == "find_dependents":
             return await self.rag.graph.find_dependents(
-                args.get("repo_id") or ctx.repo_id or "", args["entity_name"],
+                args.get("repo_id") or ctx.repo_id or "",
+                args["entity_name"],
             )
         elif tool_name == "find_dependencies":
             return await self.rag.graph.find_dependencies(
-                args.get("repo_id") or ctx.repo_id or "", args["entity_name"],
+                args.get("repo_id") or ctx.repo_id or "",
+                args["entity_name"],
             )
         elif tool_name == "get_architecture":
             return await self.rag.graph.get_architecture(
@@ -955,17 +1107,22 @@ class AgentRuntime:
             )
         elif tool_name == "search_notes":
             from app.services.knowledge.notes import NotesService
+
             if not ctx.db:
                 return []
             notes = await NotesService().search(ctx.db, args["query"], args.get("limit", 20))
             return [{"id": str(n.id), "title": n.title, "snippet": n.content[:200]} for n in notes]
         elif tool_name == "write_note":
             from app.services.knowledge.notes import NotesService
+
             if not ctx.db:
                 return {"error": "No database session"}
             note = await NotesService().create(
-                ctx.db, args["title"], args["content"],
-                args.get("entity_type"), args.get("entity_id"),
+                ctx.db,
+                args["title"],
+                args["content"],
+                args.get("entity_type"),
+                args.get("entity_id"),
             )
             return {"id": str(note.id), "title": note.title}
         elif tool_name == "read_file":
@@ -980,7 +1137,8 @@ class AgentRuntime:
             end = min(len(lines), args.get("end_line") or len(lines))
             return {
                 "content": "\n".join(lines[start:end]),
-                "lines": end - start, "total_lines": len(lines),
+                "lines": end - start,
+                "total_lines": len(lines),
             }
         elif tool_name == "list_directory":
             path = _Path(args["path"])
@@ -989,50 +1147,73 @@ class AgentRuntime:
             if not path.exists():
                 return {"error": "Directory not found"}
             loop = asyncio.get_running_loop()
-            entries = await loop.run_in_executor(None, lambda: [
-                {"name": e.name, "type": "directory" if e.is_dir() else "file",
-                 "size": e.stat().st_size if e.is_file() else 0}
-                for e in sorted(path.iterdir())
-            ])
+            entries = await loop.run_in_executor(
+                None,
+                lambda: [
+                    {
+                        "name": e.name,
+                        "type": "directory" if e.is_dir() else "file",
+                        "size": e.stat().st_size if e.is_file() else 0,
+                    }
+                    for e in sorted(path.iterdir())
+                ],
+            )
             return entries
         elif tool_name == "glob_search":
             base = _Path(args.get("path") or "/data/repos")
             if not _is_safe_path(str(base)):
                 return {"error": "Path outside allowed directories"}
             loop = asyncio.get_running_loop()
-            matches = await loop.run_in_executor(None, lambda: [str(m) for m in base.glob(args["pattern"])][:100])
+            matches = await loop.run_in_executor(
+                None, lambda: [str(m) for m in base.glob(args["pattern"])][:100]
+            )
             return matches
         elif tool_name == "graph_query":
             return await self.rag.graph.search_graph(
-                args["query"], limit=args.get("limit", 10),
+                args["query"],
+                limit=args.get("limit", 10),
             )
         elif tool_name == "trace_issue":
             from app.services.agent.blame_tracer import blame_tracer
+
             result = await blame_tracer.trace(
-                args["repo_id"], "", args["entity_name"],
-                args.get("file_path", ""), "",
+                args["repo_id"],
+                "",
+                args["entity_name"],
+                args.get("file_path", ""),
+                "",
             )
             return result
         elif tool_name == "list_prs":
             from app.config import settings as _s
+
             token = _s.github_client_secret or _s.github_webhook_secret
             if not token:
                 try:
                     from sqlalchemy import select as _sel
+
                     from app.models.app_config import AppConfig
-                    result = await ctx.db.execute(_sel(AppConfig).where(AppConfig.key == "github_token"))
+
+                    result = await ctx.db.execute(
+                        _sel(AppConfig).where(AppConfig.key == "github_token")
+                    )
                     row = result.scalar_one_or_none()
                     if row and row.value:
                         import json as _json
-                        token_data = _json.loads(row.value) if isinstance(row.value, str) else row.value
+
+                        token_data = (
+                            _json.loads(row.value) if isinstance(row.value, str) else row.value
+                        )
                         token = token_data.get("token", "")
                 except Exception:
                     pass
             if not token:
                 return {"error": "GitHub token not found. Set it in Settings."}
 
-            from app.models.repo import Repo
             from sqlalchemy import select as _sel2
+
+            from app.models.repo import Repo
+
             repo_name = args.get("repo_name", "")
             state = args.get("state", "open")
             limit = args.get("limit", 10)
@@ -1051,6 +1232,7 @@ class AgentRuntime:
                 repos_to_check = []
 
             from app.services.integrations.github import GitHubProvider
+
             provider = GitHubProvider(token=token)
             all_prs = []
             try:
@@ -1064,8 +1246,15 @@ class AgentRuntime:
                     try:
                         prs = await provider.list_prs(full_name, state)
                         for p in prs[:3]:
-                            all_prs.append({"repo": repo.local_name, "github": full_name,
-                                "number": p.number, "title": p.title, "url": p.url})
+                            all_prs.append(
+                                {
+                                    "repo": repo.local_name,
+                                    "github": full_name,
+                                    "number": p.number,
+                                    "title": p.title,
+                                    "url": p.url,
+                                }
+                            )
                     except Exception:
                         pass
                 return {"count": len(all_prs), "prs": all_prs[:limit]}
@@ -1075,13 +1264,19 @@ class AgentRuntime:
                 await provider.close()
         elif tool_name == "run_command":
             import subprocess
+
             loop = asyncio.get_running_loop()
             timeout = args.get("timeout", 120)
+
             def _run():
                 try:
                     result = subprocess.run(
-                        args["command"], shell=True, capture_output=True, text=True,
-                        timeout=timeout, cwd=args.get("cwd") or "/data/repos",
+                        args["command"],
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                        cwd=args.get("cwd") or "/data/repos",
                         env=_scrubbed_env(),
                     )
                     return {
@@ -1091,6 +1286,7 @@ class AgentRuntime:
                     }
                 except subprocess.TimeoutExpired:
                     return {"error": f"Command timed out after {timeout}s", "exit_code": -1}
+
             return await loop.run_in_executor(None, _run)
         return {"error": f"Tool {tool_name} not implemented"}
 

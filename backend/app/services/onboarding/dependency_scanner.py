@@ -68,7 +68,7 @@ class DependencyScanner:
 
     def _parse_requirements(self, path: Path) -> list[dict]:
         deps = []
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and not line.startswith("-"):
@@ -79,18 +79,22 @@ class DependencyScanner:
         return deps
 
     def _parse_package_json(self, path: Path) -> dict:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         deps = {}
         for section in ["dependencies", "devDependencies"]:
             for name, version in (data.get(section) or {}).items():
-                deps[name] = {"version": version, "type": "npm", "dev": section == "devDependencies"}
+                deps[name] = {
+                    "version": version,
+                    "type": "npm",
+                    "dev": section == "devDependencies",
+                }
         return deps
 
     def _parse_go_mod(self, path: Path) -> list[dict]:
         deps = []
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             in_require = False
             for line in f:
                 line = line.strip()
@@ -106,7 +110,7 @@ class DependencyScanner:
 
     def _parse_cargo_toml(self, path: Path) -> list[dict]:
         deps = []
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             in_deps = False
             for line in f:
                 line = line.strip()
@@ -123,11 +127,11 @@ class DependencyScanner:
 
     def _parse_pom_xml(self, path: Path) -> list[dict]:
         deps = []
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
             group_matches = re.findall(r"<groupId>([^<]+)</groupId>", content)
             artifact_matches = re.findall(r"<artifactId>([^<]+)</artifactId>", content)
             version_matches = re.findall(r"<version>([^<]+)</version>", content)
-            for g, a, v in zip(group_matches, artifact_matches, version_matches):
+            for g, a, v in zip(group_matches, artifact_matches, version_matches, strict=False):
                 deps.append({"name": f"{g}:{a}", "version": v, "type": "maven"})
         return deps[:50]  # limit

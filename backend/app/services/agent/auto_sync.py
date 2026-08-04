@@ -1,6 +1,6 @@
 import asyncio
-import json
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 class AutoSyncEngine:
     _instance: Optional["AutoSyncEngine"] = None
-    _task: Optional[asyncio.Task] = None
+    _task: asyncio.Task | None = None
 
     def __init__(self):
         self._running = False
@@ -45,15 +45,16 @@ class AutoSyncEngine:
             await asyncio.sleep(interval_minutes * 60)
 
     async def _poll_all_repos(self):
-        from sqlalchemy import create_engine, select as _select
+        from sqlalchemy import create_engine
+        from sqlalchemy import select as _select
+
         from app.config import settings as _s
         from app.models.repo import Repo
-        from app.services.knowledge.repo_manifest import RepoManifest
-        from app.services.knowledge.incremental_graph import IncrementalGraphUpdater
 
         engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
         try:
             from sqlalchemy.orm import Session
+
             with Session(engine) as db:
                 repos = db.execute(_select(Repo).where(Repo.is_active == True)).scalars().all()
         finally:
@@ -68,18 +69,23 @@ class AutoSyncEngine:
     async def _sync_repo(self, repo) -> dict:
         import asyncio
         from pathlib import Path
-        from app.services.knowledge.repo_manifest import RepoManifest
+
         from app.services.knowledge.incremental_graph import IncrementalGraphUpdater
 
         # Pull requests live in the GitHub API, not the cloned git repo, so they
         # are synced independently of (and before) the clone-dependent graph sync.
         try:
             from app.services.integrations.pr_sync import sync_repo_prs_by_id
+
             pr_result = await asyncio.to_thread(sync_repo_prs_by_id, str(repo.id))
             if pr_result.get("added") or pr_result.get("closed"):
-                logger.info("auto_sync_prs_updated", repo=repo.local_name,
-                            added=pr_result.get("added", 0), closed=pr_result.get("closed", 0),
-                            open=pr_result.get("open", 0))
+                logger.info(
+                    "auto_sync_prs_updated",
+                    repo=repo.local_name,
+                    added=pr_result.get("added", 0),
+                    closed=pr_result.get("closed", 0),
+                    open=pr_result.get("open", 0),
+                )
         except Exception as e:
             logger.warning("auto_sync_pr_failed", repo=repo.local_name, error=str(e)[:120])
 
@@ -93,15 +99,15 @@ class AutoSyncEngine:
         # mirrors the pull in handle_webhook_push, off the same git helper.
         try:
             import pygit2
+
             from app.utils.git import clone_or_pull
+
             # Prefer the branch the clone is actually on. The stored default_branch
             # can be wrong (e.g. recorded as "main" for a repo that uses "master"),
             # which would silently pull a nonexistent branch and sync nothing.
             branch = getattr(repo, "default_branch", "main") or "main"
-            try:
+            with contextlib.suppress(Exception):
                 branch = pygit2.Repository(clone_path).head.shorthand or branch
-            except Exception:
-                pass
             await asyncio.to_thread(clone_or_pull, repo.github_url or "", clone_path, branch)
         except Exception as e:
             logger.warning("auto_sync_pull_failed", repo=repo.local_name, error=str(e)[:120])
@@ -119,23 +125,28 @@ class AutoSyncEngine:
             )
             await self._notify_changes(repo.local_name, result)
 
-        self._last_poll[repo.local_name] = datetime.now(timezone.utc)
+        self._last_poll[repo.local_name] = datetime.now(UTC)
         return result
 
     async def handle_webhook_push(self, repo_name: str) -> dict:
-        from sqlalchemy import create_engine, select as _select
+        from sqlalchemy import create_engine
+        from sqlalchemy import select as _select
+
         from app.config import settings as _s
         from app.models.repo import Repo
-        from app.utils.git import clone_or_pull, read_file_from_bare
+        from app.utils.git import clone_or_pull
 
         engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
         try:
             from sqlalchemy.orm import Session
+
             with Session(engine) as db:
-                repo = db.execute(_select(Repo).where(Repo.local_name == repo_name)).scalar_one_or_none()
+                repo = db.execute(
+                    _select(Repo).where(Repo.local_name == repo_name)
+                ).scalar_one_or_none()
                 if not repo:
                     return {"status": "unknown_repo"}
-                repo_id = str(repo.id)
+                str(repo.id)
                 github_url = repo.github_url or ""
         finally:
             engine.dispose()
@@ -166,25 +177,33 @@ class AutoSyncEngine:
             memory_manager.remember(
                 f"new_files_{repo_name}",
                 f"New files added to {repo_name}: {', '.join(added[:10])}",
-                "feedback", importance=0.7,
+                "feedback",
+                importance=0.7,
             )
         if changed:
             memory_manager.remember(
                 f"changed_files_{repo_name}",
                 f"Files modified in {repo_name}: {', '.join(changed[:10])}",
-                "feedback", importance=0.8,
+                "feedback",
+                importance=0.8,
             )
         if removed:
             memory_manager.remember(
                 f"removed_files_{repo_name}",
                 f"Files removed from {repo_name}: {', '.join(removed[:10])}",
-                "feedback", importance=0.6,
+                "feedback",
+                importance=0.6,
             )
 
         total = len(added) + len(changed) + len(removed)
         if total > 0:
-            logger.info("auto_sync_changes_recorded", repo=repo_name,
-                        added=len(added), changed=len(changed), removed=len(removed))
+            logger.info(
+                "auto_sync_changes_recorded",
+                repo=repo_name,
+                added=len(added),
+                changed=len(changed),
+                removed=len(removed),
+            )
 
 
 auto_sync = AutoSyncEngine.get()

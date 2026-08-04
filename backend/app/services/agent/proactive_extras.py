@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from structlog import get_logger
 
@@ -9,16 +9,15 @@ logger = get_logger(__name__)
 
 class SprintRetrospectiveAssistant:
     async def generate_retrospective(
-        self, sprint_name: str, completed: list[dict], planned: list[dict],
+        self,
+        sprint_name: str,
+        completed: list[dict],
+        planned: list[dict],
     ) -> str:
         completed_text = "\n".join(
-            f"- [{i.get('status', '?')}] {i.get('title', '')}"
-            for i in completed[:50]
+            f"- [{i.get('status', '?')}] {i.get('title', '')}" for i in completed[:50]
         )
-        planned_text = "\n".join(
-            f"- {i.get('title', '')}"
-            for i in planned[:10]
-        )
+        planned_text = "\n".join(f"- {i.get('title', '')}" for i in planned[:10])
 
         prompt = f"""Generate a sprint retrospective summary.
 
@@ -48,13 +47,13 @@ class GitHygieneAutomation:
     MERGED_BRANCH_PATTERNS = ["teammatex/", "feature/", "fix/", "hotfix/"]
 
     async def analyze(self, repo_path: str) -> dict:
+
         import pygit2
-        from datetime import timezone as tz
 
         repo = pygit2.Repository(repo_path)
         stale_branches: list[dict] = []
         merged_branches: list[str] = []
-        now = datetime.now(tz.utc)
+        now = datetime.now(UTC)
 
         for ref in repo.listall_references():
             if not ref.startswith("refs/heads/"):
@@ -70,14 +69,16 @@ class GitHygieneAutomation:
                 continue
 
             if hasattr(commit, "commit_time"):
-                branch_date = datetime.fromtimestamp(commit.commit_time, tz=tz.utc)
+                branch_date = datetime.fromtimestamp(commit.commit_time, tz=UTC)
                 days_old = (now - branch_date).days
                 if days_old > self.STALE_BRANCH_DAYS:
-                    stale_branches.append({
-                        "branch": branch_name,
-                        "days_old": days_old,
-                        "last_commit": branch_date.isoformat(),
-                    })
+                    stale_branches.append(
+                        {
+                            "branch": branch_name,
+                            "days_old": days_old,
+                            "last_commit": branch_date.isoformat(),
+                        }
+                    )
 
             for pattern in self.MERGED_BRANCH_PATTERNS:
                 if branch_name.startswith(pattern):

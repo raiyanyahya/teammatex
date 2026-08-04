@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
 
 
 @dataclass
@@ -80,7 +79,12 @@ class SCMProvider(ABC):
 
     @abstractmethod
     async def create_or_update_file(
-        self, repo: str, path: str, content: str, message: str, branch: str,
+        self,
+        repo: str,
+        path: str,
+        content: str,
+        message: str,
+        branch: str,
     ) -> dict: ...
 
     @abstractmethod
@@ -109,7 +113,9 @@ class ProjectMgmtProvider(ABC):
     async def list_boards(self, project_key: str) -> list[BoardInfo]: ...
 
     @abstractmethod
-    async def list_issues(self, project_key: str, sprint_id: str | None = None) -> list[IssueInfo]: ...
+    async def list_issues(
+        self, project_key: str, sprint_id: str | None = None
+    ) -> list[IssueInfo]: ...
 
     @abstractmethod
     async def get_issue(self, key: str) -> IssueInfo | None: ...
@@ -151,7 +157,9 @@ class ChatProvider(ABC):
     async def post_pr_summary(self, channel: str, pr: dict) -> str:
         raise NotImplementedError
 
-    async def post_notification(self, channel: str, title: str, message: str, level: str = "info") -> str:
+    async def post_notification(
+        self, channel: str, title: str, message: str, level: str = "info"
+    ) -> str:
         raise NotImplementedError
 
 
@@ -165,6 +173,7 @@ class IntegrationRegistry:
         if not provider or not hasattr(provider, "close"):
             return
         import asyncio as _aio
+
         try:
             loop = _aio.get_running_loop()
             loop.create_task(provider.close())

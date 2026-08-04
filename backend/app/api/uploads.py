@@ -6,6 +6,7 @@ the metadata row is scoped to the uploader's JWT ``sub``. Downloads are
 owner-only and always served as attachments so an uploaded HTML/SVG can't run
 as stored XSS.
 """
+
 import os
 import uuid as _uuid
 from pathlib import Path
@@ -48,9 +49,9 @@ async def _owned(upload_id: str, owner: str, db: AsyncSession) -> Upload:
         _uuid.UUID(upload_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Not found")
-    up = (await db.execute(
-        select(Upload).where(Upload.id == upload_id, Upload.owner_id == owner)
-    )).scalar_one_or_none()
+    up = (
+        await db.execute(select(Upload).where(Upload.id == upload_id, Upload.owner_id == owner))
+    ).scalar_one_or_none()
     if up is None:
         raise HTTPException(status_code=404, detail="Not found")
     return up
@@ -58,9 +59,17 @@ async def _owned(upload_id: str, owner: str, db: AsyncSession) -> Upload:
 
 @router.get("")
 async def list_uploads(user: dict = Depends(require_user), db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(
-        select(Upload).where(Upload.owner_id == _owner(user)).order_by(Upload.created_at.desc())
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(Upload)
+                .where(Upload.owner_id == _owner(user))
+                .order_by(Upload.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [_serialize(u) for u in rows]
 
 
@@ -80,7 +89,10 @@ async def upload_file(
             break
         data.extend(chunk)
         if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit")
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+            )
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
 

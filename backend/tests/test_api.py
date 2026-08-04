@@ -38,42 +38,56 @@ class TestAgentEndpoints:
         assert len(data["tools"]) >= 20
 
     async def test_validate_code_pass(self, api_client):
-        response = await api_client.post("/api/agent/validate", json={
-            "code": "def hello(): return 'world'",
-            "file_path": "test.py",
-        })
+        response = await api_client.post(
+            "/api/agent/validate",
+            json={
+                "code": "def hello(): return 'world'",
+                "file_path": "test.py",
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["passed"] is True
 
     async def test_validate_code_fail(self, api_client):
-        response = await api_client.post("/api/agent/validate", json={
-            "code": 'API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"',
-            "file_path": "secrets.py",
-        })
+        response = await api_client.post(
+            "/api/agent/validate",
+            json={
+                "code": 'API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"',
+                "file_path": "secrets.py",
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["passed"] is False
 
     async def test_plan_endpoint_accepts_request(self, api_client):
-        response = await api_client.post("/api/agent/plan", json={
-            "task": "Add rate limiting to login endpoint",
-            "repo_id": None,
-        })
+        response = await api_client.post(
+            "/api/agent/plan",
+            json={
+                "task": "Add rate limiting to login endpoint",
+                "repo_id": None,
+            },
+        )
         assert response.status_code in (200, 500)
         assert "plan" in response.json()
 
     async def test_tool_execute_returns_error_for_bad_tool(self, api_client):
-        response = await api_client.post("/api/agent/tool", json={
-            "tool_name": "nonexistent_tool",
-            "arguments": {},
-        })
+        response = await api_client.post(
+            "/api/agent/tool",
+            json={
+                "tool_name": "nonexistent_tool",
+                "arguments": {},
+            },
+        )
         assert response.status_code == 400
 
 
 class TestKnowledgeEndpoints:
     async def test_get_architecture_no_repo(self, api_client):
-        response = await api_client.get("/api/knowledge/graph/architecture", params={"repo_id": "nonexistent"})
+        response = await api_client.get(
+            "/api/knowledge/graph/architecture", params={"repo_id": "nonexistent"}
+        )
         assert response.status_code == 200
 
     async def test_graph_search(self, api_client):
@@ -82,16 +96,21 @@ class TestKnowledgeEndpoints:
         assert "results" in response.json()
 
     async def test_create_note(self, api_client):
-        response = await api_client.post("/api/knowledge/notes", json={
-            "title": "Test Note",
-            "content": "Test content for validation",
-        })
+        response = await api_client.post(
+            "/api/knowledge/notes",
+            json={
+                "title": "Test Note",
+                "content": "Test content for validation",
+            },
+        )
         assert response.status_code == 201
         data = response.json()
         assert data["title"] == "Test Note"
 
     async def test_list_notes(self, api_client):
-        await api_client.post("/api/knowledge/notes", json={"title": "List test", "content": "Content"})
+        await api_client.post(
+            "/api/knowledge/notes", json={"title": "List test", "content": "Content"}
+        )
         response = await api_client.get("/api/knowledge/notes")
         assert response.status_code == 200
         assert "notes" in response.json()
@@ -108,6 +127,7 @@ class TestKnowledgeEndpoints:
         from /api/repos. Each row must carry the four computed integers so the
         card renders real numbers instead of falling back to mocked content."""
         from app.models.repo import Repo
+
         api_db.add(Repo(github_url="https://x/y", local_name="health-test"))
         await api_db.flush()
 
@@ -146,7 +166,10 @@ class TestKnowledgeEndpoints:
         for key in ("files", "modules", "functions", "classes", "concepts"):
             assert key in data
             assert isinstance(data[key], int)
-        assert data["concepts"] == data["files"] + data["modules"] + data["functions"] + data["classes"]
+        assert (
+            data["concepts"]
+            == data["files"] + data["modules"] + data["functions"] + data["classes"]
+        )
 
 
 class TestKnowledgeGraphContributors:
@@ -220,8 +243,9 @@ class TestKnowledgeGraphContributors:
             assert set(row["languages"]) == {"python"}
         finally:
             await g.run("MATCH (n) WHERE n.repo_id = $rid DETACH DELETE n", rid=repo_id)
-            await g.run("MATCH (c:Contributor) WHERE c.email IN $es DETACH DELETE c",
-                        es=[email_a, email_b])
+            await g.run(
+                "MATCH (c:Contributor) WHERE c.email IN $es DETACH DELETE c", es=[email_a, email_b]
+            )
 
     async def test_ensure_schema_dedupes_nodes_and_adds_constraint(self):
         """ensure_schema heals the concurrent-MERGE bug: it physically merges
@@ -246,38 +270,52 @@ class TestKnowledgeGraphContributors:
             y_fid = node_id(repo_id, "File", "y.py")
 
             # Two nodes with the SAME id (the bug), each owning a different file.
-            await g.run("CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
-                        id=same_id, e=email)
-            await g.run("CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
-                        id=same_id, e=email)
+            await g.run(
+                "CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
+                id=same_id,
+                e=email,
+            )
+            await g.run(
+                "CREATE (c:Contributor {id: $id, email: $e, name: 'Schema Dup'})",
+                id=same_id,
+                e=email,
+            )
             # Each node owns one file, with an ownership weight that must survive
             # the merge (find_owner ranks reviewers by it).
-            await g.run("MATCH (c:Contributor {id: $id}) WITH c LIMIT 1 "
-                        "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
-                        id=same_id, f=x_fid)
-            await g.run("MATCH (c:Contributor {id: $id}) WITH c SKIP 1 LIMIT 1 "
-                        "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
-                        id=same_id, f=y_fid)
+            await g.run(
+                "MATCH (c:Contributor {id: $id}) WITH c LIMIT 1 "
+                "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
+                id=same_id,
+                f=x_fid,
+            )
+            await g.run(
+                "MATCH (c:Contributor {id: $id}) WITH c SKIP 1 LIMIT 1 "
+                "MATCH (f:File {id: $f}) MERGE (c)-[o:OWNS]->(f) SET o.weight = 5",
+                id=same_id,
+                f=y_fid,
+            )
 
-            before = (await g.run(
-                "MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id))[0]["n"]
+            before = (
+                await g.run("MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id)
+            )[0]["n"]
             assert before == 2
 
             await g.ensure_schema()
 
-            after = await g.run(
-                "MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id)
+            after = await g.run("MATCH (c:Contributor {id: $id}) RETURN count(c) AS n", id=same_id)
             assert after[0]["n"] == 1, "duplicate id nodes should be merged into one"
 
             # The survivor keeps BOTH owned files (edges re-pointed, not lost)…
             owned = await g.run(
                 "MATCH (c:Contributor {id: $id})-[:OWNS]->(f:File) "
-                "RETURN count(DISTINCT f) AS n", id=same_id)
+                "RETURN count(DISTINCT f) AS n",
+                id=same_id,
+            )
             assert owned[0]["n"] == 2
             # …and the moved edge's ownership weight is carried over, not reset.
             weights = await g.run(
-                "MATCH (c:Contributor {id: $id})-[o:OWNS]->(:File) RETURN o.weight AS w",
-                id=same_id)
+                "MATCH (c:Contributor {id: $id})-[o:OWNS]->(:File) RETURN o.weight AS w", id=same_id
+            )
             assert all(row["w"] == 5 for row in weights), weights
 
             constraints = await g.run("SHOW CONSTRAINTS YIELD name RETURN collect(name) AS names")
@@ -309,10 +347,15 @@ class TestTasksEndpoints:
         assert body["id"]
 
     async def test_create_task_persists_fields(self, api_client):
-        r = await api_client.post("/api/tasks", json={
-            "title": "Add rate limiting", "priority": "high",
-            "assignee": "yuji", "status": "doing",
-        })
+        r = await api_client.post(
+            "/api/tasks",
+            json={
+                "title": "Add rate limiting",
+                "priority": "high",
+                "assignee": "yuji",
+                "status": "doing",
+            },
+        )
         assert r.status_code == 201
         body = r.json()
         assert body["priority"] == "high"
@@ -335,8 +378,9 @@ class TestTasksEndpoints:
         assert moved["status"] == "done"
 
     async def test_update_unknown_task_returns_404(self, api_client):
-        r = await api_client.patch("/api/tasks/00000000-0000-0000-0000-000000000000",
-                                   json={"status": "done"})
+        r = await api_client.patch(
+            "/api/tasks/00000000-0000-0000-0000-000000000000", json={"status": "done"}
+        )
         assert r.status_code == 404
 
     async def test_delete_task(self, api_client):
@@ -375,10 +419,26 @@ class TestCostsPrecision:
     async def test_summary_preserves_sub_cent_costs(self, api_client, api_db):
         from app.models.audit import CostLog
 
-        api_db.add(CostLog(provider="deepseek", model="deepseek-v4-flash",
-                           call_type="chat", tokens_in=1000, tokens_out=100, cost_cents=0.028))
-        api_db.add(CostLog(provider="deepseek", model="deepseek-v4-flash",
-                           call_type="chat", tokens_in=2000, tokens_out=200, cost_cents=0.05))
+        api_db.add(
+            CostLog(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                call_type="chat",
+                tokens_in=1000,
+                tokens_out=100,
+                cost_cents=0.028,
+            )
+        )
+        api_db.add(
+            CostLog(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                call_type="chat",
+                tokens_in=2000,
+                tokens_out=200,
+                cost_cents=0.05,
+            )
+        )
         await api_db.flush()
 
         r = await api_client.get("/api/knowledge/costs/summary")
@@ -440,6 +500,7 @@ class TestApiAuthGate:
 
     async def test_cookie_authenticates(self, anon_client):
         from app.utils.auth import create_token
+
         token = create_token("u", "u@example.com")
         r = await anon_client.get("/api/tasks", cookies={"tmx_token": token})
         assert r.status_code == 200
@@ -456,12 +517,16 @@ class TestApiAuthGate:
         from app.models.user import User
         from app.utils.auth import hash_password
 
-        api_db.add(User(email="gate@example.com", name="Gate",
-                        hashed_password=hash_password("password123")))
+        api_db.add(
+            User(
+                email="gate@example.com", name="Gate", hashed_password=hash_password("password123")
+            )
+        )
         await api_db.flush()
 
-        r = await anon_client.post("/api/auth/login",
-                                   json={"email": "gate@example.com", "password": "password123"})
+        r = await anon_client.post(
+            "/api/auth/login", json={"email": "gate@example.com", "password": "password123"}
+        )
         assert r.status_code == 200
         set_cookie = r.headers.get("set-cookie", "")
         assert "tmx_token=" in set_cookie
@@ -474,7 +539,7 @@ class TestApiAuthGate:
         # Deleting a cookie = re-set it empty/expired.
         set_cookie = r.headers.get("set-cookie", "")
         assert "tmx_token=" in set_cookie
-        assert ('Max-Age=0' in set_cookie) or ('expires=' in set_cookie.lower())
+        assert ("Max-Age=0" in set_cookie) or ("expires=" in set_cookie.lower())
 
 
 class TestConfigEndpoints:
@@ -485,15 +550,22 @@ class TestConfigEndpoints:
     async def test_get_config_by_key_masks_api_key(self, api_client, api_db):
         from app.models.app_config import AppConfig
 
-        api_db.add(AppConfig(key="llm_config", value={
-            "provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-supersecret123",
-        }))
+        api_db.add(
+            AppConfig(
+                key="llm_config",
+                value={
+                    "provider": "deepseek",
+                    "model": "deepseek-chat",
+                    "api_key": "sk-supersecret123",
+                },
+            )
+        )
         await api_db.flush()
 
         r = await api_client.get("/api/config/llm_config")
         assert r.status_code == 200
         value = r.json()["value"]
-        assert value["provider"] == "deepseek"      # non-secret preserved
+        assert value["provider"] == "deepseek"  # non-secret preserved
         assert value["model"] == "deepseek-chat"
         assert value["api_key"] != "sk-supersecret123"
         assert "supersecret" not in str(value)
@@ -501,7 +573,9 @@ class TestConfigEndpoints:
     async def test_get_all_config_masks_secrets(self, api_client, api_db):
         from app.models.app_config import AppConfig
 
-        api_db.add(AppConfig(key="llm_config", value={"provider": "deepseek", "api_key": "sk-leakme"}))
+        api_db.add(
+            AppConfig(key="llm_config", value={"provider": "deepseek", "api_key": "sk-leakme"})
+        )
         api_db.add(AppConfig(key="github_token", value={"token": "ghp_leakme"}))
         await api_db.flush()
 
@@ -516,29 +590,54 @@ class TestConfigEndpoints:
         left the key field untouched) must not clobber the real stored secret.
         Writing config is admin-only, so this runs as admin."""
         from sqlalchemy import select
+
         from app.models.app_config import AppConfig
 
-        api_db.add(AppConfig(key="llm_config", value={
-            "provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-original",
-        }))
+        api_db.add(
+            AppConfig(
+                key="llm_config",
+                value={
+                    "provider": "deepseek",
+                    "model": "deepseek-chat",
+                    "api_key": "sk-original",
+                },
+            )
+        )
         await api_db.flush()
 
-        r = await admin_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
-            "provider": "deepseek", "model": "deepseek-reasoner", "api_key": "********",
-        }})
+        r = await admin_client.put(
+            "/api/config/llm_config",
+            json={
+                "key": "llm_config",
+                "value": {
+                    "provider": "deepseek",
+                    "model": "deepseek-reasoner",
+                    "api_key": "********",
+                },
+            },
+        )
         assert r.status_code == 200
 
-        row = (await api_db.execute(select(AppConfig).where(AppConfig.key == "llm_config"))).scalar_one()
-        assert row.value["api_key"] == "sk-original"        # real key preserved
-        assert row.value["model"] == "deepseek-reasoner"     # non-secret change applied
+        row = (
+            await api_db.execute(select(AppConfig).where(AppConfig.key == "llm_config"))
+        ).scalar_one()
+        assert row.value["api_key"] == "sk-original"  # real key preserved
+        assert row.value["model"] == "deepseek-reasoner"  # non-secret change applied
 
     async def test_write_config_rejects_non_admin(self, api_client):
         """A non-admin can read masked config but must not write or delete it —
         otherwise any invited user could swap the agent's GitHub push token or
         repoint the LLM at an attacker-controlled endpoint."""
-        r = await api_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
-            "provider": "deepseek", "api_key": "sk-evil",
-        }})
+        r = await api_client.put(
+            "/api/config/llm_config",
+            json={
+                "key": "llm_config",
+                "value": {
+                    "provider": "deepseek",
+                    "api_key": "sk-evil",
+                },
+            },
+        )
         assert r.status_code == 403
         r = await api_client.delete("/api/config/llm_config")
         assert r.status_code == 403
@@ -570,21 +669,21 @@ class TestPersona:
 
     async def test_resolve_persona_unknown_falls_back_to_default(self, api_db):
         from app.models.app_config import AppConfig
-        from app.services.agent.runtime import AgentRuntime
         from app.services.agent.prompts import DEFAULT_PERSONA
+        from app.services.agent.runtime import AgentRuntime
 
         api_db.add(AppConfig(key="persona", value={"persona": "bogus"}))
         await api_db.flush()
         assert await AgentRuntime()._resolve_persona(api_db) == DEFAULT_PERSONA
 
     async def test_resolve_persona_no_config_uses_default(self, api_db):
-        from app.services.agent.runtime import AgentRuntime
         from app.services.agent.prompts import DEFAULT_PERSONA
+        from app.services.agent.runtime import AgentRuntime
 
         assert await AgentRuntime()._resolve_persona(api_db) == DEFAULT_PERSONA
 
     async def test_persona_directives_are_distinct(self):
-        from app.services.agent.prompts import persona_directive, DEFAULT_PERSONA
+        from app.services.agent.prompts import DEFAULT_PERSONA, persona_directive
 
         assert persona_directive("reviewer") != persona_directive("pragmatic")
         assert persona_directive("nonsense") == persona_directive(DEFAULT_PERSONA)
@@ -597,25 +696,29 @@ class TestPermissionEnforcement:
 
     async def test_disabled_capability_blocks_tool(self, api_db):
         from app.models.permission import Permission
-        from app.services.agent.runtime import AgentRuntime, AgentContext
+        from app.services.agent.runtime import AgentContext, AgentRuntime
 
         api_db.add(Permission(capability="write_code", enabled=False))
         await api_db.flush()
 
         ctx = AgentContext(repo_id=None, db=api_db)
         result = await AgentRuntime().execute_tool(
-            ctx, "write_file", {"file_path": "/etc/zzz.py", "content": "x"},
+            ctx,
+            "write_file",
+            {"file_path": "/etc/zzz.py", "content": "x"},
         )
         assert "denied" in result.get("error", "").lower()
 
     async def test_absent_permission_allows_tool(self, api_db):
-        from app.services.agent.runtime import AgentRuntime, AgentContext
+        from app.services.agent.runtime import AgentContext, AgentRuntime
 
         ctx = AgentContext(repo_id=None, db=api_db)
         # read_code has no row → allowed → dispatch runs (errors on the missing
         # file, but never with a permission denial).
         result = await AgentRuntime().execute_tool(
-            ctx, "read_file", {"file_path": "/nonexistent/zzz.py"},
+            ctx,
+            "read_file",
+            {"file_path": "/nonexistent/zzz.py"},
         )
         assert "denied" not in str(result).lower()
 
@@ -631,8 +734,10 @@ class TestPermissionsAPI:
     async def test_set_permission_persists(self, admin_client):
         r = await admin_client.put("/api/permissions/write_code", json={"enabled": False})
         assert r.status_code == 200
-        perms = {p["capability"]: p["enabled"]
-                 for p in (await admin_client.get("/api/permissions")).json()["permissions"]}
+        perms = {
+            p["capability"]: p["enabled"]
+            for p in (await admin_client.get("/api/permissions")).json()["permissions"]
+        }
         assert perms["write_code"] is False
 
     async def test_set_unknown_capability_404(self, admin_client):
@@ -655,9 +760,12 @@ class TestRepoEndpoints:
     async def test_add_repo_invalid_url(self, api_client):
         # A bare token with no "/" is treated as an org/user import, which
         # needs a GitHub token — so an unparseable URL is correctly rejected.
-        response = await api_client.post("/api/repos", json={
-            "github_url": "not-a-valid-url",
-        })
+        response = await api_client.post(
+            "/api/repos",
+            json={
+                "github_url": "not-a-valid-url",
+            },
+        )
         assert response.status_code == 400
 
     async def test_get_onboarding_status_nonexistent(self, api_client):
@@ -672,13 +780,20 @@ class TestRepoEndpoints:
 
     async def test_bulk_add_creates_new_and_skips_existing(self, api_client):
         """POST /api/repos/bulk onboards every new url and skips ones already added."""
-        await api_client.post("/api/repos", json={"github_url": "https://github.com/acme/already.git"})
+        await api_client.post(
+            "/api/repos", json={"github_url": "https://github.com/acme/already.git"}
+        )
 
-        response = await api_client.post("/api/repos/bulk", json={"github_urls": [
-            "https://github.com/acme/already.git",     # duplicate -> skipped
-            "https://github.com/acme/fresh-one.git",   # new -> added
-            "https://github.com/acme/fresh-two.git",   # new -> added
-        ]})
+        response = await api_client.post(
+            "/api/repos/bulk",
+            json={
+                "github_urls": [
+                    "https://github.com/acme/already.git",  # duplicate -> skipped
+                    "https://github.com/acme/fresh-one.git",  # new -> added
+                    "https://github.com/acme/fresh-two.git",  # new -> added
+                ]
+            },
+        )
         assert response.status_code in (200, 201)
         data = response.json()
 
@@ -694,7 +809,9 @@ class TestRepoEndpoints:
     async def test_delete_repo_removes_it_and_children(self, api_client, api_db):
         from app.models.pr import PR
 
-        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/me.git"})
+        r = await api_client.post(
+            "/api/repos", json={"github_url": "https://github.com/del/me.git"}
+        )
         rid = r.json()["repo_id"]
         api_db.add(PR(repo_id=rid, branch="b", title="t", status="open"))  # child FK row
         await api_db.flush()
@@ -713,9 +830,12 @@ class TestRepoEndpoints:
         """Deleting a repo also removes its cloned checkout from disk, not just
         its DB rows."""
         from app.services.agent import environment
+
         monkeypatch.setattr(environment, "REPOS_ROOT", str(tmp_path))
 
-        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/checkout.git"})
+        r = await api_client.post(
+            "/api/repos", json={"github_url": "https://github.com/del/checkout.git"}
+        )
         rid = r.json()["repo_id"]
         local_name = r.json()["local_name"]
 
@@ -731,20 +851,26 @@ class TestRepoEndpoints:
         """Deleting a repo purges its pgvector rows (scoped by repo_id)."""
         from sqlalchemy import text
 
-        r = await api_client.post("/api/repos", json={"github_url": "https://github.com/del/emb.git"})
+        r = await api_client.post(
+            "/api/repos", json={"github_url": "https://github.com/del/emb.git"}
+        )
         rid = r.json()["repo_id"]
         await api_db.execute(
-            text("INSERT INTO code_embeddings (id, repo_id, text, file_path, start_line, end_line) "
-                 "VALUES (:id, :rid, 'x', 'src/a.py', 1, 2)"),
+            text(
+                "INSERT INTO code_embeddings (id, repo_id, text, file_path, start_line, end_line) "
+                "VALUES (:id, :rid, 'x', 'src/a.py', 1, 2)"
+            ),
             {"id": "e" * 32, "rid": rid},
         )
         await api_db.flush()
 
         resp = await api_client.delete(f"/api/repos/{rid}")
         assert resp.status_code == 200
-        remaining = (await api_db.execute(
-            text("SELECT count(*) FROM code_embeddings WHERE repo_id = :rid"), {"rid": rid}
-        )).scalar()
+        remaining = (
+            await api_db.execute(
+                text("SELECT count(*) FROM code_embeddings WHERE repo_id = :rid"), {"rid": rid}
+            )
+        ).scalar()
         assert remaining == 0
 
 
@@ -767,11 +893,17 @@ class TestIntegrationEndpoints:
         selector can apply its smart default (uncheck forks/archived)."""
         from app.api.integrations import _map_gh_repo
 
-        mapped = _map_gh_repo({
-            "full_name": "acme/widget", "clone_url": "https://github.com/acme/widget.git",
-            "default_branch": "main", "private": True, "language": "Python",
-            "fork": True, "archived": False,
-        })
+        mapped = _map_gh_repo(
+            {
+                "full_name": "acme/widget",
+                "clone_url": "https://github.com/acme/widget.git",
+                "default_branch": "main",
+                "private": True,
+                "language": "Python",
+                "fork": True,
+                "archived": False,
+            }
+        )
         assert mapped["name"] == "acme/widget"
         assert mapped["url"] == "https://github.com/acme/widget.git"
         assert mapped["fork"] is True
@@ -791,9 +923,14 @@ class TestIntegrationEndpoints:
 
     async def test_configure_integration_rejects_non_admin(self, api_client):
         # Setting integration credentials is a privileged, global mutation.
-        response = await api_client.post("/api/integrations", json={
-            "provider": "github", "credentials": {"token": "ghp_x"}, "enabled": True,
-        })
+        response = await api_client.post(
+            "/api/integrations",
+            json={
+                "provider": "github",
+                "credentials": {"token": "ghp_x"},
+                "enabled": True,
+            },
+        )
         assert response.status_code == 403
 
     async def test_configured_token_is_not_leaked_in_listing(self, admin_client, api_client):
@@ -802,11 +939,14 @@ class TestIntegrationEndpoints:
         from app.services.integrations.base import IntegrationRegistry
 
         try:
-            r = await admin_client.post("/api/integrations", json={
-                "provider": "github",
-                "credentials": {"token": "ghp_supersecretleak", "url": "https://github.com"},
-                "enabled": True,
-            })
+            r = await admin_client.post(
+                "/api/integrations",
+                json={
+                    "provider": "github",
+                    "credentials": {"token": "ghp_supersecretleak", "url": "https://github.com"},
+                    "enabled": True,
+                },
+            )
             assert r.status_code == 201
             listing = await api_client.get("/api/integrations")
             assert listing.status_code == 200
@@ -861,10 +1001,10 @@ class TestFeaturesEndpoints:
     async def test_standup_get_buckets_prs_tasks_and_pending_blockers(self, api_client, api_db):
         """GET /api/features/standup returns recent PRs, active tasks, and only
         the *pending* blockers as structured arrays for the in-app standup page."""
-        from app.models.repo import Repo
-        from app.models.pr import PR
-        from app.models.task import Task
         from app.models.blocked import BlockedTask
+        from app.models.pr import PR
+        from app.models.repo import Repo
+        from app.models.task import Task
 
         repo = Repo(github_url="https://example.com/r.git", local_name="r")
         api_db.add(repo)
@@ -891,18 +1031,24 @@ class TestFeaturesEndpoints:
         assert "Already answered" not in questions
 
     async def test_generate_module_docs(self, api_client):
-        response = await api_client.post("/api/features/docs/module", json={
-            "module_name": "auth",
-            "code_summary": "Handles user authentication",
-            "entities": [],
-        })
+        response = await api_client.post(
+            "/api/features/docs/module",
+            json={
+                "module_name": "auth",
+                "code_summary": "Handles user authentication",
+                "entities": [],
+            },
+        )
         assert response.status_code in (200, 500)
 
     async def test_generate_release_notes(self, api_client):
-        response = await api_client.post("/api/features/release-notes", json={
-            "repo_name": "test-repo",
-            "commits": [{"hash": "abc123", "message": "Add feature X"}],
-        })
+        response = await api_client.post(
+            "/api/features/release-notes",
+            json={
+                "repo_name": "test-repo",
+                "commits": [{"hash": "abc123", "message": "Add feature X"}],
+            },
+        )
         assert response.status_code in (200, 500)
 
 
@@ -912,39 +1058,56 @@ class TestAPIRegistryEndpoints:
         assert response.status_code == 200
 
     async def test_add_entry(self, admin_client):
-        response = await admin_client.post("/api/api-registry", json={
-            "domain": "api.example.com",
-            "description": "Test API",
-            "allowed_methods": ["GET"],
-            "allowed_paths": ["/*"],
-        })
+        response = await admin_client.post(
+            "/api/api-registry",
+            json={
+                "domain": "api.example.com",
+                "description": "Test API",
+                "allowed_methods": ["GET"],
+                "allowed_paths": ["/*"],
+            },
+        )
         assert response.status_code == 201
 
     async def test_add_entry_rejects_non_admin(self, api_client):
         # The registry is the agent's egress allowlist; only admins may edit it.
-        response = await api_client.post("/api/api-registry", json={
-            "domain": "evil.example.com", "allowed_methods": ["GET"], "allowed_paths": ["/*"],
-        })
+        response = await api_client.post(
+            "/api/api-registry",
+            json={
+                "domain": "evil.example.com",
+                "allowed_methods": ["GET"],
+                "allowed_paths": ["/*"],
+            },
+        )
         assert response.status_code == 403
 
     async def test_check_url_not_registered(self, api_client):
-        response = await api_client.post("/api/api-registry/check", json={
-            "url": "https://unknown.example.com/api",
-            "method": "GET",
-        })
+        response = await api_client.post(
+            "/api/api-registry/check",
+            json={
+                "url": "https://unknown.example.com/api",
+                "method": "GET",
+            },
+        )
         assert response.status_code == 200
         assert response.json()["allowed"] is False
 
     async def test_check_url_registered(self, admin_client):
-        await admin_client.post("/api/api-registry", json={
-            "domain": "check.example.com",
-            "allowed_methods": ["GET"],
-            "allowed_paths": ["/*"],
-        })
-        response = await admin_client.post("/api/api-registry/check", json={
-            "url": "https://check.example.com/data",
-            "method": "GET",
-        })
+        await admin_client.post(
+            "/api/api-registry",
+            json={
+                "domain": "check.example.com",
+                "allowed_methods": ["GET"],
+                "allowed_paths": ["/*"],
+            },
+        )
+        response = await admin_client.post(
+            "/api/api-registry/check",
+            json={
+                "url": "https://check.example.com/data",
+                "method": "GET",
+            },
+        )
         assert response.status_code == 200
         assert response.json()["allowed"] is True
 
@@ -958,32 +1121,42 @@ class TestWebhookEndpoints:
     def _sig(secret: str, body: bytes) -> str:
         import hashlib
         import hmac
+
         return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
     async def test_slack_rejected_when_unsigned(self, api_client):
-        response = await api_client.post("/api/webhooks/slack", json={
-            "type": "url_verification",
-            "challenge": "test-challenge-123",
-        })
+        response = await api_client.post(
+            "/api/webhooks/slack",
+            json={
+                "type": "url_verification",
+                "challenge": "test-challenge-123",
+            },
+        )
         assert response.status_code == 401
 
     async def test_slack_url_verification_signed(self, api_client, monkeypatch):
         import hashlib
         import hmac
         import json
-
         import time
 
         from app.config import settings
+
         secret = "slack-signing-secret"
         monkeypatch.setattr(settings, "slack_signing_secret", secret)
         body = json.dumps({"type": "url_verification", "challenge": "test-challenge-123"}).encode()
         # Must be recent: the webhook rejects timestamps outside a 5-minute window
         # (replay protection), so a hardcoded past value would always be stale.
         ts = str(int(time.time()))
-        sig = "v0=" + hmac.new(secret.encode(), f"v0:{ts}:{body.decode()}".encode(), hashlib.sha256).hexdigest()
+        sig = (
+            "v0="
+            + hmac.new(
+                secret.encode(), f"v0:{ts}:{body.decode()}".encode(), hashlib.sha256
+            ).hexdigest()
+        )
         response = await api_client.post(
-            "/api/webhooks/slack", content=body,
+            "/api/webhooks/slack",
+            content=body,
             headers={
                 "Content-Type": "application/json",
                 "X-Slack-Request-Timestamp": ts,
@@ -1005,11 +1178,13 @@ class TestWebhookEndpoints:
         import json
 
         from app.config import settings
+
         secret = "gh-webhook-secret"
         monkeypatch.setattr(settings, "github_webhook_secret", secret)
         body = json.dumps({"action": "opened", "pull_request": {"number": 1}}).encode()
         response = await api_client.post(
-            "/api/webhooks/github", content=body,
+            "/api/webhooks/github",
+            content=body,
             headers={
                 "Content-Type": "application/json",
                 "X-GitHub-Event": "pull_request",
@@ -1019,23 +1194,33 @@ class TestWebhookEndpoints:
         assert response.status_code == 200
 
     async def test_jira_rejected_when_unsigned(self, api_client):
-        response = await api_client.post("/api/webhooks/jira", json={
-            "webhookEvent": "jira:issue_updated",
-        })
+        response = await api_client.post(
+            "/api/webhooks/jira",
+            json={
+                "webhookEvent": "jira:issue_updated",
+            },
+        )
         assert response.status_code == 401
 
     async def test_jira_webhook_signed(self, api_client, monkeypatch):
         import json
 
         from app.config import settings
+
         secret = "jira-token"
         monkeypatch.setattr(settings, "jira_api_token", secret)
-        body = json.dumps({
-            "webhookEvent": "jira:issue_updated",
-            "issue": {"key": "PROJ-1", "fields": {"summary": "Test"}},
-        }).encode()
+        body = json.dumps(
+            {
+                "webhookEvent": "jira:issue_updated",
+                "issue": {"key": "PROJ-1", "fields": {"summary": "Test"}},
+            }
+        ).encode()
         response = await api_client.post(
-            "/api/webhooks/jira", content=body,
-            headers={"Content-Type": "application/json", "X-Hub-Signature": self._sig(secret, body)},
+            "/api/webhooks/jira",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature": self._sig(secret, body),
+            },
         )
         assert response.status_code == 200

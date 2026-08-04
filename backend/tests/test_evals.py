@@ -1,7 +1,8 @@
-import pytest
 from pathlib import Path
 
-from app.evals.engine import score_item, aggregate
+import pytest
+
+from app.evals.engine import aggregate, score_item
 
 
 def test_hit_at_k_and_reciprocal_rank():
@@ -12,8 +13,8 @@ def test_hit_at_k_and_reciprocal_rank():
     assert r["rr"] == 0.5
 
     r1 = score_item(ranked=["a.py", "b.py", "c.py"], expect_files=["b.py"], k=1)
-    assert r1["hit"] is False        # not in top-1
-    assert r1["rank"] == 2           # rank still reported
+    assert r1["hit"] is False  # not in top-1
+    assert r1["rank"] == 2  # rank still reported
     assert r1["rr"] == 0.5
 
 
@@ -38,8 +39,8 @@ def test_aggregate_means():
 
 @pytest.mark.asyncio
 async def test_fixture_retrieval_eval_meets_floor(async_db):
-    from app.evals.fixtures import load_fixture_repo, load_golden
     from app.evals.engine import run_eval
+    from app.evals.fixtures import load_fixture_repo, load_golden
     from app.services.knowledge.embeddings import EmbeddingService
 
     repo_id = "eval-fixture"
@@ -53,7 +54,7 @@ async def test_fixture_retrieval_eval_meets_floor(async_db):
     # Every question should retrieve its file in the top 3 on this tiny, distinct corpus.
     assert report["summary"]["hit_rate"] >= 0.8, report
     q1 = next(i for i in report["items"] if i["id"] == "q1")
-    assert q1["rank"] == 1                       # the Stripe question hits its file first
+    assert q1["rank"] == 1  # the Stripe question hits its file first
 
 
 def test_threshold_exit_code():

@@ -2,25 +2,24 @@ import time
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import require_user
-from app.api.auth_endpoints import router as auth_router
-from app.api.repos import router as repos_router
-from app.api.knowledge import router as knowledge_router
 from app.api.agent import router as agent_router
-from app.api.integrations import router as integrations_router
-from app.api.webhooks import router as webhooks_router
 from app.api.api_registry import router as api_registry_router
-from app.api.plugins import router as plugins_router
-from app.api.features import router as features_router
+from app.api.auth_endpoints import router as auth_router
 from app.api.config_endpoints import router as config_router
+from app.api.conversations import router as conversations_router
+from app.api.deps import require_user
+from app.api.features import router as features_router
+from app.api.integrations import router as integrations_router
+from app.api.knowledge import router as knowledge_router
+from app.api.logs_endpoint import router as logs_router
+from app.api.notepad import router as notepad_router
 from app.api.permissions import router as permissions_router
+from app.api.plugins import router as plugins_router
+from app.api.reporting import router as reports_router
+from app.api.repos import router as repos_router
 from app.api.tasks import router as tasks_router
 from app.api.uploads import router as uploads_router
-from app.api.notepad import router as notepad_router
-from app.api.conversations import router as conversations_router
-
-from app.api.logs_endpoint import router as logs_router
-from app.api.reporting import router as reports_router
+from app.api.webhooks import router as webhooks_router
 
 api_router = APIRouter()
 

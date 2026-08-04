@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import yaml
@@ -32,11 +31,13 @@ class TeammateXDir:
         for md_file in knowledge_dir.glob("*.md"):
             try:
                 content = md_file.read_text(errors="replace")
-                docs.append({
-                    "title": md_file.stem.replace("_", " ").title(),
-                    "content": content,
-                    "source": str(md_file.relative_to(self.root.parent)),
-                })
+                docs.append(
+                    {
+                        "title": md_file.stem.replace("_", " ").title(),
+                        "content": content,
+                        "source": str(md_file.relative_to(self.root.parent)),
+                    }
+                )
             except Exception as e:
                 logger.warning("knowledge_read_error", file=str(md_file), error=str(e))
         return docs

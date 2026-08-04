@@ -7,10 +7,18 @@ from app.services.agent.environment import format_environment_block, reconcile_r
 
 class TestReconcileRepos:
     DB = [
-        {"local_name": "kit-fork", "language": "JavaScript",
-         "default_branch": "master", "github_url": "https://github.com/blockstacks/kit-fork.git"},
-        {"local_name": "blockstacks", "language": None,
-         "default_branch": None, "github_url": "github.com/blockstacks"},
+        {
+            "local_name": "kit-fork",
+            "language": "JavaScript",
+            "default_branch": "master",
+            "github_url": "https://github.com/blockstacks/kit-fork.git",
+        },
+        {
+            "local_name": "blockstacks",
+            "language": None,
+            "default_branch": None,
+            "github_url": "github.com/blockstacks",
+        },
     ]
 
     def test_disk_authoritative_drops_db_only_rows(self):
@@ -36,9 +44,16 @@ class TestReconcileRepos:
 
 class TestFormatEnvironmentBlock:
     def test_lists_repo_name_path_lang_branch(self):
-        repos = [{"name": "kit-fork", "path": "/data/repos/kit-fork",
-                  "language": "JavaScript", "default_branch": "master",
-                  "github_url": "https://github.com/blockstacks/kit-fork.git", "entries": []}]
+        repos = [
+            {
+                "name": "kit-fork",
+                "path": "/data/repos/kit-fork",
+                "language": "JavaScript",
+                "default_branch": "master",
+                "github_url": "https://github.com/blockstacks/kit-fork.git",
+                "entries": [],
+            }
+        ]
         block = format_environment_block(repos)
         assert "kit-fork" in block
         assert "/data/repos/kit-fork" in block
@@ -46,8 +61,16 @@ class TestFormatEnvironmentBlock:
         assert "master" in block
 
     def test_includes_top_level_entries_when_present(self):
-        repos = [{"name": "a", "path": "/data/repos/a", "language": "Python",
-                  "default_branch": "main", "github_url": "", "entries": ["src", "README.md"]}]
+        repos = [
+            {
+                "name": "a",
+                "path": "/data/repos/a",
+                "language": "Python",
+                "default_branch": "main",
+                "github_url": "",
+                "entries": ["src", "README.md"],
+            }
+        ]
         block = format_environment_block(repos)
         assert "src" in block and "README.md" in block
 

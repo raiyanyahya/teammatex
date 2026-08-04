@@ -4,6 +4,7 @@ Repos are created with the model default ("main") before the clone exists; the
 REPO_DISCOVERY stage detects the real branch and must write it back, or auto-sync
 (which pulls default_branch) silently targets a nonexistent branch.
 """
+
 import uuid
 
 from sqlalchemy import create_engine, select
@@ -26,7 +27,9 @@ def test_save_repo_default_branch_updates_row():
     rid = None
     try:
         with Session(eng) as db:
-            repo = Repo(github_url=f"https://github.com/x/{uuid.uuid4().hex}.git", local_name="dbtest")
+            repo = Repo(
+                github_url=f"https://github.com/x/{uuid.uuid4().hex}.git", local_name="dbtest"
+            )
             db.add(repo)
             db.commit()
             rid = repo.id

@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.agent.memory import MemoryManager, MemoryItem
+from app.services.agent.memory import MemoryManager
 
 
 class TestMemoryManager:

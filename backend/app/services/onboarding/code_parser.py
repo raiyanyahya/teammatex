@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from structlog import get_logger
 
@@ -68,8 +67,8 @@ class CodeParser:
                 return None
 
         try:
-            import tree_sitter_python
             import tree_sitter_javascript
+            import tree_sitter_python
 
             try:
                 import tree_sitter_typescript
@@ -125,7 +124,7 @@ class CodeParser:
 
         try:
             if content is None:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                with open(file_path, encoding="utf-8", errors="replace") as f:
                     content = f.read()
         except Exception:
             return None
@@ -158,8 +157,15 @@ class CodeParser:
     # `call_expression`, so Python calls were never detected.)
     _CALL_NODES = ("call", "call_expression", "method_invocation")
 
-    def _walk_tree(self, node, source: str, analysis: FileAnalysis, language: str,
-                   depth: int = 0, enclosing_fn: str | None = None) -> None:
+    def _walk_tree(
+        self,
+        node,
+        source: str,
+        analysis: FileAnalysis,
+        language: str,
+        depth: int = 0,
+        enclosing_fn: str | None = None,
+    ) -> None:
         if depth > 500:
             return
         node_fn = enclosing_fn
@@ -169,7 +175,9 @@ class CodeParser:
             # Attribute calls inside this subtree to this function (the caller).
             node_fn = entity.name
         elif node.type in ("class_definition", "class_declaration"):
-            analysis.entities.append(self._extract_class(node, source, analysis.file_path, language))
+            analysis.entities.append(
+                self._extract_class(node, source, analysis.file_path, language)
+            )
         elif node.type == "import_statement" or node.type == "import_declaration":
             dep = self._extract_import(node, source, analysis.file_path, language)
             if dep:
@@ -227,7 +235,9 @@ class CodeParser:
                     return inner.text.decode()[:500]
         return None
 
-    def _extract_import(self, node, source: str, file_path: str, language: str) -> Dependency | None:
+    def _extract_import(
+        self, node, source: str, file_path: str, language: str
+    ) -> Dependency | None:
         text = source[node.start_byte : node.end_byte]
         target = text.strip()[:200]
         return Dependency(
@@ -236,8 +246,9 @@ class CodeParser:
             kind="imports",
         )
 
-    def _extract_call(self, node, source: str, file_path: str, language: str,
-                      enclosing_fn: str | None = None) -> Dependency | None:
+    def _extract_call(
+        self, node, source: str, file_path: str, language: str, enclosing_fn: str | None = None
+    ) -> Dependency | None:
         # `function` field: Python/JS/TS/Go/Rust; `name` field: Java method_invocation.
         func_node = node.child_by_field_name("function") or node.child_by_field_name("name")
         if func_node:

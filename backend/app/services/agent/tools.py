@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from structlog import get_logger
 
@@ -33,432 +33,611 @@ class ToolRegistry:
         self._register_agent_tools()
 
     def _register_file_tools(self):
-        self.register(ToolDefinition(
-            name="read_file",
-            description="Read the contents of a file. Returns the file content with line numbers.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "Path to the file to read"},
-                    "start_line": {"type": "integer", "description": "Optional start line (1-indexed)"},
-                    "end_line": {"type": "integer", "description": "Optional end line (1-indexed)"},
+        self.register(
+            ToolDefinition(
+                name="read_file",
+                description="Read the contents of a file. Returns the file content with line numbers.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string", "description": "Path to the file to read"},
+                        "start_line": {
+                            "type": "integer",
+                            "description": "Optional start line (1-indexed)",
+                        },
+                        "end_line": {
+                            "type": "integer",
+                            "description": "Optional end line (1-indexed)",
+                        },
+                    },
+                    "required": ["file_path"],
                 },
-                "required": ["file_path"],
-            },
-            category="file",
-        ))
+                category="file",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="write_file",
-            description="Write content to a file. Creates the file if it doesn't exist.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "Path to the file to write"},
-                    "content": {"type": "string", "description": "Content to write to the file"},
+        self.register(
+            ToolDefinition(
+                name="write_file",
+                description="Write content to a file. Creates the file if it doesn't exist.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string", "description": "Path to the file to write"},
+                        "content": {
+                            "type": "string",
+                            "description": "Content to write to the file",
+                        },
+                    },
+                    "required": ["file_path", "content"],
                 },
-                "required": ["file_path", "content"],
-            },
-            requires_confirmation=True,
-            category="file",
-        ))
+                requires_confirmation=True,
+                category="file",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="edit_file",
-            description="Make a precise string replacement in an existing file.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "Path to the file to edit"},
-                    "old_string": {"type": "string", "description": "Exact text to replace"},
-                    "new_string": {"type": "string", "description": "Text to replace it with"},
+        self.register(
+            ToolDefinition(
+                name="edit_file",
+                description="Make a precise string replacement in an existing file.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string", "description": "Path to the file to edit"},
+                        "old_string": {"type": "string", "description": "Exact text to replace"},
+                        "new_string": {"type": "string", "description": "Text to replace it with"},
+                    },
+                    "required": ["file_path", "old_string", "new_string"],
                 },
-                "required": ["file_path", "old_string", "new_string"],
-            },
-            requires_confirmation=True,
-            category="file",
-        ))
+                requires_confirmation=True,
+                category="file",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="list_directory",
-            description="List files and directories in a given path. Use --limit to bound results. Use --kind to filter by file extension.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Directory path to list"},
-                    "limit": {"type": "integer", "description": "Max entries to return (default: 50)", "default": 50},
-                    "kind": {"type": "string", "description": "Filter by extension (e.g., '.py', '.ts') or type ('file', 'directory')"},
+        self.register(
+            ToolDefinition(
+                name="list_directory",
+                description="List files and directories in a given path. Use --limit to bound results. Use --kind to filter by file extension.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Directory path to list"},
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return (default: 50)",
+                            "default": 50,
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description": "Filter by extension (e.g., '.py', '.ts') or type ('file', 'directory')",
+                        },
+                    },
+                    "required": ["path"],
                 },
-                "required": ["path"],
-            },
-            category="file",
-        ))
+                category="file",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="glob_search",
-            description="Search for files matching a glob pattern. Use --limit to bound results.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string", "description": "Glob pattern (e.g., '**/*.py')"},
-                    "path": {"type": "string", "description": "Base directory to search from"},
-                    "limit": {"type": "integer", "description": "Max results (default: 100)", "default": 100},
+        self.register(
+            ToolDefinition(
+                name="glob_search",
+                description="Search for files matching a glob pattern. Use --limit to bound results.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern (e.g., '**/*.py')",
+                        },
+                        "path": {"type": "string", "description": "Base directory to search from"},
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default: 100)",
+                            "default": 100,
+                        },
+                    },
+                    "required": ["pattern"],
                 },
-                "required": ["pattern"],
-            },
-            category="file",
-        ))
+                category="file",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="grep_search",
-            description="Search file contents for a regex pattern. Use --limit to bound results, --path to scope, --kind to filter by file type.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string", "description": "Regex pattern to search for"},
-                    "path": {"type": "string", "description": "Directory to limit search scope"},
-                    "include": {"type": "string", "description": "File pattern filter (e.g., '*.py', '*.ts')"},
-                    "limit": {"type": "integer", "description": "Max matches to return (default: 50)", "default": 50},
-                    "kind": {"type": "string", "description": "Only search files of this kind (e.g., 'python', 'typescript')"},
+        self.register(
+            ToolDefinition(
+                name="grep_search",
+                description="Search file contents for a regex pattern. Use --limit to bound results, --path to scope, --kind to filter by file type.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "pattern": {"type": "string", "description": "Regex pattern to search for"},
+                        "path": {
+                            "type": "string",
+                            "description": "Directory to limit search scope",
+                        },
+                        "include": {
+                            "type": "string",
+                            "description": "File pattern filter (e.g., '*.py', '*.ts')",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max matches to return (default: 50)",
+                            "default": 50,
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description": "Only search files of this kind (e.g., 'python', 'typescript')",
+                        },
+                    },
+                    "required": ["pattern"],
                 },
-                "required": ["pattern"],
-            },
-            category="file",
-        ))
+                category="file",
+            )
+        )
 
     def _register_git_tools(self):
-        self.register(ToolDefinition(
-            name="create_branch",
-            description="Create a new git branch.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Branch name"},
-                    "base": {"type": "string", "description": "Base branch (default: main)", "default": "main"},
-                },
-                "required": ["name"],
-            },
-            category="git",
-        ))
-
-        self.register(ToolDefinition(
-            name="commit_files",
-            description="Commit files to the current branch with a message.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string", "description": "Commit message"},
-                    "files": {
-                        "type": "object",
-                        "description": "Dict of file_path → content",
+        self.register(
+            ToolDefinition(
+                name="create_branch",
+                description="Create a new git branch.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Branch name"},
+                        "base": {
+                            "type": "string",
+                            "description": "Base branch (default: main)",
+                            "default": "main",
+                        },
                     },
+                    "required": ["name"],
                 },
-                "required": ["message", "files"],
-            },
-            requires_confirmation=True,
-            category="git",
-        ))
+                category="git",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="create_pr",
-            description="Create a pull request from the current branch.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "PR title"},
-                    "body": {"type": "string", "description": "PR description (markdown)"},
-                    "base": {"type": "string", "description": "Base branch", "default": "main"},
+        self.register(
+            ToolDefinition(
+                name="commit_files",
+                description="Commit files to the current branch with a message.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "message": {"type": "string", "description": "Commit message"},
+                        "files": {
+                            "type": "object",
+                            "description": "Dict of file_path → content",
+                        },
+                    },
+                    "required": ["message", "files"],
                 },
-                "required": ["title", "body"],
-            },
-            requires_confirmation=True,
-            category="git",
-        ))
+                requires_confirmation=True,
+                category="git",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_diff",
-            description="Get the git diff between two refs or for the working tree.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
-                    "base": {"type": "string", "description": "Base ref (default: HEAD~1)"},
-                    "head": {"type": "string", "description": "Head ref (default: HEAD)"},
-                    "path": {"type": "string", "description": "Optional file path filter"},
+        self.register(
+            ToolDefinition(
+                name="create_pr",
+                description="Create a pull request from the current branch.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "PR title"},
+                        "body": {"type": "string", "description": "PR description (markdown)"},
+                        "base": {"type": "string", "description": "Base branch", "default": "main"},
+                    },
+                    "required": ["title", "body"],
                 },
-                "required": [],
-            },
-            category="git",
-        ))
+                requires_confirmation=True,
+                category="git",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_blame",
-            description="Get git blame information for a file or specific lines.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
-                    "file_path": {"type": "string", "description": "File path"},
-                    "start_line": {"type": "integer"},
-                    "end_line": {"type": "integer"},
+        self.register(
+            ToolDefinition(
+                name="get_diff",
+                description="Get the git diff between two refs or for the working tree.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_name": {
+                            "type": "string",
+                            "description": "Clone under /data/repos (omit if only one repo)",
+                        },
+                        "base": {"type": "string", "description": "Base ref (default: HEAD~1)"},
+                        "head": {"type": "string", "description": "Head ref (default: HEAD)"},
+                        "path": {"type": "string", "description": "Optional file path filter"},
+                    },
+                    "required": [],
                 },
-                "required": ["file_path"],
-            },
-            category="git",
-        ))
+                category="git",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_commit_log",
-            description="Get recent commit history for a file or repo.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_name": {"type": "string", "description": "Clone under /data/repos (omit if only one repo)"},
-                    "file_path": {"type": "string", "description": "Optional: filter by file"},
-                    "author": {"type": "string", "description": "Optional: filter by author email"},
-                    "limit": {"type": "integer", "description": "Max commits (default: 20)", "default": 20},
+        self.register(
+            ToolDefinition(
+                name="get_blame",
+                description="Get git blame information for a file or specific lines.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_name": {
+                            "type": "string",
+                            "description": "Clone under /data/repos (omit if only one repo)",
+                        },
+                        "file_path": {"type": "string", "description": "File path"},
+                        "start_line": {"type": "integer"},
+                        "end_line": {"type": "integer"},
+                    },
+                    "required": ["file_path"],
                 },
-                "required": [],
-            },
-            category="git",
-        ))
+                category="git",
+            )
+        )
+
+        self.register(
+            ToolDefinition(
+                name="get_commit_log",
+                description="Get recent commit history for a file or repo.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_name": {
+                            "type": "string",
+                            "description": "Clone under /data/repos (omit if only one repo)",
+                        },
+                        "file_path": {"type": "string", "description": "Optional: filter by file"},
+                        "author": {
+                            "type": "string",
+                            "description": "Optional: filter by author email",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max commits (default: 20)",
+                            "default": 20,
+                        },
+                    },
+                    "required": [],
+                },
+                category="git",
+            )
+        )
 
     def _register_knowledge_tools(self):
-        self.register(ToolDefinition(
-            name="web_search",
-            description="Search the web for information. Returns search results.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
+        self.register(
+            ToolDefinition(
+                name="web_search",
+                description="Search the web for information. Returns search results.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"},
+                    },
+                    "required": ["query"],
                 },
-                "required": ["query"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="semantic_search",
-            description="Search the codebase semantically for code related to a query. Use --limit to bound results, --kind to filter by entity type, --path to scope results.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Natural language query about the codebase"},
-                    "repo_id": {"type": "string", "description": "Optional: filter by repo"},
-                    "kind": {"type": "string", "description": "Entity type filter: function, class, module, file"},
-                    "language": {"type": "string", "description": "Programming language filter"},
-                    "path": {"type": "string", "description": "Scope search to files matching this path pattern"},
-                    "limit": {"type": "integer", "description": "Max results (default: 10)", "default": 10},
+        self.register(
+            ToolDefinition(
+                name="semantic_search",
+                description="Search the codebase semantically for code related to a query. Use --limit to bound results, --kind to filter by entity type, --path to scope results.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language query about the codebase",
+                        },
+                        "repo_id": {"type": "string", "description": "Optional: filter by repo"},
+                        "kind": {
+                            "type": "string",
+                            "description": "Entity type filter: function, class, module, file",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "Programming language filter",
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Scope search to files matching this path pattern",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["query"],
                 },
-                "required": ["query"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="graph_query",
-            description="Search the knowledge graph directly by entity name, type, or relationship. Use --kind to filter by node type.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search term (entity name, file path, or concept)"},
-                    "kind": {"type": "string", "description": "Node type filter: Function, Class, Module, File, Feature, Repository"},
-                    "limit": {"type": "integer", "description": "Max results (default: 10)", "default": 10},
+        self.register(
+            ToolDefinition(
+                name="graph_query",
+                description="Search the knowledge graph directly by entity name, type, or relationship. Use --kind to filter by node type.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search term (entity name, file path, or concept)",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description": "Node type filter: Function, Class, Module, File, Feature, Repository",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["query"],
                 },
-                "required": ["query"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="find_owner",
-            description="Find the primary contributor/owner of a file based on git history.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Repository ID"},
-                    "file_path": {"type": "string", "description": "File path within the repo"},
+        self.register(
+            ToolDefinition(
+                name="find_owner",
+                description="Find the primary contributor/owner of a file based on git history.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_id": {"type": "string", "description": "Repository ID"},
+                        "file_path": {"type": "string", "description": "File path within the repo"},
+                    },
+                    "required": ["repo_id", "file_path"],
                 },
-                "required": ["repo_id", "file_path"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="find_dependents",
-            description="Find all functions that call a given function (who calls X). Optional repo_id/name scopes it; omit for all repos.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Optional repo_id or name; omit for all repos"},
-                    "entity_name": {"type": "string", "description": "Function name to find callers of"},
+        self.register(
+            ToolDefinition(
+                name="find_dependents",
+                description="Find all functions that call a given function (who calls X). Optional repo_id/name scopes it; omit for all repos.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_id": {
+                            "type": "string",
+                            "description": "Optional repo_id or name; omit for all repos",
+                        },
+                        "entity_name": {
+                            "type": "string",
+                            "description": "Function name to find callers of",
+                        },
+                    },
+                    "required": ["entity_name"],
                 },
-                "required": ["entity_name"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="find_dependencies",
-            description="Find all functions called by a given function (what X calls). Optional repo_id/name scopes it; omit for all repos.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Optional repo_id or name; omit for all repos"},
-                    "entity_name": {"type": "string", "description": "Function name to find callees of"},
+        self.register(
+            ToolDefinition(
+                name="find_dependencies",
+                description="Find all functions called by a given function (what X calls). Optional repo_id/name scopes it; omit for all repos.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_id": {
+                            "type": "string",
+                            "description": "Optional repo_id or name; omit for all repos",
+                        },
+                        "entity_name": {
+                            "type": "string",
+                            "description": "Function name to find callees of",
+                        },
+                    },
+                    "required": ["entity_name"],
                 },
-                "required": ["entity_name"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_architecture",
-            description="Get an architecture overview (files ranked by function count) for a repository. Pass a repo_id or repo name to scope it, or omit to span all onboarded repos.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Optional repo_id or repo name; omit for all repos"},
+        self.register(
+            ToolDefinition(
+                name="get_architecture",
+                description="Get an architecture overview (files ranked by function count) for a repository. Pass a repo_id or repo name to scope it, or omit to span all onboarded repos.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_id": {
+                            "type": "string",
+                            "description": "Optional repo_id or repo name; omit for all repos",
+                        },
+                    },
+                    "required": [],
                 },
-                "required": [],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="search_notes",
-            description="Search through the teammate's own notes and knowledge base.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "limit": {"type": "integer", "description": "Max results", "default": 20},
+        self.register(
+            ToolDefinition(
+                name="search_notes",
+                description="Search through the teammate's own notes and knowledge base.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"},
+                        "limit": {"type": "integer", "description": "Max results", "default": 20},
+                    },
+                    "required": ["query"],
                 },
-                "required": ["query"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="write_note",
-            description="Write a note to the teammate's knowledge base.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Note title"},
-                    "content": {"type": "string", "description": "Note content in markdown"},
-                    "entity_type": {"type": "string", "description": "Type of related entity"},
-                    "entity_id": {"type": "string", "description": "ID of related entity"},
+        self.register(
+            ToolDefinition(
+                name="write_note",
+                description="Write a note to the teammate's knowledge base.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Note title"},
+                        "content": {"type": "string", "description": "Note content in markdown"},
+                        "entity_type": {"type": "string", "description": "Type of related entity"},
+                        "entity_id": {"type": "string", "description": "ID of related entity"},
+                    },
+                    "required": ["title", "content"],
                 },
-                "required": ["title", "content"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
     def _register_agent_tools(self):
-        self.register(ToolDefinition(
-            name="run_command",
-            description="Run a shell command in a sandboxed environment.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "Shell command to execute"},
-                    "cwd": {"type": "string", "description": "Working directory"},
-                    "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
+        self.register(
+            ToolDefinition(
+                name="run_command",
+                description="Run a shell command in a sandboxed environment.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string", "description": "Shell command to execute"},
+                        "cwd": {"type": "string", "description": "Working directory"},
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Timeout in seconds",
+                            "default": 30,
+                        },
+                    },
+                    "required": ["command"],
                 },
-                "required": ["command"],
-            },
-            requires_confirmation=True,
-            category="execution",
-        ))
+                requires_confirmation=True,
+                category="execution",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="run_tests",
-            description="Run the test suite for a specific path or the entire project.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "test_path": {"type": "string", "description": "Optional: specific test file or directory"},
+        self.register(
+            ToolDefinition(
+                name="run_tests",
+                description="Run the test suite for a specific path or the entire project.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "test_path": {
+                            "type": "string",
+                            "description": "Optional: specific test file or directory",
+                        },
+                    },
+                    "required": [],
                 },
-                "required": [],
-            },
-            category="execution",
-        ))
+                category="execution",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="run_lint",
-            description="Run the linter on a specific file or directory.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "File or directory to lint"},
+        self.register(
+            ToolDefinition(
+                name="run_lint",
+                description="Run the linter on a specific file or directory.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "File or directory to lint"},
+                    },
+                    "required": ["path"],
                 },
-                "required": ["path"],
-            },
-            category="execution",
-        ))
+                category="execution",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="http_request",
-            description="Make an HTTP request to an approved external API.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]},
-                    "url": {"type": "string", "description": "URL (must match approved API registry)"},
-                    "headers": {"type": "object", "description": "Request headers"},
-                    "body": {"type": "string", "description": "Request body (JSON string)"},
+        self.register(
+            ToolDefinition(
+                name="http_request",
+                description="Make an HTTP request to an approved external API.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]},
+                        "url": {
+                            "type": "string",
+                            "description": "URL (must match approved API registry)",
+                        },
+                        "headers": {"type": "object", "description": "Request headers"},
+                        "body": {"type": "string", "description": "Request body (JSON string)"},
+                    },
+                    "required": ["method", "url"],
                 },
-                "required": ["method", "url"],
-            },
-            requires_confirmation=True,
-            category="external",
-        ))
+                requires_confirmation=True,
+                category="external",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="schedule_task",
-            description="Schedule a recurring or future task.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Task name"},
-                    "trigger_time": {"type": "string", "description": "ISO datetime or cron expression"},
-                    "action": {"type": "object", "description": "Action to execute"},
+        self.register(
+            ToolDefinition(
+                name="schedule_task",
+                description="Schedule a recurring or future task.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Task name"},
+                        "trigger_time": {
+                            "type": "string",
+                            "description": "ISO datetime or cron expression",
+                        },
+                        "action": {"type": "object", "description": "Action to execute"},
+                    },
+                    "required": ["name", "trigger_time", "action"],
                 },
-                "required": ["name", "trigger_time", "action"],
-            },
-            category="agent",
-        ))
+                category="agent",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="trace_issue",
-            description="Trace who broke a function or file using git blame and call graph. Finds likely culprits.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_id": {"type": "string", "description": "Repo ID"},
-                    "entity_name": {"type": "string", "description": "Function or entity name to trace"},
-                    "file_path": {"type": "string", "description": "File path (optional)"},
+        self.register(
+            ToolDefinition(
+                name="trace_issue",
+                description="Trace who broke a function or file using git blame and call graph. Finds likely culprits.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_id": {"type": "string", "description": "Repo ID"},
+                        "entity_name": {
+                            "type": "string",
+                            "description": "Function or entity name to trace",
+                        },
+                        "file_path": {"type": "string", "description": "File path (optional)"},
+                    },
+                    "required": ["repo_id", "entity_name"],
                 },
-                "required": ["repo_id", "entity_name"],
-            },
-            category="knowledge",
-        ))
+                category="knowledge",
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="list_prs",
-            description="List open pull requests for an onboarded repository. Requires GitHub integration.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "repo_name": {"type": "string", "description": "Local name of the onboarded repo (e.g. 'kit-fork')"},
-                    "state": {"type": "string", "description": "PR state filter: open, closed, all (default: open)"},
-                    "limit": {"type": "integer", "description": "Max PRs to list (default: 10)", "default": 10},
+        self.register(
+            ToolDefinition(
+                name="list_prs",
+                description="List open pull requests for an onboarded repository. Requires GitHub integration.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "repo_name": {
+                            "type": "string",
+                            "description": "Local name of the onboarded repo (e.g. 'kit-fork')",
+                        },
+                        "state": {
+                            "type": "string",
+                            "description": "PR state filter: open, closed, all (default: open)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max PRs to list (default: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["repo_name"],
                 },
-                "required": ["repo_name"],
-            },
-            category="integrations",
-        ))
+                category="integrations",
+            )
+        )
 
     def register(self, tool: ToolDefinition) -> None:
         self._tools[tool.name] = tool
@@ -472,14 +651,16 @@ class ToolRegistry:
     def get_openai_tools(self) -> list[dict]:
         tools = []
         for name, td in self._tools.items():
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "description": td.description,
-                    "parameters": td.parameters,
-                },
-            })
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": td.description,
+                        "parameters": td.parameters,
+                    },
+                }
+            )
         return tools
 
     def requires_confirmation(self, tool_name: str) -> bool:

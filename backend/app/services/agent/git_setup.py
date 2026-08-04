@@ -48,12 +48,20 @@ def classify_github_token(token: str, scopes_header: str | None) -> dict:
         if "repo" in scopes:
             can_push, note = True, "Classic token with full 'repo' scope — can push and open PRs."
         elif "public_repo" in scopes:
-            can_push, note = True, "Classic token with 'public_repo' — can push to public repos only."
+            can_push, note = (
+                True,
+                "Classic token with 'public_repo' — can push to public repos only.",
+            )
         else:
-            can_push, note = False, "Token has no 'repo' scope — read-only; pushes/PRs will 403. Add the 'repo' scope."
+            can_push, note = (
+                False,
+                "Token has no 'repo' scope — read-only; pushes/PRs will 403. Add the 'repo' scope.",
+            )
     elif token_type == "fine-grained":
-        can_push, note = None, ("Fine-grained token — permissions aren't exposed by the API. "
-                                "Ensure it grants Contents: write + Pull requests: write, or pushes will 403.")
+        can_push, note = None, (
+            "Fine-grained token — permissions aren't exposed by the API. "
+            "Ensure it grants Contents: write + Pull requests: write, or pushes will 403."
+        )
     else:
         can_push, note = None, "Token type not recognized; could not infer push rights."
 
@@ -66,19 +74,30 @@ async def verify_github_token(token: str) -> dict:
     if not token:
         return {"valid": False, "configured": False, "note": "No token provided."}
     import httpx
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 "https://api.github.com/user",
-                headers={"Authorization": f"token {token}",
-                         "Accept": "application/vnd.github+json"},
+                headers={
+                    "Authorization": f"token {token}",
+                    "Accept": "application/vnd.github+json",
+                },
             )
     except Exception as e:
-        return {"valid": False, "configured": True, "note": f"Could not reach GitHub: {str(e)[:120]}"}
+        return {
+            "valid": False,
+            "configured": True,
+            "note": f"Could not reach GitHub: {str(e)[:120]}",
+        }
 
     if resp.status_code != 200:
-        return {"valid": False, "configured": True, "status": resp.status_code,
-                "note": "Token rejected by GitHub (invalid, expired, or revoked)."}
+        return {
+            "valid": False,
+            "configured": True,
+            "status": resp.status_code,
+            "note": "Token rejected by GitHub (invalid, expired, or revoked).",
+        }
 
     login = resp.json().get("login")
     info = classify_github_token(token, resp.headers.get("X-OAuth-Scopes"))
@@ -101,8 +120,7 @@ def resolve_github_token(env_token=None, db_value=None, remote_url=None):
 
 
 def _run(cmd: str, stdin: str | None = None):
-    return subprocess.run(cmd, shell=True, input=stdin, capture_output=True,
-                          text=True, timeout=30)
+    return subprocess.run(cmd, shell=True, input=stdin, capture_output=True, text=True, timeout=30)
 
 
 def _find_remote_token() -> str | None:
@@ -132,7 +150,7 @@ async def ensure_git_and_gh(db=None) -> bool:
     """
     _run(f'git config --global user.name "{GIT_NAME}"')
     _run(f'git config --global user.email "{GIT_EMAIL}"')
-    _run('git config --global init.defaultBranch main')
+    _run("git config --global init.defaultBranch main")
 
     if _run("which gh").returncode != 0:
         logger.info("gh_setup_skipped", reason="gh not installed")
@@ -145,7 +163,9 @@ async def ensure_git_and_gh(db=None) -> bool:
     if db is not None and not env_token:
         try:
             from sqlalchemy import select
+
             from app.models.app_config import AppConfig
+
             res = await db.execute(select(AppConfig).where(AppConfig.key == "github_token"))
             row = res.scalar_one_or_none()
             db_value = row.value if row else None

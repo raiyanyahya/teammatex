@@ -1,5 +1,4 @@
-from sqlalchemy import Boolean, String, Text
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Boolean, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UUIDMixin

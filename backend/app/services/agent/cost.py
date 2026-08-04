@@ -8,6 +8,7 @@ per-token rate for models litellm doesn't ship a price for — notably
 Returns **fractional cents** so sub-cent costs (the norm for cheap models) are
 not truncated to zero, which is what the old integer-cents math did.
 """
+
 from __future__ import annotations
 
 import litellm

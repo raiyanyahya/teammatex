@@ -1,5 +1,4 @@
-from sqlalchemy import String
-from sqlalchemy import JSON
+from sqlalchemy import JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base

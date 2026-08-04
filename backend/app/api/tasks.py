@@ -55,9 +55,15 @@ def _to_response(t: Task) -> TaskResponse:
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(limit: int = 200, db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(
-        select(Task).order_by(Task.created_at.desc()).limit(max(1, min(limit, 500)))
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(Task).order_by(Task.created_at.desc()).limit(max(1, min(limit, 500)))
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [_to_response(t) for t in rows]
 
 

@@ -1,5 +1,6 @@
 """Load a synthetic fixture repo into a db via the REAL chunk+embed path, so the
 eval exercises the actual retrieval stack (just small)."""
+
 from __future__ import annotations
 
 from pathlib import Path

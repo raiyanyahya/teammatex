@@ -34,6 +34,7 @@ def sqlite_engine():
 def sqlite_session(sqlite_engine):
     """Create all tables and return a session factory."""
     from app.models.base import Base
+
     Base.metadata.create_all(sqlite_engine)
     Session = sessionmaker(bind=sqlite_engine)
     return Session
@@ -87,7 +88,7 @@ if __name__ == "__main__":
 
 @pytest.fixture
 def sample_js_code():
-    return '''// Sample JavaScript module
+    return """// Sample JavaScript module
 
 /**
  * Return a greeting.
@@ -119,12 +120,12 @@ function main() {
 }
 
 module.exports = { greet, Greeter, main };
-'''
+"""
 
 
 @pytest.fixture
 def sample_go_code():
-    return '''package main
+    return """package main
 
 import "fmt"
 
@@ -145,12 +146,12 @@ func main() {
     g := &Greeter{Prefix: "Hi"}
     fmt.Println(g.Greet("World"))
 }
-'''
+"""
 
 
 @pytest.fixture
 def sample_rust_code():
-    return '''/// Sample Rust module
+    return """/// Sample Rust module
 
 /// Return a greeting.
 pub fn greet(name: &str) -> String {
@@ -180,12 +181,12 @@ fn main() {
     let g = Greeter::new("Hi");
     println!("{}", g.greet("World"));
 }
-'''
+"""
 
 
 @pytest.fixture
 def sample_java_code():
-    return '''package com.example;
+    return """package com.example;
 
 /**
  * Sample Java module.
@@ -219,7 +220,7 @@ public class Greeter {
         System.out.println(g.greet("World"));
     }
 }
-'''
+"""
 
 
 @pytest.fixture
@@ -232,7 +233,8 @@ def tmp_repo_dir(tmp_path):
     (repo / ".git").mkdir()
 
     py_file = repo / "src" / "main.py"
-    py_file.write_text('''"""Main module."""
+    py_file.write_text(
+        '''"""Main module."""
 
 def process(data: list[int]) -> int:
     """Process data and return the sum."""
@@ -248,10 +250,12 @@ class DataProcessor:
 
     def process(self, data: list[int]) -> int:
         return sum(data) * self.multiplier
-''')
+'''
+    )
 
     test_file = repo / "tests" / "test_main.py"
-    test_file.write_text('''"""Tests for main module."""
+    test_file.write_text(
+        '''"""Tests for main module."""
 
 import pytest
 from src.main import process, DataProcessor
@@ -262,10 +266,12 @@ def test_process():
 def test_data_processor():
     dp = DataProcessor(2)
     assert dp.process([1, 2, 3]) == 12
-''')
+'''
+    )
 
     js_file = repo / "src" / "utils.js"
-    js_file.write_text('''// Utility functions
+    js_file.write_text(
+        """// Utility functions
 
 /**
  * Process data and return the sum.
@@ -279,7 +285,8 @@ function validateInput(value) {
 }
 
 module.exports = { processData, validateInput };
-''')
+"""
+    )
 
     return repo
 
@@ -298,8 +305,13 @@ TEST_DB_NAME = "teammatex_test"
 
 def _pg_components():
     from app.config import settings
-    return (settings.postgres_user, settings.postgres_password,
-            settings.postgres_host, settings.postgres_port)
+
+    return (
+        settings.postgres_user,
+        settings.postgres_password,
+        settings.postgres_host,
+        settings.postgres_port,
+    )
 
 
 def _sync_dsn(dbname: str) -> str:
@@ -335,10 +347,11 @@ def _ensure_test_database():
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def api_engine(_ensure_test_database):
     """Session-scoped async engine bound to the test DB, with schema created."""
-    import app.models  # noqa: F401 — registers every table on Base.metadata
-    from app.models.base import Base
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
+
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
 
     engine = create_async_engine(_async_dsn(TEST_DB_NAME), poolclass=NullPool)
     async with engine.begin() as conn:
@@ -357,7 +370,9 @@ async def api_db(api_engine):
     conn = await api_engine.connect()
     trans = await conn.begin()
     session = AsyncSession(
-        bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False,
+        bind=conn,
+        join_transaction_mode="create_savepoint",
+        expire_on_commit=False,
     )
     try:
         yield session
@@ -390,7 +405,8 @@ async def api_client(api_db):
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     try:
         async with AsyncClient(
-            transport=transport, base_url="http://test",
+            transport=transport,
+            base_url="http://test",
             headers={"Authorization": f"Bearer {token}"},
         ) as ac:
             yield ac
@@ -413,10 +429,15 @@ async def admin_client(api_db):
     from app.utils.auth import create_token, hash_password
 
     admin_id = str(uuid.uuid4())
-    api_db.add(User(
-        id=admin_id, email="admin-test@teammatex.local", name="Admin Test",
-        hashed_password=hash_password("x"), is_admin=True,
-    ))
+    api_db.add(
+        User(
+            id=admin_id,
+            email="admin-test@teammatex.local",
+            name="Admin Test",
+            hashed_password=hash_password("x"),
+            is_admin=True,
+        )
+    )
     await api_db.flush()
 
     async def _override_get_db():
@@ -430,7 +451,8 @@ async def admin_client(api_db):
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     try:
         async with AsyncClient(
-            transport=transport, base_url="http://test",
+            transport=transport,
+            base_url="http://test",
             headers={"Authorization": f"Bearer {token}"},
         ) as ac:
             yield ac
@@ -466,17 +488,19 @@ async def anon_client(api_db):
 async def async_db():
     """A standalone async session against the test DB (own engine + loop), for
     unit tests that call async persistence directly. Rolls back after the test."""
-    import app.models  # noqa: F401 — registers every table on Base.metadata
-    from app.models.base import Base
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.pool import NullPool
+
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
 
     # Reuse the session-scoped DB-bootstrap done by _ensure_test_database via a
     # direct sync create (idempotent) so this fixture has no session-loop dep.
     admin = create_engine(_sync_dsn("postgres"), isolation_level="AUTOCOMMIT")
     with admin.connect() as c:
-        if not c.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"),
-                         {"n": TEST_DB_NAME}).scalar():
+        if not c.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": TEST_DB_NAME}
+        ).scalar():
             c.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
     admin.dispose()
     sync_test = create_engine(_sync_dsn(TEST_DB_NAME), isolation_level="AUTOCOMMIT")
@@ -490,7 +514,9 @@ async def async_db():
     conn = await engine.connect()
     trans = await conn.begin()
     session = AsyncSession(
-        bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False,
+        bind=conn,
+        join_transaction_mode="create_savepoint",
+        expire_on_commit=False,
     )
     try:
         yield session

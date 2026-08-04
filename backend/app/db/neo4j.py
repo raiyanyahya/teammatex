@@ -4,6 +4,7 @@ from app.config import settings
 class Neo4jManager:
     def __init__(self) -> None:
         from neo4j import AsyncGraphDatabase
+
         self.driver = AsyncGraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),

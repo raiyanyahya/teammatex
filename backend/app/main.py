@@ -15,17 +15,20 @@ async def lifespan(app: FastAPI):
     settings.validate_secret_key()
     try:
         from app.db.neo4j import get_neo4j_manager
+
         await get_neo4j_manager().verify_connectivity()
         logger.info("neo4j_connected")
         from app.services.knowledge.graph import KnowledgeGraph
+
         await KnowledgeGraph().ensure_schema()
         logger.info("neo4j_schema_ready")
     except Exception as e:
         logger.warning("neo4j_unavailable", error=str(e))
 
     try:
-        from app.services.agent.git_setup import ensure_git_and_gh
         import app.db.session as _session
+        from app.services.agent.git_setup import ensure_git_and_gh
+
         _session._init_engine()
         async with _session.async_session_factory() as _db:
             await ensure_git_and_gh(_db)
@@ -35,25 +38,32 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.services.agent.auto_sync import auto_sync
+
         await auto_sync.start_polling(settings.auto_sync_poll_interval_minutes)
-        logger.info("auto_sync_polling_configured", webhook=settings.auto_sync_webhook_enabled,
-                    polling_min=settings.auto_sync_poll_interval_minutes)
+        logger.info(
+            "auto_sync_polling_configured",
+            webhook=settings.auto_sync_webhook_enabled,
+            polling_min=settings.auto_sync_poll_interval_minutes,
+        )
     except Exception as e:
         logger.warning("auto_sync_start_failed", error=str(e))
 
     yield
     try:
         from app.services.agent.auto_sync import auto_sync
+
         await auto_sync.stop()
     except Exception:
         pass
     try:
         from app.db.neo4j import get_neo4j_manager
+
         await get_neo4j_manager().close()
     except Exception as e:
         logger.debug("neo4j_close_error", error=str(e))
     try:
         from app.services.integrations.base import IntegrationRegistry
+
         for attr in ("_scm", "_pm", "_chat"):
             provider = getattr(IntegrationRegistry, attr, None)
             if provider and hasattr(provider, "close"):
@@ -93,15 +103,22 @@ if settings.prometheus_enabled:
         Instrumentator().instrument(app)
 
         if settings.metrics_token:
+
             @app.get("/metrics", include_in_schema=False)
             def metrics(request: Request):
                 auth = request.headers.get("Authorization", "")
-                provided = auth[7:] if auth.startswith("Bearer ") else request.query_params.get("token", "")
+                provided = (
+                    auth[7:]
+                    if auth.startswith("Bearer ")
+                    else request.query_params.get("token", "")
+                )
                 if not hmac.compare_digest(provided, settings.metrics_token):
                     raise HTTPException(status_code=401, detail="Unauthorized")
                 return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
         else:
-            logger.info("metrics_endpoint_disabled",
-                        reason="set TEAMMATEX_METRICS_TOKEN to enable /metrics")
+            logger.info(
+                "metrics_endpoint_disabled", reason="set TEAMMATEX_METRICS_TOKEN to enable /metrics"
+            )
     except ImportError:
         pass

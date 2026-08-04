@@ -7,7 +7,10 @@ from app.api.deps import AUTH_COOKIE, require_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.utils.auth import (
-    create_token, decode_token, first_run_check, hash_password,
+    create_token,
+    decode_token,
+    first_run_check,
+    hash_password,
     verify_password,
 )
 from app.utils.ratelimit import SlidingWindowLimiter
@@ -35,10 +38,15 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     settings.cookie_secure: off by default so plain-http localhost works, but set
     COOKIE_SECURE=true in production so the session cookie never leaves over http."""
     from app.config import settings
+
     response.set_cookie(
-        AUTH_COOKIE, token,
-        httponly=True, samesite="lax", secure=settings.cookie_secure,
-        max_age=_COOKIE_MAX_AGE, path="/",
+        AUTH_COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=_COOKIE_MAX_AGE,
+        path="/",
     )
 
 

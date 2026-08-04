@@ -1,5 +1,5 @@
-from app.workers.celery_app import celery_app
 from app.services.onboarding import pipeline  # noqa: F401
+from app.workers.celery_app import celery_app
 
 
 @celery_app.task(name="health_check")
@@ -10,11 +10,12 @@ def health_check() -> dict:
 @celery_app.task(name="git_pull_repos")
 def git_pull_repos() -> dict:
     """Pull all onboarded repos to keep knowledge fresh."""
-    from sqlalchemy import create_engine, select, text
+
+    from sqlalchemy import create_engine, select
+
     from app.config import settings as _s
-    from app.utils.git import clone_or_pull
     from app.models.repo import Repo
-    from pathlib import Path
+    from app.utils.git import clone_or_pull
 
     engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
     repos: list = []
@@ -41,7 +42,9 @@ def git_pull_repos() -> dict:
 def _digest_slack_channel() -> str:
     """Channel for the weekly digest, from config `digest_settings.slack_channel`."""
     import json as _json
+
     from sqlalchemy import create_engine, text
+
     from app.config import settings as _s
 
     engine = create_engine(_s.database_url.replace("+asyncpg", "+psycopg2"), pool_pre_ping=True)
@@ -78,11 +81,15 @@ def send_weekly_digest() -> dict:
     channel = _digest_slack_channel()
     token = getattr(_s, "slack_bot_token", "") or ""
     if not (channel and token):
-        return {"delivered": False, "reason": "slack channel/token not configured",
-                "sections": digest.get("section_count", 0)}
+        return {
+            "delivered": False,
+            "reason": "slack channel/token not configured",
+            "sections": digest.get("section_count", 0),
+        }
 
     try:
         import httpx
+
         resp = httpx.post(
             "https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {token}"},
@@ -98,7 +105,9 @@ def send_weekly_digest() -> dict:
 @celery_app.task(name="git_pull_scheduled")
 def git_pull_scheduled() -> dict:
     """Scheduled git pull - checks config for frequency."""
-    from sqlalchemy import create_engine, select as sa_select
+    from sqlalchemy import create_engine
+    from sqlalchemy import select as sa_select
+
     from app.config import settings as _s
     from app.models.app_config import AppConfig
 
@@ -108,7 +117,7 @@ def git_pull_scheduled() -> dict:
             result = conn.execute(sa_select(AppConfig).where(AppConfig.key == "update_settings"))
             row = result.mappings().first()
             if row and row.get("value", {}).get("method") == "git_pull":
-                freq_min = int(row["value"].get("frequency_minutes", 5))
+                int(row["value"].get("frequency_minutes", 5))
                 # Check if it's time based on frequency
                 return git_pull_repos()
     except Exception:

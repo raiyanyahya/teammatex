@@ -3,14 +3,22 @@ so switching the agent to Claude/GPT for higher tool-calling reliability works
 while DeepSeek stays the cheap default.
 """
 
-from app.services.llm.provider import LLMProvider, RECOMMENDED_MODELS
+from app.services.llm.provider import RECOMMENDED_MODELS, LLMProvider
 
 
 def test_model_name_mapping_for_each_provider():
-    assert LLMProvider._get_model_name("anthropic", "claude-sonnet-4-6") == "anthropic/claude-sonnet-4-6"
+    assert (
+        LLMProvider._get_model_name("anthropic", "claude-sonnet-4-6")
+        == "anthropic/claude-sonnet-4-6"
+    )
     assert LLMProvider._get_model_name("openai", "gpt-4o") == "gpt-4o"
-    assert LLMProvider._get_model_name("deepseek", "deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
-    assert LLMProvider._get_model_name("groq", "llama-3.1-70b-versatile") == "groq/llama-3.1-70b-versatile"
+    assert (
+        LLMProvider._get_model_name("deepseek", "deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
+    )
+    assert (
+        LLMProvider._get_model_name("groq", "llama-3.1-70b-versatile")
+        == "groq/llama-3.1-70b-versatile"
+    )
     assert LLMProvider._get_model_name("ollama", "llama3.1:8b") == "ollama/llama3.1:8b"
 
 

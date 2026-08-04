@@ -1,5 +1,4 @@
 import hashlib
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,12 @@ class RepoManifest:
         root = Path(self.clone_path)
         manifest: dict[str, dict[str, Any]] = {}
         for fp in root.rglob("*"):
-            if not fp.is_file() or ".git" in fp.parts or "node_modules" in fp.parts or fp.stat().st_size > 10_000_000:
+            if (
+                not fp.is_file()
+                or ".git" in fp.parts
+                or "node_modules" in fp.parts
+                or fp.stat().st_size > 10_000_000
+            ):
                 continue
             rel = str(fp.relative_to(root))
             try:
@@ -70,23 +74,61 @@ class RepoManifest:
         imports: list[str] = []
         for line in content.splitlines():
             line = line.strip()
-            if line.startswith("import ") or line.startswith("from "):
-                imports.append(line)
-            elif "require(" in line or line.startswith("use "):
+            if (
+                line.startswith("import ")
+                or line.startswith("from ")
+                or "require(" in line
+                or line.startswith("use ")
+            ):
                 imports.append(line)
         return imports
 
     @staticmethod
     def classify_path_role(rel_path: str) -> str:
         lower = rel_path.lower()
-        test_patterns = ["test/", "tests/", "_test.", "_spec.", ".test.", ".spec.",
-                        "conftest.py", "setup.py", "mock", "stub"]
-        fixture_patterns = ["fixture", "mock", "stub", ".json", ".yaml", ".yml",
-                           ".toml", ".ini", ".cfg", ".env"]
-        generated_patterns = ["__generated__", ".gen.", ".generated.", "node_modules/",
-                            "__pycache__/", ".pyc", "dist/", "build/", ".egg-info/",
-                            "vendor/", "target/", "Cargo.lock", "poetry.lock",
-                            "package-lock.json", "yarn.lock", ".min.", ".bundle."]
+        test_patterns = [
+            "test/",
+            "tests/",
+            "_test.",
+            "_spec.",
+            ".test.",
+            ".spec.",
+            "conftest.py",
+            "setup.py",
+            "mock",
+            "stub",
+        ]
+        fixture_patterns = [
+            "fixture",
+            "mock",
+            "stub",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".env",
+        ]
+        generated_patterns = [
+            "__generated__",
+            ".gen.",
+            ".generated.",
+            "node_modules/",
+            "__pycache__/",
+            ".pyc",
+            "dist/",
+            "build/",
+            ".egg-info/",
+            "vendor/",
+            "target/",
+            "Cargo.lock",
+            "poetry.lock",
+            "package-lock.json",
+            "yarn.lock",
+            ".min.",
+            ".bundle.",
+        ]
         config_patterns = ["config", "settings", ".env", ".ini", ".cfg", ".toml", ".yaml", ".yml"]
 
         for p in generated_patterns:

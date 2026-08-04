@@ -19,7 +19,7 @@ Design decisions that fix the observed bugs:
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from .citations import extract_sources
 from .message_utils import (
@@ -28,15 +28,23 @@ from .message_utils import (
     tool_result_message,
 )
 
-_CAP_MESSAGE = ("(I hit my step limit on this task. Tell me to keep going and "
-                "I'll continue from where I left off.)")
-_EMPTY_MESSAGE = ("(I couldn't produce a clean answer for that — try rephrasing "
-                  "or giving me a bit more detail.)")
-_NUDGE = ("Call tools using the function-calling interface, not by writing them "
-          "as text. Otherwise reply with your final answer in plain prose.")
-_WRAPUP = ("You've reached the step limit. In plain text, summarize what you "
-           "accomplished and what (if anything) is blocking completion. Do not "
-           "call any more tools.")
+_CAP_MESSAGE = (
+    "(I hit my step limit on this task. Tell me to keep going and "
+    "I'll continue from where I left off.)"
+)
+_EMPTY_MESSAGE = (
+    "(I couldn't produce a clean answer for that — try rephrasing "
+    "or giving me a bit more detail.)"
+)
+_NUDGE = (
+    "Call tools using the function-calling interface, not by writing them "
+    "as text. Otherwise reply with your final answer in plain prose."
+)
+_WRAPUP = (
+    "You've reached the step limit. In plain text, summarize what you "
+    "accomplished and what (if anything) is blocking completion. Do not "
+    "call any more tools."
+)
 
 
 def _parse_args(raw):
@@ -69,8 +77,13 @@ def _prune_tool_results(messages, keep_last: int) -> None:
 
 
 async def run_agent_loop(
-    *, llm_call, execute_tool, messages, tools,
-    max_iterations: int = 25, max_tools_per_turn: int = 8,
+    *,
+    llm_call,
+    execute_tool,
+    messages,
+    tools,
+    max_iterations: int = 25,
+    max_tools_per_turn: int = 8,
     keep_tool_results: int = 8,
 ) -> AsyncIterator[dict]:
     nudges = 0
@@ -131,8 +144,7 @@ async def run_agent_loop(
     messages.append({"role": "system", "content": _WRAPUP})
     response = await llm_call(messages, tools)
     if response is not None:
-        clean = strip_tool_markup(
-            getattr(response.choices[0].message, "content", None) or "")
+        clean = strip_tool_markup(getattr(response.choices[0].message, "content", None) or "")
         if clean:
             yield {"type": "text", "content": clean}
             yield _sources_event()

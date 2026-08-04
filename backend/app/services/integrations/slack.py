@@ -1,5 +1,3 @@
-from typing import Optional
-
 import httpx
 from structlog import get_logger
 
@@ -28,7 +26,10 @@ class SlackProvider(ChatProvider):
         self._user_cache_max = 200
 
     async def send_message(
-        self, channel: str, text: str, blocks: list | None = None,
+        self,
+        channel: str,
+        text: str,
+        blocks: list | None = None,
     ) -> str:
         body: dict = {"channel": channel, "text": text}
         if blocks:
@@ -46,7 +47,8 @@ class SlackProvider(ChatProvider):
             raise ValueError(f"User not found: {user_email}")
 
         channel_response = await self.client.post(
-            "/conversations.open", json={"users": user_id},
+            "/conversations.open",
+            json={"users": user_id},
         )
         channel_data = channel_response.json()
         channel = channel_data.get("channel", {}).get("id", user_id)
@@ -58,7 +60,8 @@ class SlackProvider(ChatProvider):
             return self._user_cache[email].get("id")
 
         response = await self.client.get(
-            "/users.lookupByEmail", params={"email": email},
+            "/users.lookupByEmail",
+            params={"email": email},
         )
         data = response.json()
         if data.get("ok") and data.get("user"):
@@ -92,7 +95,10 @@ class SlackProvider(ChatProvider):
         blocks = [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": f"🤖 {settings.teammate_name} — Daily Standup"},
+                "text": {
+                    "type": "plain_text",
+                    "text": f"🤖 {settings.teammate_name} — Daily Standup",
+                },
             },
             {"type": "divider"},
             {
@@ -112,20 +118,23 @@ class SlackProvider(ChatProvider):
         ]
 
         if summary.get("blockers"):
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Blockers:*\n{summary['blockers']}",
-                },
-            })
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Blockers:*\n{summary['blockers']}",
+                    },
+                }
+            )
 
         if summary.get("prs"):
             pr_text = "\n".join(
-                f"• <{p.get('url')}|{p.get('title')}> — `{p.get('status')}`"
-                for p in summary["prs"]
+                f"• <{p.get('url')}|{p.get('title')}> — `{p.get('status')}`" for p in summary["prs"]
             )
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Active PRs:*\n{pr_text}"}})
+            blocks.append(
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"*Active PRs:*\n{pr_text}"}}
+            )
 
         return await self.send_message(channel, "", blocks)
 
@@ -150,14 +159,18 @@ class SlackProvider(ChatProvider):
         ]
 
         if pr.get("summary"):
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": pr["summary"][:3000]},
-            })
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": pr["summary"][:3000]},
+                }
+            )
 
         return await self.send_message(channel, "", blocks)
 
-    async def post_notification(self, channel: str, title: str, message: str, level: str = "info") -> str:
+    async def post_notification(
+        self, channel: str, title: str, message: str, level: str = "info"
+    ) -> str:
         emoji_map = {"info": "ℹ️", "warning": "⚠️", "error": "🚨", "success": "✅"}
         emoji = emoji_map.get(level, "ℹ️")
         return await self.send_message(channel, f"{emoji} *{title}*\n{message}")

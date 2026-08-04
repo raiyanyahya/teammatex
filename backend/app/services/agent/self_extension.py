@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from structlog import get_logger
 
@@ -8,14 +7,36 @@ logger = get_logger(__name__)
 
 class LanguageAutoDiscovery:
     EXTENSION_MAP = {
-        ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "typescript",
-        ".jsx": "javascript", ".go": "go", ".rs": "rust", ".java": "java",
-        ".rb": "ruby", ".cpp": "c++", ".c": "c", ".h": "c",
-        ".swift": "swift", ".kt": "kotlin", ".scala": "scala", ".cs": "csharp",
-        ".php": "php", ".r": "r", ".jl": "julia", ".lua": "lua",
-        ".proto": "protobuf", ".graphql": "graphql", ".sql": "sql",
-        ".tf": "terraform", ".hcl": "terraform", ".dockerfile": "dockerfile",
-        ".vue": "vue", ".svelte": "svelte", ".elm": "elm", ".dart": "dart",
+        ".py": "python",
+        ".js": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".jsx": "javascript",
+        ".go": "go",
+        ".rs": "rust",
+        ".java": "java",
+        ".rb": "ruby",
+        ".cpp": "c++",
+        ".c": "c",
+        ".h": "c",
+        ".swift": "swift",
+        ".kt": "kotlin",
+        ".scala": "scala",
+        ".cs": "csharp",
+        ".php": "php",
+        ".r": "r",
+        ".jl": "julia",
+        ".lua": "lua",
+        ".proto": "protobuf",
+        ".graphql": "graphql",
+        ".sql": "sql",
+        ".tf": "terraform",
+        ".hcl": "terraform",
+        ".dockerfile": "dockerfile",
+        ".vue": "vue",
+        ".svelte": "svelte",
+        ".elm": "elm",
+        ".dart": "dart",
     }
 
     def scan_unknown_languages(self, clone_path: str) -> list[dict]:
@@ -136,16 +157,18 @@ class ToolSuggestionEngine:
                         indicators_found.append(str(match.relative_to(root)))
 
             if indicators_found:
-                suggestions.append({
-                    "tool_name": tool_name,
-                    "indicators_found": indicators_found[:5],
-                    "tool_template": config["tool_template"],
-                    "estimated_calls_per_month": len(indicators_found) * 10,
-                    "suggestion": (
-                        f"I keep seeing {tool_name.replace('_', ' ')} patterns in your codebase. "
-                        f"I could create a '{config['tool_template']['name']}' tool to automate this."
-                    ),
-                })
+                suggestions.append(
+                    {
+                        "tool_name": tool_name,
+                        "indicators_found": indicators_found[:5],
+                        "tool_template": config["tool_template"],
+                        "estimated_calls_per_month": len(indicators_found) * 10,
+                        "suggestion": (
+                            f"I keep seeing {tool_name.replace('_', ' ')} patterns in your codebase. "
+                            f"I could create a '{config['tool_template']['name']}' tool to automate this."
+                        ),
+                    }
+                )
 
         return suggestions
 
@@ -162,7 +185,7 @@ class PatternDiscovery:
             if ".git" in file_path.parts:
                 continue
             try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                with open(file_path, encoding="utf-8", errors="replace") as f:
                     content = f.read()
                 if len(content) < 100:
                     continue
@@ -174,12 +197,14 @@ class PatternDiscovery:
         duplicates = []
         for h, files in hashes.items():
             if len(files) > 1:
-                duplicates.append({
-                    "files": files[:5],
-                    "count": len(files),
-                    "type": "code_duplication",
-                    "suggestion": f"Found {len(files)} files with highly similar headers. Consider extracting shared code.",
-                })
+                duplicates.append(
+                    {
+                        "files": files[:5],
+                        "count": len(files),
+                        "type": "code_duplication",
+                        "suggestion": f"Found {len(files)} files with highly similar headers. Consider extracting shared code.",
+                    }
+                )
 
         return sorted(duplicates, key=lambda x: x["count"], reverse=True)[:10]
 
@@ -189,14 +214,18 @@ class PatternDiscovery:
 
         # Check for mix of REST and GraphQL
         rest_count = len(list(root.rglob("*routes*.py"))) + len(list(root.rglob("*router*.py")))
-        graphql_count = len(list(root.rglob("*schema*.graphql"))) + len(list(root.rglob("*graphql*")))
+        graphql_count = len(list(root.rglob("*schema*.graphql"))) + len(
+            list(root.rglob("*graphql*"))
+        )
         if rest_count > 0 and graphql_count > 0:
-            patterns.append({
-                "type": "mixed_api_styles",
-                "rest_files": rest_count,
-                "graphql_files": graphql_count,
-                "suggestion": "Both REST and GraphQL APIs detected. Consider standardizing on one approach.",
-            })
+            patterns.append(
+                {
+                    "type": "mixed_api_styles",
+                    "rest_files": rest_count,
+                    "graphql_files": graphql_count,
+                    "suggestion": "Both REST and GraphQL APIs detected. Consider standardizing on one approach.",
+                }
+            )
 
         # Check for multiple test frameworks
         frameworks = set()
@@ -207,11 +236,13 @@ class PatternDiscovery:
                 if keyword in f.name.lower():
                     frameworks.add(keyword)
         if len(frameworks) > 1:
-            patterns.append({
-                "type": "multiple_test_frameworks",
-                "frameworks": list(frameworks),
-                "suggestion": f"Multiple test frameworks detected: {', '.join(frameworks)}. Consider standardizing.",
-            })
+            patterns.append(
+                {
+                    "type": "multiple_test_frameworks",
+                    "frameworks": list(frameworks),
+                    "suggestion": f"Multiple test frameworks detected: {', '.join(frameworks)}. Consider standardizing.",
+                }
+            )
 
         return patterns
 
@@ -230,7 +261,9 @@ class SelfExtension:
 
         grammar_suggestions = []
         for lang in unknown_langs:
-            suggestion = self.language_discovery.suggest_grammar_install(lang["extension"], lang["count"])
+            suggestion = self.language_discovery.suggest_grammar_install(
+                lang["extension"], lang["count"]
+            )
             grammar_suggestions.append(suggestion)
 
         return {

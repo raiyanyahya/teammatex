@@ -7,16 +7,17 @@ Revision ID: 0006_uploads_and_notepad
 Revises: 0005_cost_precision
 Create Date: 2026-06-01
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0006_uploads_and_notepad"
-down_revision: Union[str, None] = "0005_cost_precision"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0005_cost_precision"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -28,7 +29,9 @@ def upgrade() -> None:
         sa.Column("content_type", sa.String(length=255), nullable=True),
         sa.Column("size_bytes", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("stored_path", sa.String(length=1024), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_uploads_owner_id", "uploads", ["owner_id"])
@@ -37,7 +40,9 @@ def upgrade() -> None:
         "notepad",
         sa.Column("owner_id", sa.String(length=64), nullable=False),
         sa.Column("content", sa.Text(), nullable=False, server_default=""),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("owner_id"),
     )
 

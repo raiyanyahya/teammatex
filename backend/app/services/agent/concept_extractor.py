@@ -20,11 +20,11 @@ This module:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.models.concept import Concept
@@ -84,7 +84,7 @@ class ConceptExtractor:
 
         out: list[dict] = []
         model_label = "llm"  # provider doesn't echo this back through simple_prompt; keep generic.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for raw_concept in items:
             name = (raw_concept.get("name") or "").strip()[:120]
@@ -105,15 +105,29 @@ class ConceptExtractor:
                 key = handle.lstrip("@").strip().lower()
                 c = contrib_by_email.get(key) or contrib_by_handle.get(key)
                 if c:
-                    experts.append({"name": c.get("name") or key, "email": c.get("email"), "weight": c.get("files_owned", 0)})
+                    experts.append(
+                        {
+                            "name": c.get("name") or key,
+                            "email": c.get("email"),
+                            "weight": c.get("files_owned", 0),
+                        }
+                    )
                 else:
                     experts.append({"name": handle.lstrip("@"), "email": None, "weight": 0})
 
-            await self._upsert(db, repo_id, name, cat, summary, files_count, refs_count, experts, now, model_label)
-            out.append({
-                "name": name, "cat": cat, "summary": summary,
-                "files": files_count, "refs": refs_count, "experts": experts,
-            })
+            await self._upsert(
+                db, repo_id, name, cat, summary, files_count, refs_count, experts, now, model_label
+            )
+            out.append(
+                {
+                    "name": name,
+                    "cat": cat,
+                    "summary": summary,
+                    "files": files_count,
+                    "refs": refs_count,
+                    "experts": experts,
+                }
+            )
 
         await db.commit()
         logger.info("concept_extract_done", repo_id=repo_id, count=len(out))
@@ -122,7 +136,9 @@ class ConceptExtractor:
     async def extract_for_all(self, db: AsyncSession) -> dict:
         """Convenience: run for every active repo in one go. Returns a summary
         keyed by repo so the frontend can show per-repo counts."""
-        repos = (await db.execute(select(Repo).where(Repo.is_active == True))).scalars().all()  # noqa: E712
+        repos = (
+            (await db.execute(select(Repo).where(Repo.is_active == True))).scalars().all()
+        )  # noqa: E712
         result: dict[str, int] = {}
         for repo in repos:
             try:

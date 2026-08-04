@@ -1,8 +1,6 @@
-import json
 from structlog import get_logger
 
 from app.services.knowledge.graph import KnowledgeGraph
-from app.services.agent.rag import classify_query_intent
 
 logger = get_logger(__name__)
 
@@ -11,12 +9,17 @@ class PRReviewer:
     def __init__(self):
         self.graph = KnowledgeGraph()
 
-    async def review(self, repo_id: str, repo_name: str, pr_title: str,
-                     pr_body: str = "", changed_files: list[str] | None = None,
-                     diff: str = "") -> dict:
+    async def review(
+        self,
+        repo_id: str,
+        repo_name: str,
+        pr_title: str,
+        pr_body: str = "",
+        changed_files: list[str] | None = None,
+        diff: str = "",
+    ) -> dict:
         changed_files = changed_files or []
         issues: list[dict] = []
-        suggestions: list[dict] = []
 
         for file_path in changed_files:
             file_issues = await self._review_file(repo_id, file_path)
@@ -48,20 +51,24 @@ class PRReviewer:
         deps = await self.graph.find_dependencies(repo_id, file_path)
 
         if deps and len(deps) > 10:
-            issues.append({
-                "file": file_path,
-                "severity": "medium",
-                "type": "high_coupling",
-                "message": f"High coupling: {len(deps)} dependencies. Consider splitting responsibilities.",
-            })
+            issues.append(
+                {
+                    "file": file_path,
+                    "severity": "medium",
+                    "type": "high_coupling",
+                    "message": f"High coupling: {len(deps)} dependencies. Consider splitting responsibilities.",
+                }
+            )
 
         if owner is None:
-            issues.append({
-                "file": file_path,
-                "severity": "low",
-                "type": "no_owner",
-                "message": "No owner identified. Consider adding CODEOWNERS.",
-            })
+            issues.append(
+                {
+                    "file": file_path,
+                    "severity": "low",
+                    "type": "no_owner",
+                    "message": "No owner identified. Consider adding CODEOWNERS.",
+                }
+            )
 
         return issues
 
@@ -69,50 +76,61 @@ class PRReviewer:
         issues = []
 
         if "secret" in diff.lower() or "password" in diff.lower() or "api_key" in diff.lower():
-            issues.append({
-                "file": "multiple",
-                "severity": "critical",
-                "type": "secret_exposure",
-                "message": "Potential secret/password in diff. Verify these are not committing real credentials.",
-            })
+            issues.append(
+                {
+                    "file": "multiple",
+                    "severity": "critical",
+                    "type": "secret_exposure",
+                    "message": "Potential secret/password in diff. Verify these are not committing real credentials.",
+                }
+            )
 
-        if "print(" in diff and "print(\"" not in diff:
-            issues.append({
-                "file": "multiple",
-                "severity": "low",
-                "type": "debug_code",
-                "message": "Debug print statements found — consider removing before merge.",
-            })
+        if "print(" in diff and 'print("' not in diff:
+            issues.append(
+                {
+                    "file": "multiple",
+                    "severity": "low",
+                    "type": "debug_code",
+                    "message": "Debug print statements found — consider removing before merge.",
+                }
+            )
 
         if "TODO" in diff or "FIXME" in diff or "HACK" in diff:
-            issues.append({
-                "file": "multiple",
-                "severity": "medium",
-                "type": "unresolved_todos",
-                "message": "TODO/FIXME/HACK comments in diff — resolve or file a ticket.",
-            })
+            issues.append(
+                {
+                    "file": "multiple",
+                    "severity": "medium",
+                    "type": "unresolved_todos",
+                    "message": "TODO/FIXME/HACK comments in diff — resolve or file a ticket.",
+                }
+            )
 
         return issues
 
-    async def _review_pr_info(self, repo_id: str, title: str, body: str,
-                              changed_files: list[str]) -> list[dict]:
+    async def _review_pr_info(
+        self, repo_id: str, title: str, body: str, changed_files: list[str]
+    ) -> list[dict]:
         issues = []
         nfiles = len(changed_files)
 
         if nfiles == 0:
-            issues.append({
-                "file": "",
-                "severity": "low",
-                "type": "no_files",
-                "message": "PR has no changed files — may need verification.",
-            })
+            issues.append(
+                {
+                    "file": "",
+                    "severity": "low",
+                    "type": "no_files",
+                    "message": "PR has no changed files — may need verification.",
+                }
+            )
         elif nfiles > 20:
-            issues.append({
-                "file": "",
-                "severity": "medium",
-                "type": "large_pr",
-                "message": f"Large PR ({nfiles} files) — consider breaking into smaller, focused PRs.",
-            })
+            issues.append(
+                {
+                    "file": "",
+                    "severity": "medium",
+                    "type": "large_pr",
+                    "message": f"Large PR ({nfiles} files) — consider breaking into smaller, focused PRs.",
+                }
+            )
 
         return issues
 

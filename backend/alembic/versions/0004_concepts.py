@@ -4,16 +4,17 @@ Revision ID: 0004_concepts
 Revises: 0003_code_embeddings_repo_id
 Create Date: 2026-05-28
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0004_concepts"
-down_revision: Union[str, None] = "0003_code_embeddings_repo_id"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0003_code_embeddings_repo_id"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -29,8 +30,12 @@ def upgrade() -> None:
         sa.Column("experts", sa.JSON, nullable=True),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("generator_model", sa.String(120), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.UniqueConstraint("repo_id", "name", name="uq_concept_repo_name"),
     )
     op.create_index("idx_concepts_repo", "concepts", ["repo_id"])

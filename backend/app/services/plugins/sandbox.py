@@ -14,6 +14,7 @@ plugin return values must be picklable.
 """
 
 import asyncio
+import contextlib
 import importlib.util
 import multiprocessing
 import os
@@ -47,23 +48,18 @@ class SandboxError(Exception):
     pass
 
 
-def _child_entry(func_path: str, args: tuple, kwargs: dict,
-                 max_memory_mb: int, max_cpu_seconds: int, conn) -> None:
+def _child_entry(
+    func_path: str, args: tuple, kwargs: dict, max_memory_mb: int, max_cpu_seconds: int, conn
+) -> None:
     """Runs in the forked child: clamp resources, import, execute, report back."""
     try:
         if max_memory_mb:
             limit = max_memory_mb * 1024 * 1024
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-            except (ValueError, OSError):
-                pass
         if max_cpu_seconds:
-            try:
-                resource.setrlimit(
-                    resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds + 1)
-                )
-            except (ValueError, OSError):
-                pass
+            with contextlib.suppress(ValueError, OSError):
+                resource.setrlimit(resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds + 1))
 
         module_path, func_name = func_path.rsplit(".", 1)
         spec = importlib.util.find_spec(module_path)
@@ -119,18 +115,22 @@ class PluginSandbox:
                 self._run_in_process(func_path, args, kwargs),
                 timeout=self.config.timeout_seconds,
             )
-        except asyncio.TimeoutError:
-            raise SandboxError(
-                f"Plugin execution timed out after {self.config.timeout_seconds}s"
-            )
+        except TimeoutError:
+            raise SandboxError(f"Plugin execution timed out after {self.config.timeout_seconds}s")
 
     async def _run_in_process(self, func_path, args, kwargs) -> Any:
         ctx = multiprocessing.get_context("fork")
         parent_conn, child_conn = ctx.Pipe(duplex=False)
         proc = ctx.Process(
             target=_child_entry,
-            args=(func_path, args, kwargs,
-                  self.config.max_memory_mb, self.config.max_cpu_seconds, child_conn),
+            args=(
+                func_path,
+                args,
+                kwargs,
+                self.config.max_memory_mb,
+                self.config.max_cpu_seconds,
+                child_conn,
+            ),
         )
         proc.start()
         child_conn.close()  # only the child writes

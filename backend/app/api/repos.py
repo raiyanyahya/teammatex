@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from structlog import get_logger
 
 from app.db.session import get_db
@@ -57,6 +56,7 @@ def _sanitize_local_name(name: str) -> str:
 
 def _local_name_from_url(github_url: str) -> str:
     from urllib.parse import urlparse
+
     path = urlparse(github_url).path.strip("/")
     raw = path.split("/")[-1].replace(".git", "") if "/" in path else github_url.replace(".git", "")
     return _sanitize_local_name(raw)
@@ -65,6 +65,7 @@ def _local_name_from_url(github_url: str) -> str:
 @router.get("", response_model=list[RepoResponse])
 async def list_repos(db: AsyncSession = Depends(get_db)):
     from sqlalchemy import func
+
     from app.models.pr import PR
     from app.models.repo import RepoOnboardingState
 
@@ -75,17 +76,22 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
 
     repo_ids = [r.id for r in repos]
 
-    pr_rows = (await db.execute(
-        select(PR.repo_id, func.count(PR.id))
-        .where(PR.repo_id.in_(repo_ids), PR.status.notin_(["merged", "closed"]))
-        .group_by(PR.repo_id)
-    )).all()
+    pr_rows = (
+        await db.execute(
+            select(PR.repo_id, func.count(PR.id))
+            .where(PR.repo_id.in_(repo_ids), PR.status.notin_(["merged", "closed"]))
+            .group_by(PR.repo_id)
+        )
+    ).all()
     open_prs_by_repo = {repo_id: int(c) for repo_id, c in pr_rows}
 
-    onb_rows = (await db.execute(
-        select(RepoOnboardingState.repo_id, RepoOnboardingState.status)
-        .where(RepoOnboardingState.repo_id.in_(repo_ids))
-    )).all()
+    onb_rows = (
+        await db.execute(
+            select(RepoOnboardingState.repo_id, RepoOnboardingState.status).where(
+                RepoOnboardingState.repo_id.in_(repo_ids)
+            )
+        )
+    ).all()
     onb_total: dict[str, int] = {}
     onb_done: dict[str, int] = {}
     for repo_id, status in onb_rows:
@@ -95,12 +101,14 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
 
     # Freshness: the most recent onboarding/sync stage completion per repo, so the
     # dashboard can show "synced N ago" and flag stale repos instead of a placeholder.
-    synced_rows = (await db.execute(
-        select(RepoOnboardingState.repo_id, func.max(RepoOnboardingState.completed_at))
-        .where(RepoOnboardingState.repo_id.in_(repo_ids))
-        .group_by(RepoOnboardingState.repo_id)
-    )).all()
-    last_synced_by_repo = {rid: ts for rid, ts in synced_rows}
+    synced_rows = (
+        await db.execute(
+            select(RepoOnboardingState.repo_id, func.max(RepoOnboardingState.completed_at))
+            .where(RepoOnboardingState.repo_id.in_(repo_ids))
+            .group_by(RepoOnboardingState.repo_id)
+        )
+    ).all()
+    last_synced_by_repo = dict(synced_rows)
 
     # File counts come from the knowledge graph; a fresh repo with no graph yet
     # still renders (count=0). Failures are swallowed so a Neo4j blip can't kill
@@ -108,6 +116,7 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
     files_by_repo: dict[str, int] = {}
     try:
         from app.services.knowledge.graph import KnowledgeGraph
+
         kg = KnowledgeGraph()
         for row in await kg.run(
             "MATCH (f:File) WHERE f.repo_id IN $ids RETURN f.repo_id AS repo_id, count(f) AS c",
@@ -122,24 +131,27 @@ async def list_repos(db: AsyncSession = Depends(get_db)):
         open_prs = open_prs_by_repo.get(r.id, 0)
         total = onb_total.get(r.id, 0)
         done = onb_done.get(r.id, 0)
-        onboarding_pct = round(100 * done / total) if total else (100 if files_by_repo.get(r.id, 0) > 0 else 0)
+        onboarding_pct = (
+            round(100 * done / total) if total else (100 if files_by_repo.get(r.id, 0) > 0 else 0)
+        )
         health = onboarding_pct - min(40, open_prs * 5)
         health = max(0, min(100, health))
-        out.append(RepoResponse(
-            id=r.id,
-            github_url=r.github_url,
-            local_name=r.local_name,
-            default_branch=r.default_branch,
-            is_active=r.is_active,
-            files=files_by_repo.get(r.id, 0),
-            open_prs=open_prs,
-            onboarding_pct=onboarding_pct,
-            health=health,
-            last_synced=(
-                last_synced_by_repo[r.id].isoformat()
-                if last_synced_by_repo.get(r.id) else None
-            ),
-        ))
+        out.append(
+            RepoResponse(
+                id=r.id,
+                github_url=r.github_url,
+                local_name=r.local_name,
+                default_branch=r.default_branch,
+                is_active=r.is_active,
+                files=files_by_repo.get(r.id, 0),
+                open_prs=open_prs,
+                onboarding_pct=onboarding_pct,
+                health=health,
+                last_synced=(
+                    last_synced_by_repo[r.id].isoformat() if last_synced_by_repo.get(r.id) else None
+                ),
+            )
+        )
     return out
 
 
@@ -149,12 +161,14 @@ async def repo_activity(limit: int = 12, db: AsyncSession = Depends(get_db)):
     Powers the dashboard 'Live activity' feed with actual repo data."""
     from app.models.pr import PR
 
-    rows = (await db.execute(
-        select(PR, Repo.local_name)
-        .join(Repo, PR.repo_id == Repo.id)
-        .order_by(PR.created_at.desc())
-        .limit(min(limit, 50))
-    )).all()
+    rows = (
+        await db.execute(
+            select(PR, Repo.local_name)
+            .join(Repo, PR.repo_id == Repo.id)
+            .order_by(PR.created_at.desc())
+            .limit(min(limit, 50))
+        )
+    ).all()
     return [
         {
             "repo": local_name,
@@ -181,10 +195,13 @@ async def onboarding_summary(db: AsyncSession = Depends(get_db)):
         return {"total": 0, "ready": 0, "onboarding": []}
 
     repo_ids = [r.id for r in repos]
-    rows = (await db.execute(
-        select(RepoOnboardingState.repo_id, RepoOnboardingState.status)
-        .where(RepoOnboardingState.repo_id.in_(repo_ids))
-    )).all()
+    rows = (
+        await db.execute(
+            select(RepoOnboardingState.repo_id, RepoOnboardingState.status).where(
+                RepoOnboardingState.repo_id.in_(repo_ids)
+            )
+        )
+    ).all()
     total_by: dict[str, int] = {}
     done_by: dict[str, int] = {}
     failed_by: dict[str, int] = {}
@@ -214,21 +231,32 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
     local_name = payload.local_name
     if not local_name:
         from urllib.parse import urlparse
+
         path = urlparse(payload.github_url).path.strip("/")
         local_name = path.split("/")[-1].replace(".git", "") if "/" in path else ""
 
     # If it's an org/user (no repo path), pull all repos via GitHub API
-    parts = payload.github_url.rstrip("/").replace("https://github.com/", "").replace("http://github.com/", "").split("/")
+    parts = (
+        payload.github_url.rstrip("/")
+        .replace("https://github.com/", "")
+        .replace("http://github.com/", "")
+        .split("/")
+    )
     if len(parts) == 1:
         org = parts[0]
         token = await _get_github_token(db)
         if not token:
-            raise HTTPException(status_code=400, detail=f"'{org}' looks like an organization. A GitHub token is required to import org repos. Save your token in Settings.")
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{org}' looks like an organization. A GitHub token is required to import org repos. Save your token in Settings.",
+            )
 
         import httpx
+
         async with httpx.AsyncClient(
             base_url="https://api.github.com",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}, timeout=30,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            timeout=30,
         ) as client:
             # GitHub caps per_page at 100, so importing more than that means
             # paginating. Pull up to MAX_REPOS across pages (5 × 100) instead of
@@ -237,12 +265,17 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
             PER_PAGE = 100
             working = None
             for endpoint in [f"/orgs/{org}/repos", f"/users/{org}/repos"]:
-                resp = await client.get(endpoint, params={"per_page": PER_PAGE, "type": "all", "page": 1})
+                resp = await client.get(
+                    endpoint, params={"per_page": PER_PAGE, "type": "all", "page": 1}
+                )
                 if resp.status_code == 200:
                     working = endpoint
                     break
                 if resp.status_code == 401:
-                    raise HTTPException(status_code=401, detail="GitHub token is invalid or expired. Update it in Settings → Integrations.")
+                    raise HTTPException(
+                        status_code=401,
+                        detail="GitHub token is invalid or expired. Update it in Settings → Integrations.",
+                    )
             else:
                 status = resp.status_code
                 msg = resp.json().get("message", "Unknown error")
@@ -254,7 +287,9 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
             # Keep paging while the last page was full (more may remain) and we
             # haven't hit the cap. A short page means we've reached the end.
             while last_count == PER_PAGE and len(gh_repos) < MAX_REPOS:
-                page_resp = await client.get(working, params={"per_page": PER_PAGE, "type": "all", "page": page})
+                page_resp = await client.get(
+                    working, params={"per_page": PER_PAGE, "type": "all", "page": page}
+                )
                 if page_resp.status_code != 200:
                     break
                 batch = page_resp.json()
@@ -267,11 +302,14 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
 
         added = []
         for r in gh_repos:
-            url = r["clone_url"]; name = _sanitize_local_name(r["name"])
+            url = r["clone_url"]
+            name = _sanitize_local_name(r["name"])
             existing_check = await db.execute(select(Repo).where(Repo.github_url == url))
-            if existing_check.scalar_one_or_none(): continue
+            if existing_check.scalar_one_or_none():
+                continue
             repo = Repo(github_url=url, local_name=name)
-            db.add(repo); await db.flush()
+            db.add(repo)
+            await db.flush()
             added.append({"repo_id": str(repo.id), "url": url, "name": name})
         await db.commit()
 
@@ -283,9 +321,7 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
         return {"org": org, "repos_added": len(added), "repos": [a["name"] for a in added]}
 
     local_name = _sanitize_local_name(local_name)
-    existing = await db.execute(
-        select(Repo).where(Repo.github_url == payload.github_url)
-    )
+    existing = await db.execute(select(Repo).where(Repo.github_url == payload.github_url))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Repository already registered")
 
@@ -344,12 +380,14 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     best-effort, its knowledge-graph subgraph."""
     import os
     import shutil
+
     from sqlalchemy import delete as sa_delete
+
+    from app.models.code_embedding import CodeEmbedding
+    from app.models.dependency import DependencySnapshot
     from app.models.pr import PR
     from app.models.repo import RepoOnboardingState
     from app.models.tech_debt import TechDebtItem
-    from app.models.dependency import DependencySnapshot
-    from app.models.code_embedding import CodeEmbedding
 
     result = await db.execute(select(Repo).where(Repo.id == repo_id))
     repo = result.scalar_one_or_none()
@@ -365,6 +403,7 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
     # Best-effort: remove the cloned checkout from disk (resolve REPOS_ROOT at call
     # time so it stays patchable/configurable).
     from app.services.agent import environment
+
     checkout = os.path.join(environment.REPOS_ROOT, local_name)
     try:
         shutil.rmtree(checkout)
@@ -375,6 +414,7 @@ async def delete_repo(repo_id: str, db: AsyncSession = Depends(get_db)):
 
     try:
         from app.services.knowledge.graph import KnowledgeGraph
+
         await KnowledgeGraph().run("MATCH (n {repo_id: $id}) DETACH DELETE n", id=repo_id)
     except Exception as e:
         logger.warning("repo_delete_graph_cleanup_failed", repo_id=repo_id, error=str(e)[:120])
@@ -392,9 +432,15 @@ async def retry_onboarding(repo_id: str, db: AsyncSession = Depends(get_db)):
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    states = (await db.execute(
-        select(RepoOnboardingState).where(RepoOnboardingState.repo_id == repo_id)
-    )).scalars().all()
+    states = (
+        (
+            await db.execute(
+                select(RepoOnboardingState).where(RepoOnboardingState.repo_id == repo_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     for s in states:
         await db.delete(s)
     await db.commit()
@@ -406,6 +452,7 @@ async def retry_onboarding(repo_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{repo_id}/onboarding")
 async def get_onboarding_status(repo_id: str, db: AsyncSession = Depends(get_db)):
     from uuid import UUID
+
     from app.models.repo import RepoOnboardingState
 
     # A malformed (non-UUID) id has no onboarding state; report empty rather
@@ -425,19 +472,20 @@ async def get_onboarding_status(repo_id: str, db: AsyncSession = Depends(get_db)
         "repo_id": repo_id,
         "stages": [
             {
-            "stage": s.stage,
-            "status": s.status,
-            "progress": s.progress,
-            "error": s.error,
-            "completed_at": str(s.completed_at) if s.completed_at else None,
-        }
-        for s in states
-    ],
-}
+                "stage": s.stage,
+                "status": s.status,
+                "progress": s.progress,
+                "error": s.error,
+                "completed_at": str(s.completed_at) if s.completed_at else None,
+            }
+            for s in states
+        ],
+    }
 
 
 async def _get_github_token(db: AsyncSession) -> str:
     from app.models.app_config import AppConfig
+
     result = await db.execute(select(AppConfig).where(AppConfig.key == "github_token"))
     row = result.scalar_one_or_none()
     if row and row.value:

@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     def validate_secret_key(self) -> None:
         if self.teammate_secret_key == "change-me" or len(self.teammate_secret_key) < 16:
             import warnings
+
             warnings.warn(
                 "TEAMMATEX_SECRET_KEY is insecure (default or too short). Set a strong key.",
                 RuntimeWarning,

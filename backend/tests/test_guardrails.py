@@ -1,8 +1,6 @@
 """Test the guardrail system for secrets, SQL injection, and dangerous calls."""
 
-import pytest
-
-from app.services.agent.guardrails import guardrails, GuardResult
+from app.services.agent.guardrails import GuardResult, guardrails
 
 
 class TestSecretDetection:
@@ -32,10 +30,10 @@ class TestSecretDetection:
         assert result in (GuardResult.BLOCK, GuardResult.WARN)
 
     def test_clean_code_passes(self):
-        code = '''def hello():
+        code = """def hello():
     name = "World"
     return f"Hello, {name}!"
-'''
+"""
         result = guardrails.run_all_checks(code)
         assert result == GuardResult.PASS
 
@@ -47,7 +45,7 @@ class TestSecretDetection:
 
 class TestSQLInjectionDetection:
     def test_detect_fstring_sql(self):
-        code = 'query = f"SELECT * FROM users WHERE name = \'%s\'" % user_id'
+        code = "query = f\"SELECT * FROM users WHERE name = '%s'\" % user_id"
         result = guardrails.run_all_checks(code)
         assert result != GuardResult.PASS
 
@@ -97,34 +95,36 @@ class TestPRPolicy:
         assert result == GuardResult.PASS
 
     def test_non_teammatex_branch_warns(self):
-        result, msg = guardrails.check_pr_policy(
-            "test-repo", "feature-123", ["src/main.py"]
-        )
+        result, msg = guardrails.check_pr_policy("test-repo", "feature-123", ["src/main.py"])
         assert result == GuardResult.WARN
 
     def test_too_many_files_warns(self):
         files = [f"src/file_{i}.py" for i in range(51)]
-        result, msg = guardrails.check_pr_policy(
-            "test-repo", "teammatex/big-change", files
-        )
+        result, msg = guardrails.check_pr_policy("test-repo", "teammatex/big-change", files)
         assert result == GuardResult.WARN
 
     def test_critical_files_warn(self):
         result, msg = guardrails.check_pr_policy(
-            "test-repo", "teammatex/infra-update",
+            "test-repo",
+            "teammatex/infra-update",
             ["infra/terraform/main.tf", "src/app.py"],
         )
         assert result == GuardResult.WARN
 
     def test_deploy_freeze_blocks(self):
         result, msg = guardrails.check_pr_policy(
-            "test-repo", "teammatex/hotfix", ["src/main.py"], is_deploy_freeze=True,
+            "test-repo",
+            "teammatex/hotfix",
+            ["src/main.py"],
+            is_deploy_freeze=True,
         )
         assert result == GuardResult.BLOCK
 
     def test_safe_files_pass(self):
         result, msg = guardrails.check_pr_policy(
-            "test-repo", "teammatex/docs-update", ["docs/README.md", "docs/guide.md"],
+            "test-repo",
+            "teammatex/docs-update",
+            ["docs/README.md", "docs/guide.md"],
         )
         assert result == GuardResult.PASS
 

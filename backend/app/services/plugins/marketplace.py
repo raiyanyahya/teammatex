@@ -11,7 +11,9 @@ logger = get_logger(__name__)
 # "git+https://evil/x.git", local dirs, and pip option injection ("--index-url
 # http://evil"), any of which would let `pip install` fetch and execute
 # arbitrary attacker code (setup.py / import time).
-_PACKAGE_SPEC_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(==[A-Za-z0-9][A-Za-z0-9.+!_-]{0,63})?$")
+_PACKAGE_SPEC_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(==[A-Za-z0-9][A-Za-z0-9.+!_-]{0,63})?$"
+)
 
 
 def is_valid_package_spec(name: str) -> bool:
@@ -93,16 +95,21 @@ class PluginMarketplace:
             return False
         try:
             import subprocess
+
             result = subprocess.run(
                 # "--" stops pip from treating a crafted name as an option flag.
                 ["pip", "install", "--no-input", "--disable-pip-version-check", "--", package_name],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode == 0:
                 logger.info("plugin_installed", package=package_name)
                 return True
             else:
-                logger.error("plugin_install_failed", package=package_name, stderr=result.stderr[:500])
+                logger.error(
+                    "plugin_install_failed", package=package_name, stderr=result.stderr[:500]
+                )
                 return False
         except Exception as e:
             logger.error("plugin_install_error", package=package_name, error=str(e))

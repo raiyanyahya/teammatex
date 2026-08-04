@@ -8,6 +8,7 @@ Caveat: state is per-process, so with N gunicorn workers the effective limit is
 attack into a bounded one. A Redis-backed counter would make it exact across
 workers; that's the upgrade path if this ever needs to be authoritative.
 """
+
 from __future__ import annotations
 
 import time

@@ -28,14 +28,10 @@ class NotesService:
         return note
 
     async def list_notes(self, db: AsyncSession, limit: int = 50) -> list[Note]:
-        result = await db.execute(
-            select(Note).order_by(Note.updated_at.desc()).limit(limit)
-        )
+        result = await db.execute(select(Note).order_by(Note.updated_at.desc()).limit(limit))
         return list(result.scalars().all())
 
-    async def get_by_entity(
-        self, db: AsyncSession, entity_type: str, entity_id: str
-    ) -> list[Note]:
+    async def get_by_entity(self, db: AsyncSession, entity_type: str, entity_id: str) -> list[Note]:
         result = await db.execute(
             select(Note)
             .where(Note.entity_type == entity_type, Note.entity_id == entity_id)
@@ -46,9 +42,7 @@ class NotesService:
     async def search(self, db: AsyncSession, query: str, limit: int = 20) -> list[Note]:
         result = await db.execute(
             select(Note)
-            .where(
-                (Note.title.ilike(f"%{query}%")) | (Note.content.ilike(f"%{query}%"))
-            )
+            .where((Note.title.ilike(f"%{query}%")) | (Note.content.ilike(f"%{query}%")))
             .order_by(Note.updated_at.desc())
             .limit(limit)
         )
