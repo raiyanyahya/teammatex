@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.api_registry import APIRegistryEntry
 
@@ -63,8 +64,16 @@ async def list_registry(
     }
 
 
+# add/patch/delete change the approved-egress allowlist that gates the agent's
+# http_request tool, so they are admin-only. Reads, the /check probe, and the
+# agent's own /suggest (which only creates a *pending* entry needing approval)
+# stay open to any authenticated user.
 @router.post("", status_code=201)
-async def add_entry(payload: RegistryEntryCreate, db: AsyncSession = Depends(get_db)):
+async def add_entry(
+    payload: RegistryEntryCreate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     existing = await db.execute(
         select(APIRegistryEntry).where(APIRegistryEntry.domain == payload.domain)
     )
@@ -88,7 +97,11 @@ async def add_entry(payload: RegistryEntryCreate, db: AsyncSession = Depends(get
 
 
 @router.patch("/{entry_id}")
-async def update_entry(entry_id: str, payload: RegistryEntryUpdate, db: AsyncSession = Depends(get_db)):
+async def update_entry(
+    entry_id: str, payload: RegistryEntryUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(APIRegistryEntry).where(APIRegistryEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
@@ -112,7 +125,11 @@ async def update_entry(entry_id: str, payload: RegistryEntryUpdate, db: AsyncSes
 
 
 @router.delete("/{entry_id}")
-async def remove_entry(entry_id: str, db: AsyncSession = Depends(get_db)):
+async def remove_entry(
+    entry_id: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(APIRegistryEntry).where(APIRegistryEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:

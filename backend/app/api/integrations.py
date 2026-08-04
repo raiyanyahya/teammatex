@@ -6,6 +6,8 @@ from structlog import get_logger
 
 import json
 
+from app.api.config_endpoints import _mask_secrets
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.integration import Integration
 from app.services.integrations.base import IntegrationRegistry
@@ -34,20 +36,37 @@ class IntegrationStatus(BaseModel):
 
 # ─── CRUD ────────────────────────────────────────────────
 
+def _redacted_config(credentials) -> dict:
+    """The `config` column is only ever surfaced for display, while the real
+    secret lives (encrypted) in credentials_encrypted. Persisting the raw creds
+    here used to write the token in plaintext AND hand it back via GET, so store
+    a secret-masked copy: non-secret fields (url, email) stay readable, tokens
+    become ``********``."""
+    if not isinstance(credentials, dict):
+        return {}
+    return _mask_secrets(credentials)
+
+
 @router.get("")
 async def list_integrations(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Integration))
     integrations = result.scalars().all()
     return {
         "integrations": [
-            {"provider": i.provider, "enabled": i.enabled, "config": i.config}
+            # Mask on the way out too, so any legacy row that stored plaintext
+            # credentials in `config` (before _redacted_config) is not leaked.
+            {"provider": i.provider, "enabled": i.enabled, "config": _mask_secrets(i.config or {})}
             for i in integrations
         ]
     }
 
 
 @router.post("", status_code=201)
-async def configure_integration(payload: IntegrationConfig, db: AsyncSession = Depends(get_db)):
+async def configure_integration(
+    payload: IntegrationConfig,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     existing = await db.execute(
         select(Integration).where(Integration.provider == payload.provider)
     )
@@ -57,14 +76,14 @@ async def configure_integration(payload: IntegrationConfig, db: AsyncSession = D
         integration.credentials_encrypted = encrypt(json.dumps(payload.credentials))
         integration.enabled = payload.enabled
         integration.webhook_secret = payload.webhook_secret
-        integration.config = payload.credentials if isinstance(payload.credentials, dict) else {}
+        integration.config = _redacted_config(payload.credentials)
     else:
         integration = Integration(
             provider=payload.provider,
             credentials_encrypted=encrypt(json.dumps(payload.credentials)),
             enabled=payload.enabled,
             webhook_secret=payload.webhook_secret,
-            config=payload.credentials if isinstance(payload.credentials, dict) else {},
+            config=_redacted_config(payload.credentials),
         )
         db.add(integration)
 
@@ -75,7 +94,11 @@ async def configure_integration(payload: IntegrationConfig, db: AsyncSession = D
 
 
 @router.delete("/{provider}")
-async def remove_integration(provider: str, db: AsyncSession = Depends(get_db)):
+async def remove_integration(
+    provider: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Integration).where(Integration.provider == provider)
     )

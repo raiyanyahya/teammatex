@@ -1,10 +1,15 @@
 import http.client
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
-router = APIRouter(prefix="/logs", tags=["logs"])
+from app.api.deps import require_admin
+
+# Container logs (api, worker, postgres, neo4j, redis) routinely carry
+# connection strings, tracebacks with request data, and other operational
+# secrets, so this is an admin-only view — not merely authenticated.
+router = APIRouter(prefix="/logs", tags=["logs"], dependencies=[Depends(require_admin)])
 
 CONTAINERS = {
     "api": "teammatex-api-1",

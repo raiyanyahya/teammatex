@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.permission import Permission
 
@@ -40,8 +41,13 @@ async def list_permissions(db: AsyncSession = Depends(get_db)):
 
 @router.put("/{capability}")
 async def set_permission(
-    capability: str, payload: PermissionSet, db: AsyncSession = Depends(get_db),
+    capability: str, payload: PermissionSet,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
+    # Capabilities gate the agent's powerful tools (execute/write_code/create_pr).
+    # An admin who turned `execute` off to stop shell access must be the only one
+    # who can turn it back on — so toggling is admin-only, not any-authenticated.
     if capability not in _DEFAULTS:
         raise HTTPException(status_code=404, detail=f"Unknown capability: {capability}")
 

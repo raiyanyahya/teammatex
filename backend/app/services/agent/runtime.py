@@ -441,8 +441,12 @@ class AgentRuntime:
         providers = await self.llm._get_available_providers()
         for provider, model, key in providers:
             try:
+                # Use the same provider→litellm model mapping as the chat path.
+                # The old hardcode ("deepseek/deepseek-chat") ignored the
+                # configured model and pinned a model that DeepSeek retired on
+                # 2026-07-24 — so planning 500'd on the default provider.
                 response = await acompletion(
-                    model="deepseek/deepseek-chat" if provider == "deepseek" else f"{provider}/{model}",
+                    model=LLMProvider._get_model_name(provider, model),
                     messages=[{"role": "system", "content": self._get_persona_prompt(persona)},
                               {"role": "user", "content": prompt}],
                     api_key=key, temperature=0.2, max_tokens=2000,
@@ -794,9 +798,16 @@ class AgentRuntime:
         return {"commits": commits}
 
     async def _tool_run_lint(self, args: dict) -> dict:
+        # Confine to the workspace like the other file tools: without this the
+        # agent could point ruff at arbitrary paths (e.g. read errors leaking
+        # snippets of files outside /data). "--" stops a crafted path from being
+        # parsed as a ruff option.
+        path = (args.get("path") or "").strip()
+        if not _is_safe_path(path):
+            return {"error": "Path outside allowed directories"}
         loop = asyncio.get_running_loop()
         process = await asyncio.create_subprocess_exec(
-            "ruff", "check", args["path"],
+            "ruff", "check", "--", path,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             env=_scrubbed_env(),
         )
@@ -861,15 +872,26 @@ class AgentRuntime:
         if not allowed:
             logger.warning("http_request_registry_denied", url=url[:200], reason=why)
             return {"error": f"URL blocked: {why}"}
+        # Stream with a hard byte cap instead of buffering the whole body: an
+        # approved-but-compromised endpoint could otherwise stream gigabytes and
+        # OOM the API process before we ever slice to 3 KB. redirects stay off so
+        # a 3xx can't bounce the request past the SSRF check to an internal host.
+        _MAX_BODY = 1024 * 1024  # 1 MB read ceiling; response is truncated below
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
-            response = await client.request(
+            async with client.stream(
                 args["method"], url,
                 headers=args.get("headers"),
                 content=args.get("body"),
-            )
+            ) as response:
+                buf = bytearray()
+                async for chunk in response.aiter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) >= _MAX_BODY:
+                        break
+                status = response.status_code
         return {
-            "status": response.status_code,
-            "body": response.text[:3000],
+            "status": status,
+            "body": bytes(buf).decode(errors="replace")[:3000],
         }
 
     # Only these registered Celery tasks may be scheduled. The old code fired

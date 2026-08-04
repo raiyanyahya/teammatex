@@ -1,3 +1,4 @@
+import re
 from typing import Any, Optional
 
 from neo4j import AsyncSession
@@ -7,6 +8,19 @@ from app.db.neo4j import get_neo4j_manager
 from app.services.knowledge.graph_ids import node_id, edge_id, EXTRACTOR_VERSION
 
 logger = get_logger(__name__)
+
+# Cypher has no bind parameters for labels, relationship types, or property
+# *names* — they can only be interpolated into the query string. So anything
+# interpolated must be a bare identifier; otherwise a value like
+# "Note) DETACH DELETE n //" is injection. Neo4j identifiers are letters, digits,
+# and underscores (not starting with a digit).
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_ident(value: str, kind: str) -> str:
+    if not isinstance(value, str) or not _IDENT_RE.fullmatch(value):
+        raise ValueError(f"unsafe Cypher {kind}: {value!r}")
+    return value
 
 
 class KnowledgeGraph:
@@ -28,8 +42,8 @@ class KnowledgeGraph:
         labels: list[str],
         properties: dict[str, Any],
     ) -> dict | None:
-        label_str = ":".join(labels)
-        props_str = ", ".join(f"{k}: ${k}" for k in properties)
+        label_str = ":".join(_safe_ident(lbl, "label") for lbl in labels)
+        props_str = ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in properties)
         query = f"CREATE (n:{label_str} {{{props_str}}}) RETURN n {{.*}} as node"
         async with get_neo4j_manager().session() as session:
             result = await session.run(query, **properties)
@@ -46,10 +60,10 @@ class KnowledgeGraph:
         rel_properties: dict[str, Any] | None = None,
     ) -> bool:
         rel_props = rel_properties or {}
-        rel_str = f":{rel_type}"
+        rel_str = f":{_safe_ident(rel_type, 'relationship')}"
         if rel_props:
-            props = ", ".join(f"{k}: ${k}" for k in rel_props)
-            rel_str = f":{rel_type} {{{props}}}"
+            props = ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in rel_props)
+            rel_str = f":{_safe_ident(rel_type, 'relationship')} {{{props}}}"
 
         query = f"""
         MATCH (a {{{from_node_query}}})
@@ -396,10 +410,13 @@ class KnowledgeGraph:
         """, id=note_id, title=title)
 
     async def link_note_to_entity(self, note_id: str, entity_type: str, entity_params: dict) -> None:
-        match_clause = "{" + ", ".join(f"{k}: ${k}" for k in entity_params) + "}"
+        # entity_type would flow from the model-controlled write_note arg if this
+        # were wired to the tool, so it must be a bare label, never interpolated raw.
+        safe_type = _safe_ident(entity_type, "label")
+        match_clause = "{" + ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in entity_params) + "}"
         query = f"""
         MATCH (n:Note {{id: $note_id}})
-        MATCH (e:{entity_type} {match_clause})
+        MATCH (e:{safe_type} {match_clause})
         MERGE (n)-[:KNOWS_ABOUT]->(e)
         """
         await self.run(query, note_id=note_id, **entity_params)

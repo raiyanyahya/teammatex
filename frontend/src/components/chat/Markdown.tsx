@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import { codeToHtml } from "shiki";
 import { Check, Copy } from "lucide-react";
 
@@ -85,9 +84,13 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
 export default function Markdown({ content }: { content: string }) {
   return (
     <div className="md-body">
+      {/* No rehype-raw: assistant output is markdown, and it is influenced by
+          untrusted sources (repo files, web-search snippets, git history, Slack).
+          Passing raw HTML through would let a prompt-injected `<img onerror=…>`
+          run in the user's session — and the auth token is reachable from JS —
+          so raw HTML is left escaped as text. remark handles all real formatting. */}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
         components={{
           // Block code is wrapped in <pre><code>; pass <pre> through so our
           // CodeBlock (which renders its own <pre>) isn't nested inside one.

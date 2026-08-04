@@ -3,9 +3,17 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.app_config import AppConfig
 
+# App config is a single global object (LLM API keys, the GitHub push token,
+# persona, feature flags) shared by every user and the agent. Reads are allowed
+# for any authenticated user because the UI (sidebar, dashboard) pulls display
+# settings from here and secrets are masked on the way out. WRITES are the
+# danger — a non-admin could swap the token the agent pushes with, repoint the
+# LLM at an attacker endpoint, or wipe config — so every mutating route below
+# carries an explicit require_admin dependency.
 router = APIRouter(prefix="/config", tags=["config"])
 
 # Substrings that mark a field value as a secret that must never be echoed back
@@ -68,7 +76,9 @@ class TokenVerifyRequest(BaseModel):
 
 @router.post("/github_token/verify")
 async def verify_github_token_endpoint(
-    payload: TokenVerifyRequest, db: AsyncSession = Depends(get_db),
+    payload: TokenVerifyRequest,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Verify a GitHub token (the supplied one, or the stored one if omitted)
     and report whether it can push — so the user isn't surprised by a 403 on PR.
@@ -95,7 +105,11 @@ async def get_config(key: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{key}")
-async def set_config(key: str, payload: ConfigSetRequest, db: AsyncSession = Depends(get_db)):
+async def set_config(
+    key: str, payload: ConfigSetRequest,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(AppConfig).where(AppConfig.key == key))
     row = result.scalar_one_or_none()
 
@@ -134,7 +148,11 @@ async def get_all_config(db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{key}")
-async def delete_config(key: str, db: AsyncSession = Depends(get_db)):
+async def delete_config(
+    key: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(AppConfig).where(AppConfig.key == key))
     row = result.scalar_one_or_none()
     if row:

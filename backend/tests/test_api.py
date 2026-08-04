@@ -393,21 +393,32 @@ class TestLogsEndpoint:
     """The Logs page fetches /api/logs/{service} as plain text and splits it on
     newlines, one row per log line, so the level filters (INFO/WARN/…) work. The
     endpoint must return text/plain — a JSON-encoded string would escape every
-    newline into a literal \\n and collapse the whole log into a single row."""
+    newline into a literal \\n and collapse the whole log into a single row.
 
-    async def test_logs_returned_as_plain_text(self, api_client):
-        r = await api_client.get("/api/logs/api")
+    Container logs carry secrets/tracebacks, so the route is admin-only."""
+
+    async def test_logs_returned_as_plain_text(self, admin_client):
+        r = await admin_client.get("/api/logs/api")
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/plain")
         # A JSON-serialized string body would start with a double-quote; plain
         # text must not.
         assert not r.text.startswith('"')
 
-    async def test_unknown_service_is_plain_text(self, api_client):
-        r = await api_client.get("/api/logs/does-not-exist")
+    async def test_unknown_service_is_plain_text(self, admin_client):
+        r = await admin_client.get("/api/logs/does-not-exist")
         assert r.headers["content-type"].startswith("text/plain")
         assert "Unknown service" in r.text
         assert not r.text.startswith('"')
+
+    async def test_logs_reject_non_admin(self, api_client):
+        # An authenticated but non-admin user must not read container logs.
+        r = await api_client.get("/api/logs/api")
+        assert r.status_code == 403
+
+    async def test_logs_reject_anonymous(self, anon_client):
+        r = await anon_client.get("/api/logs/api")
+        assert r.status_code == 401
 
 
 class TestApiAuthGate:
@@ -500,9 +511,10 @@ class TestConfigEndpoints:
         assert "sk-leakme" not in body
         assert "ghp_leakme" not in body
 
-    async def test_set_config_preserves_masked_secret(self, api_client, api_db):
+    async def test_set_config_preserves_masked_secret(self, admin_client, api_db):
         """A client that saves the redacted mask back (e.g. changed the model but
-        left the key field untouched) must not clobber the real stored secret."""
+        left the key field untouched) must not clobber the real stored secret.
+        Writing config is admin-only, so this runs as admin."""
         from sqlalchemy import select
         from app.models.app_config import AppConfig
 
@@ -511,7 +523,7 @@ class TestConfigEndpoints:
         }))
         await api_db.flush()
 
-        r = await api_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
+        r = await admin_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
             "provider": "deepseek", "model": "deepseek-reasoner", "api_key": "********",
         }})
         assert r.status_code == 200
@@ -519,6 +531,28 @@ class TestConfigEndpoints:
         row = (await api_db.execute(select(AppConfig).where(AppConfig.key == "llm_config"))).scalar_one()
         assert row.value["api_key"] == "sk-original"        # real key preserved
         assert row.value["model"] == "deepseek-reasoner"     # non-secret change applied
+
+    async def test_write_config_rejects_non_admin(self, api_client):
+        """A non-admin can read masked config but must not write or delete it —
+        otherwise any invited user could swap the agent's GitHub push token or
+        repoint the LLM at an attacker-controlled endpoint."""
+        r = await api_client.put("/api/config/llm_config", json={"key": "llm_config", "value": {
+            "provider": "deepseek", "api_key": "sk-evil",
+        }})
+        assert r.status_code == 403
+        r = await api_client.delete("/api/config/llm_config")
+        assert r.status_code == 403
+
+    async def test_read_config_still_allowed_for_non_admin(self, api_client, api_db):
+        """Reads stay open to any authenticated user (the sidebar/dashboard pull
+        display settings from here); secrets are masked on the way out."""
+        from app.models.app_config import AppConfig
+
+        api_db.add(AppConfig(key="persona", value={"persona": "reviewer"}))
+        await api_db.flush()
+        r = await api_client.get("/api/config/persona")
+        assert r.status_code == 200
+        assert r.json()["value"]["persona"] == "reviewer"
 
 
 class TestPersona:
@@ -594,16 +628,22 @@ class TestPermissionsAPI:
         assert perms["read_code"] is True
         assert perms["merge_pr"] is False  # off by default
 
-    async def test_set_permission_persists(self, api_client):
-        r = await api_client.put("/api/permissions/write_code", json={"enabled": False})
+    async def test_set_permission_persists(self, admin_client):
+        r = await admin_client.put("/api/permissions/write_code", json={"enabled": False})
         assert r.status_code == 200
         perms = {p["capability"]: p["enabled"]
-                 for p in (await api_client.get("/api/permissions")).json()["permissions"]}
+                 for p in (await admin_client.get("/api/permissions")).json()["permissions"]}
         assert perms["write_code"] is False
 
-    async def test_set_unknown_capability_404(self, api_client):
-        r = await api_client.put("/api/permissions/bogus", json={"enabled": True})
+    async def test_set_unknown_capability_404(self, admin_client):
+        r = await admin_client.put("/api/permissions/bogus", json={"enabled": True})
         assert r.status_code == 404
+
+    async def test_set_permission_rejects_non_admin(self, api_client):
+        # Toggling agent capabilities is admin-only — a non-admin re-enabling
+        # `execute` would be a privilege escalation.
+        r = await api_client.put("/api/permissions/execute", json={"enabled": True})
+        assert r.status_code == 403
 
 
 class TestRepoEndpoints:
@@ -749,6 +789,37 @@ class TestIntegrationEndpoints:
         response = await api_client.get("/api/integrations/slack/channels")
         assert response.status_code == 400
 
+    async def test_configure_integration_rejects_non_admin(self, api_client):
+        # Setting integration credentials is a privileged, global mutation.
+        response = await api_client.post("/api/integrations", json={
+            "provider": "github", "credentials": {"token": "ghp_x"}, "enabled": True,
+        })
+        assert response.status_code == 403
+
+    async def test_configured_token_is_not_leaked_in_listing(self, admin_client, api_client):
+        """A configured token must never be echoed back through GET /integrations
+        (it used to be stored + returned in `config` as plaintext)."""
+        from app.services.integrations.base import IntegrationRegistry
+
+        try:
+            r = await admin_client.post("/api/integrations", json={
+                "provider": "github",
+                "credentials": {"token": "ghp_supersecretleak", "url": "https://github.com"},
+                "enabled": True,
+            })
+            assert r.status_code == 201
+            listing = await api_client.get("/api/integrations")
+            assert listing.status_code == 200
+            body = str(listing.json())
+            assert "ghp_supersecretleak" not in body
+            # Non-secret fields remain visible.
+            assert "github.com" in body
+        finally:
+            # configure_integration registers a live SCM provider in a process-wide
+            # singleton (not tied to the rolled-back DB txn); reset it so later
+            # tests still see "not connected".
+            IntegrationRegistry._scm = None
+
 
 class TestPluginsEndpoints:
     async def test_list_plugins(self, api_client):
@@ -840,14 +911,21 @@ class TestAPIRegistryEndpoints:
         response = await api_client.get("/api/api-registry")
         assert response.status_code == 200
 
-    async def test_add_entry(self, api_client):
-        response = await api_client.post("/api/api-registry", json={
+    async def test_add_entry(self, admin_client):
+        response = await admin_client.post("/api/api-registry", json={
             "domain": "api.example.com",
             "description": "Test API",
             "allowed_methods": ["GET"],
             "allowed_paths": ["/*"],
         })
         assert response.status_code == 201
+
+    async def test_add_entry_rejects_non_admin(self, api_client):
+        # The registry is the agent's egress allowlist; only admins may edit it.
+        response = await api_client.post("/api/api-registry", json={
+            "domain": "evil.example.com", "allowed_methods": ["GET"], "allowed_paths": ["/*"],
+        })
+        assert response.status_code == 403
 
     async def test_check_url_not_registered(self, api_client):
         response = await api_client.post("/api/api-registry/check", json={
@@ -857,13 +935,13 @@ class TestAPIRegistryEndpoints:
         assert response.status_code == 200
         assert response.json()["allowed"] is False
 
-    async def test_check_url_registered(self, api_client):
-        await api_client.post("/api/api-registry", json={
+    async def test_check_url_registered(self, admin_client):
+        await admin_client.post("/api/api-registry", json={
             "domain": "check.example.com",
             "allowed_methods": ["GET"],
             "allowed_paths": ["/*"],
         })
-        response = await api_client.post("/api/api-registry/check", json={
+        response = await admin_client.post("/api/api-registry/check", json={
             "url": "https://check.example.com/data",
             "method": "GET",
         })
