@@ -40,6 +40,14 @@ jobs:
         options: >-
           --health-cmd "cypher-shell -u neo4j -p neo4j_test 'RETURN 1' || exit 1"
           --health-interval 15s --health-timeout 10s --health-retries 10 --health-start-period 30s
+      # Celery's broker: POST /repos and /repos/bulk enqueue an onboarding task via
+      # apply_async, so without Redis those endpoints 500 (broker unreachable).
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
 
     env:
       POSTGRES_HOST: localhost

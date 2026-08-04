@@ -41,6 +41,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The api/worker images are ~2.6 GB each (torch + sentence-transformers), which
+      # overflows the runner's ~14 GB free disk mid-build (ResourceExhausted: no space
+      # left on device). Reclaim the preinstalled toolchains we don't use first.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          df -h /
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -72,5 +82,7 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # mode=min (final layers only): mode=max would push the multi-GB torch
+          # layers into the 10 GB GHA cache and add disk pressure during export.
           cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=min,scope=${{ matrix.component }}
