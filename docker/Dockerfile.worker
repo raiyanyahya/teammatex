@@ -1,9 +1,9 @@
 FROM python:3.12-slim AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl build-essential cmake libssl-dev libssh2-1-dev \
-    && rm -rf /var/lib/apt/lists/*
-
+# No build toolchain needed: every dependency installs from a wheel (this mirrors
+# the api builder, which has no apt step and builds the identical dependency set).
+# The previous build-essential/cmake/libssl-dev/libssh2-1-dev step was leftover
+# from source-building torch/pygit2 and was the apt step that failed in CI.
 RUN pip install poetry==1.8.3
 
 WORKDIR /app
