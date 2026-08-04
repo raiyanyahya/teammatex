@@ -1,6 +1,9 @@
 # Environment
 .env
 .env.*
+# ...but the committed template must ship in the repo (README's quickstart does
+# `cp .env.example .env`), so re-include it explicitly.
+!.env.example
 
 # Python
 __pycache__/
