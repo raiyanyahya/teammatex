@@ -9,6 +9,7 @@ It clones your repositories, reads every line and every commit, builds a living 
 <br/>
 
 <!-- Line 1 · status -->
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
 [![CI](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/codeql.yml)
 [![Docker](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml/badge.svg)](https://github.com/raiyanyahya/teammatex/actions/workflows/docker.yml)
@@ -31,7 +32,7 @@ It clones your repositories, reads every line and every commit, builds a living 
 ![PostgreSQL + pgvector](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Neo4j](https://img.shields.io/badge/Neo4j-graph-008CC1?style=flat-square&logo=neo4j&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery-DC382D?style=flat-square&logo=redis&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+
 
 <br/>
 
