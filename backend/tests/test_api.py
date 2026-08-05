@@ -955,7 +955,7 @@ class TestIntegrationEndpoints:
             # Non-secret fields remain visible — assert the exact stored value
             # rather than a loose "host in string" check (which a value like
             # "github.com.evil.test" would spuriously satisfy).
-            configs = [item.get("config", {}) for item in listing.json()]
+            configs = [item.get("config", {}) for item in listing.json()["integrations"]]
             assert any(cfg.get("url") == "https://github.com" for cfg in configs)
         finally:
             # configure_integration registers a live SCM provider in a process-wide
