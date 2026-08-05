@@ -214,7 +214,10 @@ class TestAgentLoop:
             )
         )
         end = [e for e in events if e["type"] == "tool_end"][0]
-        assert "kaboom" in end["result"]
+        # The failure is reported (non-fatal) but the raw exception text must not
+        # leak into the client-facing stream.
+        assert "failed" in end["result"]
+        assert "kaboom" not in end["result"]
         text_events = [e for e in events if e["type"] == "text"]
         assert text_events[-1]["content"] == "recovered"
 

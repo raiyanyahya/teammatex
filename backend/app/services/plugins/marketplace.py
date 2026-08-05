@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 from structlog import get_logger
@@ -66,9 +67,17 @@ class PluginMarketplace:
             return []
 
     async def get_plugin(self, name: str) -> MarketplacePlugin | None:
+        # `name` is interpolated into the request path, so a value like
+        # "../../secret" or "..%2f@evil" could otherwise redirect the call to a
+        # different path or host (SSRF). Restrict it to a plain package name and
+        # percent-encode it so no character can escape this single path segment.
+        if not is_valid_package_spec(name):
+            logger.warning("marketplace_plugin_name_rejected", name=(name or "")[:120])
+            return None
+        safe_name = quote(name.strip(), safe="")
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(f"{self.MARKETPLACE_URL}/api/v1/plugins/{name}")
+                response = await client.get(f"{self.MARKETPLACE_URL}/api/v1/plugins/{safe_name}")
                 response.raise_for_status()
                 p = response.json()
                 return MarketplacePlugin(

@@ -86,16 +86,25 @@ logger = get_logger(__name__)
 _WORKSPACE_ROOTS = ("/data/repos", "/data/uploads", "/tmp")
 
 
-def _is_safe_path(path: str) -> bool:
-    """True only if `path` resolves inside an allowed workspace root. Symlinks are
-    resolved first so a symlink (or ``..``) inside the workspace can't escape it."""
+def _safe_realpath(path: str) -> str | None:
+    """Return the canonicalized real path if it resolves inside an allowed
+    workspace root, else None. Symlinks and ``..`` are resolved first so nothing
+    inside the workspace can escape it. Callers must use the *returned* value for
+    filesystem access, so the path that was validated is the one that gets used."""
     if not path or not str(path).strip():
-        return False
+        return None
     try:
         real = os.path.realpath(str(path))
     except (OSError, ValueError):
-        return False
-    return any(real == r or real.startswith(r + os.sep) for r in _WORKSPACE_ROOTS)
+        return None
+    if any(real == r or real.startswith(r + os.sep) for r in _WORKSPACE_ROOTS):
+        return real
+    return None
+
+
+def _is_safe_path(path: str) -> bool:
+    """True only if `path` resolves inside an allowed workspace root."""
+    return _safe_realpath(path) is not None
 
 
 def _resolve_repo_path(ctx: "AgentContext | None", args: dict) -> str | None:
@@ -116,10 +125,10 @@ def _resolve_repo_path(ctx: "AgentContext | None", args: dict) -> str | None:
             name = dirs[0]
         else:
             return None
-    path = os.path.join(root, name)
-    if not _is_safe_path(path):
+    real = _safe_realpath(os.path.join(root, name))
+    if real is None:
         return None
-    return path if os.path.isdir(os.path.join(path, ".git")) else None
+    return real if os.path.isdir(os.path.join(real, ".git")) else None
 
 
 # Environment-variable names that carry secrets and must never be exposed to a
@@ -138,34 +147,39 @@ def _scrubbed_env() -> dict:
     return {k: v for k, v in os.environ.items() if not _SECRET_ENV_RE.search(k)}
 
 
-def _url_ssrf_safe(url: str) -> tuple[bool, str]:
+def _url_ssrf_safe(url: str) -> tuple[bool, str, str | None]:
     """Reject URLs that would let http_request reach the host's own internals.
 
     The model picks the URL, so a prompt-injected or confused agent could aim it
     at the cloud metadata endpoint (169.254.169.254), localhost services, or an
     internal-network address to exfiltrate credentials/SSRF. We allow only
     http(s), then resolve the host and refuse if *any* resolved address is
-    private, loopback, link-local, or otherwise reserved. Returns (ok, reason)."""
+    private, loopback, link-local, or otherwise reserved.
+
+    Returns (ok, reason, pinned_ip). ``pinned_ip`` is one validated address the
+    caller should connect to directly, closing the DNS-rebind window between this
+    check and the real request; it is None whenever ok is False."""
     import ipaddress
     import socket
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        return False, f"scheme '{parsed.scheme}' not allowed (use http/https)"
+        return False, f"scheme '{parsed.scheme}' not allowed (use http/https)", None
     host = parsed.hostname
     if not host:
-        return False, "missing host"
+        return False, "missing host", None
     try:
         infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
     except OSError as e:
-        return False, f"could not resolve host: {e}"
+        return False, f"could not resolve host: {e}", None
+    pinned_ip = None
     for info in infos:
         addr = info[4][0]
         try:
             ip = ipaddress.ip_address(addr.split("%")[0])
         except ValueError:
-            return False, f"unparseable address {addr}"
+            return False, f"unparseable address {addr}", None
         if (
             ip.is_private
             or ip.is_loopback
@@ -174,8 +188,10 @@ def _url_ssrf_safe(url: str) -> tuple[bool, str]:
             or ip.is_multicast
             or ip.is_unspecified
         ):
-            return False, f"host resolves to non-public address {ip}"
-    return True, ""
+            return False, f"host resolves to non-public address {ip}", None
+        if pinned_ip is None:
+            pinned_ip = str(ip)
+    return True, "", pinned_ip
 
 
 class AgentState(str, Enum):
@@ -599,8 +615,11 @@ class AgentRuntime:
             result = await self._dispatch_tool(ctx, tool_name, arguments)
             return {"success": True, "data": result}
         except Exception as e:
+            # The detail is logged server-side; return a generic message so an
+            # unexpected exception's text (paths, DB errors, stack detail) isn't
+            # streamed back through the chat SSE response to the caller.
             logger.error("tool_failed", tool=tool_name, error=str(e))
-            return {"error": str(e)}
+            return {"error": f"Tool '{tool_name}' failed unexpectedly."}
 
     async def _capability_denied(self, ctx: AgentContext, tool_name: str) -> str | None:
         """Return the gating capability if the tool is blocked, else None. Fails
@@ -668,24 +687,24 @@ class AgentRuntime:
         return await self._dispatch_legacy(tool_name, args, ctx)
 
     async def _tool_write_file(self, args: dict, ctx: AgentContext) -> dict:
-        if not _is_safe_path(args["file_path"]):
+        safe = _safe_realpath(args["file_path"])
+        if safe is None:
             return {"error": "Path outside allowed directories"}
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None, lambda: _Path(args["file_path"]).write_text(args["content"])
-        )
-        return {"written": True, "file_path": args["file_path"]}
+        await loop.run_in_executor(None, lambda: _Path(safe).write_text(args["content"]))
+        return {"written": True, "file_path": safe}
 
     async def _tool_edit_file(self, args: dict, ctx: AgentContext) -> dict:
-        if not _is_safe_path(args["file_path"]):
+        safe = _safe_realpath(args["file_path"])
+        if safe is None:
             return {"error": "Path outside allowed directories"}
         loop = asyncio.get_running_loop()
-        content = await loop.run_in_executor(None, lambda: _Path(args["file_path"]).read_text())
+        content = await loop.run_in_executor(None, lambda: _Path(safe).read_text())
         if args["old_string"] not in content:
             return {"error": "old_string not found in file"}
         new_content = content.replace(args["old_string"], args["new_string"], 1)
-        await loop.run_in_executor(None, lambda: _Path(args["file_path"]).write_text(new_content))
-        return {"edited": True, "file_path": args["file_path"]}
+        await loop.run_in_executor(None, lambda: _Path(safe).write_text(new_content))
+        return {"edited": True, "file_path": safe}
 
     async def _tool_web_search(self, args: dict) -> dict:
         from app.services.agent.web_search import web_search
@@ -694,9 +713,10 @@ class AgentRuntime:
 
     async def _tool_grep_search(self, args: dict) -> dict:
         loop = asyncio.get_running_loop()
-        base = _Path(args.get("path") or "/data/repos")
-        if not _is_safe_path(str(base)):
+        safe = _safe_realpath(args.get("path") or "/data/repos")
+        if safe is None:
             return {"error": "Path outside allowed directories"}
+        base = _Path(safe)
         results = await loop.run_in_executor(
             None, lambda: self._sync_grep(base, args["pattern"], args.get("include"))
         )
@@ -920,15 +940,15 @@ class AgentRuntime:
         # agent could point ruff at arbitrary paths (e.g. read errors leaking
         # snippets of files outside /data). "--" stops a crafted path from being
         # parsed as a ruff option.
-        path = (args.get("path") or "").strip()
-        if not _is_safe_path(path):
+        safe = _safe_realpath((args.get("path") or "").strip())
+        if safe is None:
             return {"error": "Path outside allowed directories"}
         asyncio.get_running_loop()
         process = await asyncio.create_subprocess_exec(
             "ruff",
             "check",
             "--",
-            path,
+            safe,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_scrubbed_env(),
@@ -990,6 +1010,9 @@ class AgentRuntime:
         return True, ""
 
     async def _tool_http_request(self, args: dict, ctx: AgentContext) -> dict:
+        import ipaddress
+        from urllib.parse import urlparse, urlunparse
+
         import httpx
 
         url = args["url"]
@@ -997,7 +1020,7 @@ class AgentRuntime:
         # to the host's own internals (metadata service, localhost, LAN) before
         # we ever open the connection. DNS is resolved off the event loop.
         loop = asyncio.get_running_loop()
-        ok, reason = await loop.run_in_executor(None, lambda: _url_ssrf_safe(url))
+        ok, reason, pinned_ip = await loop.run_in_executor(None, lambda: _url_ssrf_safe(url))
         if not ok:
             logger.warning("http_request_blocked", url=url[:200], reason=reason)
             return {"error": f"URL blocked: {reason}"}
@@ -1005,6 +1028,33 @@ class AgentRuntime:
         if not allowed:
             logger.warning("http_request_registry_denied", url=url[:200], reason=why)
             return {"error": f"URL blocked: {why}"}
+
+        # Pin the connection to the IP we just validated. httpx (via httpcore)
+        # re-resolves the hostname when it connects, so a DNS answer that flips
+        # from a public IP (seen by the check above) to an internal one between
+        # the two lookups would sail straight past the guard — a classic
+        # DNS-rebind SSRF. We swap the host for the validated IP but keep the
+        # original Host header and TLS SNI so virtual hosting and certificate
+        # verification still work.
+        parsed = urlparse(url)
+        req_url = url
+        headers = dict(args.get("headers") or {})
+        extensions: dict = {}
+        host = parsed.hostname
+        if pinned_ip and host and host != pinned_ip:
+            default_port = 443 if parsed.scheme == "https" else 80
+            port = parsed.port
+            ip_literal = (
+                f"[{pinned_ip}]" if ipaddress.ip_address(pinned_ip).version == 6 else pinned_ip
+            )
+            netloc = ip_literal if port is None else f"{ip_literal}:{port}"
+            req_url = urlunparse(parsed._replace(netloc=netloc))
+            headers.setdefault(
+                "Host", host if port in (None, default_port) else f"{host}:{port}"
+            )
+            if parsed.scheme == "https":
+                extensions["sni_hostname"] = host
+
         # Stream with a hard byte cap instead of buffering the whole body: an
         # approved-but-compromised endpoint could otherwise stream gigabytes and
         # OOM the API process before we ever slice to 3 KB. redirects stay off so
@@ -1013,9 +1063,10 @@ class AgentRuntime:
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             async with client.stream(
                 args["method"],
-                url,
-                headers=args.get("headers"),
+                req_url,
+                headers=headers,
                 content=args.get("body"),
+                extensions=extensions,
             ) as response:
                 buf = bytearray()
                 async for chunk in response.aiter_bytes():
@@ -1126,9 +1177,10 @@ class AgentRuntime:
             )
             return {"id": str(note.id), "title": note.title}
         elif tool_name == "read_file":
-            path = _Path(args["file_path"])
-            if not _is_safe_path(str(path)):
+            safe = _safe_realpath(args["file_path"])
+            if safe is None:
                 return {"error": "Path outside allowed directories"}
+            path = _Path(safe)
             if not path.exists():
                 return {"error": "File not found"}
             loop = asyncio.get_running_loop()
@@ -1141,9 +1193,10 @@ class AgentRuntime:
                 "total_lines": len(lines),
             }
         elif tool_name == "list_directory":
-            path = _Path(args["path"])
-            if not _is_safe_path(str(path)):
+            safe = _safe_realpath(args["path"])
+            if safe is None:
                 return {"error": "Path outside allowed directories"}
+            path = _Path(safe)
             if not path.exists():
                 return {"error": "Directory not found"}
             loop = asyncio.get_running_loop()
@@ -1160,9 +1213,10 @@ class AgentRuntime:
             )
             return entries
         elif tool_name == "glob_search":
-            base = _Path(args.get("path") or "/data/repos")
-            if not _is_safe_path(str(base)):
+            safe = _safe_realpath(args.get("path") or "/data/repos")
+            if safe is None:
                 return {"error": "Path outside allowed directories"}
+            base = _Path(safe)
             loop = asyncio.get_running_loop()
             matches = await loop.run_in_executor(
                 None, lambda: [str(m) for m in base.glob(args["pattern"])][:100]

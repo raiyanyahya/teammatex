@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -65,12 +66,33 @@ async def first_run_check(db) -> tuple[bool, str | None]:
     db.add(admin)
     await db.commit()
 
+    # Never print the password: container logs are commonly shipped to
+    # aggregation where any operator/service could read them. Write it to an
+    # owner-only file (0600) instead and log just a pointer. The API's
+    # first-run response still returns it once for the initial login.
+    cred_path = os.getenv("FIRST_RUN_CRED_PATH", "/data/first-run-admin-password")
+    written_to: str | None = None
+    try:
+        # O_CREAT with mode 0o600 so the file is never briefly world-readable;
+        # chmod as well in case it already existed from a prior aborted run.
+        fd = os.open(cred_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(password + "\n")
+        os.chmod(cred_path, 0o600)
+        written_to = cred_path
+    except OSError:
+        written_to = None
+
     print(f"\n{'='*50}")
     print("  TeammateX first run")
     print("  Default admin created:")
     print("  Email:    admin@teammatex.local")
-    print(f"  Password: {password}")
-    print("  Change this password after logging in.")
+    if written_to:
+        print(f"  Password written to: {written_to} (mode 0600)")
+        print(f"  Retrieve it with:    docker compose exec api cat {written_to}")
+    else:
+        print("  Password: fetch it from the first-run API response (/api/auth/first-run).")
+    print("  Change this password after logging in, then delete the file above.")
     print(f"{'='*50}\n")
 
     return True, password

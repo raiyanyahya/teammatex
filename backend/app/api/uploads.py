@@ -96,9 +96,15 @@ async def upload_file(
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    owner_dir = UPLOAD_ROOT / owner
-    owner_dir.mkdir(parents=True, exist_ok=True)
-    stored_path = owner_dir / _uuid.uuid4().hex
+    # `owner` is the JWT `sub` claim (untrusted). Resolve the per-user directory
+    # and confirm it stays strictly under UPLOAD_ROOT so a crafted sub like
+    # "../../etc" can't steer the write outside the uploads volume.
+    upload_root = os.path.realpath(UPLOAD_ROOT)
+    owner_dir = os.path.realpath(os.path.join(upload_root, owner))
+    if not owner_dir.startswith(upload_root + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid upload owner")
+    os.makedirs(owner_dir, exist_ok=True)
+    stored_path = Path(owner_dir) / _uuid.uuid4().hex
     stored_path.write_bytes(bytes(data))
 
     up = Upload(

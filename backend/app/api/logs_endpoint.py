@@ -3,8 +3,11 @@ import os
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
+from structlog import get_logger
 
 from app.api.deps import require_admin
+
+logger = get_logger(__name__)
 
 # Container logs (api, worker, postgres, neo4j, redis) routinely carry
 # connection strings, tracebacks with request data, and other operational
@@ -55,9 +58,12 @@ async def get_logs(service: str):
         conn.close()
         return cleaned or "No logs"
     except (ConnectionRefusedError, OSError) as e:
+        # Keep the underlying error in the server log; don't echo it to the client.
+        logger.warning("logs_proxy_unavailable", service=service, error=str(e))
         return (
             "Log proxy unavailable. The docker-socket-proxy service must be running; "
-            f"logs can also be viewed from the host: docker compose logs -f ({e})"
+            "logs can also be viewed from the host: docker compose logs -f"
         )
     except Exception as e:
-        return f"Error: {e}"
+        logger.error("logs_fetch_failed", service=service, error=str(e))
+        return "Error retrieving logs. See the server log for details."

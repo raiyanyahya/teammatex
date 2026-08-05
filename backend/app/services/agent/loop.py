@@ -21,12 +21,16 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
+from structlog import get_logger
+
 from .citations import extract_sources
 from .message_utils import (
     assistant_tool_calls_message,
     strip_tool_markup,
     tool_result_message,
 )
+
+logger = get_logger(__name__)
 
 _CAP_MESSAGE = (
     "(I hit my step limit on this task. Tell me to keep going and "
@@ -116,8 +120,12 @@ async def run_agent_loop(
                     result = await execute_tool(name, args)
                     invocations.append({"tool": name, "args": args, "result": result})
                     result_str = json.dumps(result)[:4000]
-                except Exception as e:  # tool failures are data, not crashes
-                    result_str = json.dumps({"error": str(e)})
+                except Exception as e:  # unexpected tool crash — data, not a 500
+                    # Log the real error server-side; surface only a generic
+                    # message so an internal exception (paths, DB text, stack
+                    # detail) isn't streamed back to the caller.
+                    logger.error("tool_execution_failed", tool=name, error=str(e))
+                    result_str = json.dumps({"error": f"Tool '{name}' failed unexpectedly."})
                 yield {"type": "tool_end", "tool": name, "result": result_str[:500]}
                 messages.append(tool_result_message(tc.id, result_str))
             continue

@@ -952,8 +952,11 @@ class TestIntegrationEndpoints:
             assert listing.status_code == 200
             body = str(listing.json())
             assert "ghp_supersecretleak" not in body
-            # Non-secret fields remain visible.
-            assert "github.com" in body
+            # Non-secret fields remain visible — assert the exact stored value
+            # rather than a loose "host in string" check (which a value like
+            # "github.com.evil.test" would spuriously satisfy).
+            configs = [item.get("config", {}) for item in listing.json()]
+            assert any(cfg.get("url") == "https://github.com" for cfg in configs)
         finally:
             # configure_integration registers a live SCM provider in a process-wide
             # singleton (not tied to the rolled-back DB txn); reset it so later

@@ -42,6 +42,23 @@ class BulkRepoCreate(BaseModel):
 # rmtree). Keep it to a safe charset.
 _LOCAL_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# A GitHub org/user login: 1–39 chars, alphanumeric with non-repeating internal
+# hyphens, no leading/trailing hyphen. We interpolate this segment straight into
+# the api.github.com request path (/orgs/<org>/repos), so anything outside this
+# charset — a slash, dot-dot, '@', encoded control char — must be rejected before
+# it can redirect the request to another path/host (SSRF).
+_GH_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$")
+
+
+def _validate_github_owner(org: str) -> str:
+    """Return `org` only if it is a well-formed GitHub login, else raise 400."""
+    if not _GH_OWNER_RE.fullmatch(org or ""):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid GitHub organization/user name.",
+        )
+    return org
+
 
 def _sanitize_local_name(name: str) -> str:
     """Validate a clone directory name, raising 400 if it could traverse."""
@@ -243,7 +260,7 @@ async def add_repo(payload: RepoCreate, db: AsyncSession = Depends(get_db)):
         .split("/")
     )
     if len(parts) == 1:
-        org = parts[0]
+        org = _validate_github_owner(parts[0])
         token = await _get_github_token(db)
         if not token:
             raise HTTPException(
