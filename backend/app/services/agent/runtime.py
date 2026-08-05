@@ -1049,9 +1049,7 @@ class AgentRuntime:
             )
             netloc = ip_literal if port is None else f"{ip_literal}:{port}"
             req_url = urlunparse(parsed._replace(netloc=netloc))
-            headers.setdefault(
-                "Host", host if port in (None, default_port) else f"{host}:{port}"
-            )
+            headers.setdefault("Host", host if port in (None, default_port) else f"{host}:{port}")
             if parsed.scheme == "https":
                 extensions["sni_hostname"] = host
 
