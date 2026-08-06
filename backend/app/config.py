@@ -1,6 +1,22 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Values that must never be trusted as a JWT signing key: the code default, the
+# placeholders shipped in .env.example, anything empty, and anything so short it
+# is trivially brute-forced. All are publicly known, so a token signed with one
+# can be forged by anyone. A key matching any of these is replaced at boot with a
+# random per-process key (see below), which closes the forgery path by default.
+_INSECURE_SECRET_KEYS = {
+    "",
+    "change-me",
+    "change-me-to-a-random-string",
+}
+
+
+def _is_insecure_secret_key(key: str) -> bool:
+    k = (key or "").strip()
+    return k in _INSECURE_SECRET_KEYS or k.startswith("change-me") or len(k) < 16
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -82,11 +98,17 @@ class Settings(BaseSettings):
     metrics_token: str = Field(default="", validation_alias="TEAMMATEX_METRICS_TOKEN")
 
     def validate_secret_key(self) -> None:
-        if self.teammate_secret_key == "change-me" or len(self.teammate_secret_key) < 16:
+        # Check the flag captured at import, before the key was swapped: by the
+        # time this runs the insecure key has already been replaced with a random
+        # one, so re-checking self.teammate_secret_key would always look fine.
+        if _SECRET_KEY_WAS_INSECURE:
             import warnings
 
             warnings.warn(
-                "TEAMMATEX_SECRET_KEY is insecure (default or too short). Set a strong key.",
+                "TEAMMATEX_SECRET_KEY is insecure (unset, a shipped placeholder, or too "
+                "short). A random per-boot key is being used so tokens can't be forged with "
+                "the public default, but sessions reset on every restart. Set a strong, "
+                "persistent TEAMMATEX_SECRET_KEY for production.",
                 RuntimeWarning,
             )
 
@@ -99,3 +121,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Fail safe, not silent: if the signing key is unset or a public placeholder,
+# swap in a strong random key generated fresh for this process. This makes a
+# default `cp .env.example .env` deploy immune to token forgery out of the box
+# (the old behaviour trusted the public default and let anyone mint a valid
+# token). The trade-off is that sessions do not survive a restart until a real
+# TEAMMATEX_SECRET_KEY is set; validate_secret_key() warns loudly at startup.
+_SECRET_KEY_WAS_INSECURE = _is_insecure_secret_key(settings.teammate_secret_key)
+if _SECRET_KEY_WAS_INSECURE:
+    import secrets
+
+    settings.teammate_secret_key = secrets.token_urlsafe(48)
