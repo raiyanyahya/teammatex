@@ -213,30 +213,6 @@ class GitHubProvider(SCMProvider):
         response.raise_for_status()
         return response.text
 
-    async def get_pr_reviews(self, repo: str, number: int) -> list[dict]:
-        response = await self.client.get(f"/repos/{repo}/pulls/{number}/reviews")
-        response.raise_for_status()
-        return response.json()
-
-    async def get_pr_comments(self, repo: str, number: int) -> list[dict]:
-        response = await self.client.get(f"/repos/{repo}/pulls/{number}/comments")
-        response.raise_for_status()
-        return response.json()
-
-    async def request_reviewers(self, repo: str, number: int, reviewers: list[str]) -> None:
-        response = await self.client.post(
-            f"/repos/{repo}/pulls/{number}/requested_reviewers",
-            json={"reviewers": reviewers},
-        )
-        response.raise_for_status()
-
-    async def get_commit_status(self, repo: str, ref: str) -> dict:
-        response = await self.client.get(
-            f"/repos/{repo}/commits/{ref}/status",
-        )
-        response.raise_for_status()
-        return response.json()
-
     @staticmethod
     def verify_webhook_signature(payload: bytes, signature: str) -> bool:
         # Fail closed: an unconfigured secret means the sender cannot be

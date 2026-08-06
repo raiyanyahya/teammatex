@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Github, Loader2, RefreshCw, Unplug } from "lucide-react";
+import { AlertTriangle, Check, Github, Loader2, Unplug } from "lucide-react";
 
 type Model = { model: string; tier: string; note?: string };
 type Providers = {

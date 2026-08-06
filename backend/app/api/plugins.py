@@ -28,7 +28,6 @@ async def list_plugins(status: str | None = None):
             "status": instance.status.value,
             "tools": instance.provided_tools,
             "providers": instance.provided_providers,
-            "crash_count": instance.crash_count,
         }
     return {"plugins": result, "count": len(result)}
 

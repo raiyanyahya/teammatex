@@ -22,8 +22,6 @@ class PluginInstance:
     manifest: PluginManifest
     status: PluginStatus = PluginStatus.DISCOVERED
     error_message: str | None = None
-    crash_count: int = 0
-    health_metrics: dict = field(default_factory=dict)
     provided_tools: list[str] = field(default_factory=list)
     provided_providers: list[str] = field(default_factory=list)
 
@@ -46,23 +44,11 @@ class PluginRegistry:
         logger.info("plugin_registered", name=manifest.name, version=manifest.version)
         return instance
 
-    def unregister(self, name: str) -> bool:
-        if name in self._plugins:
-            del self._plugins[name]
-            logger.info("plugin_unregistered", name=name)
-            return True
-        return False
-
     def get(self, name: str) -> PluginInstance | None:
         return self._plugins.get(name)
 
     def get_all(self) -> dict[str, PluginInstance]:
         return dict(self._plugins)
-
-    def get_active(self) -> dict[str, PluginInstance]:
-        return {
-            name: inst for name, inst in self._plugins.items() if inst.status == PluginStatus.ACTIVE
-        }
 
     def get_tools(self) -> dict[str, "PluginInstance"]:
         tools: dict[str, PluginInstance] = {}
@@ -72,16 +58,8 @@ class PluginRegistry:
                     tools[tool] = inst
         return tools
 
-    def set_status(self, name: str, status: PluginStatus, error: str | None = None):
-        if name in self._plugins:
-            self._plugins[name].status = status
-            self._plugins[name].error_message = error
-            if status == PluginStatus.ERROR:
-                self._plugins[name].crash_count += 1
-
 
 class PluginManager:
-    MAX_CRASHES = 3
     PLUGIN_DIRS = ["plugins", "/app/plugins", "~/.teammatex/plugins"]
 
     def __init__(self):
@@ -144,15 +122,6 @@ class PluginManager:
         if instance:
             return self.load_plugin(instance.manifest)
         return None
-
-    def auto_disable_unstable(self) -> list[str]:
-        disabled: list[str] = []
-        for name, instance in self.registry.get_all().items():
-            if instance.crash_count >= self.MAX_CRASHES:
-                instance.status = PluginStatus.DISABLED
-                disabled.append(name)
-                logger.warning("plugin_auto_disabled", name=name, crashes=instance.crash_count)
-        return disabled
 
     def _check_dependencies(self, manifest: PluginManifest) -> bool:
         if not manifest.dependencies:

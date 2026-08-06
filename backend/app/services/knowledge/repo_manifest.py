@@ -53,36 +53,6 @@ class RepoManifest:
 
         return {"added": added, "changed": changed, "removed": removed}
 
-    def has_changes(self, previous: dict[str, dict[str, Any]]) -> bool:
-        diff = self.diff(previous)
-        return bool(diff["added"] or diff["changed"] or diff["removed"])
-
-    @staticmethod
-    def sha_for_content(content: bytes | str) -> str:
-        if isinstance(content, str):
-            content = content.encode()
-        return hashlib.sha256(content).hexdigest()[:32]
-
-    @staticmethod
-    def find_imports_in_file(file_path: str, content: str | None = None) -> list[str]:
-        if content is None:
-            try:
-                content = Path(file_path).read_text()
-            except Exception:
-                return []
-
-        imports: list[str] = []
-        for line in content.splitlines():
-            line = line.strip()
-            if (
-                line.startswith("import ")
-                or line.startswith("from ")
-                or "require(" in line
-                or line.startswith("use ")
-            ):
-                imports.append(line)
-        return imports
-
     @staticmethod
     def classify_path_role(rel_path: str) -> str:
         lower = rel_path.lower()

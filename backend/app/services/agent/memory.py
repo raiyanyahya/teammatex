@@ -61,10 +61,6 @@ class MemoryItem:
             return "convention"
         return "default"
 
-    def boost_confidence(self, evidence_count: int = 1):
-        self.evidence_count += evidence_count
-        self.verified_at = datetime.now(UTC)
-
 
 class MemoryManager:
     MAX_WORKING_MEMORY = 20

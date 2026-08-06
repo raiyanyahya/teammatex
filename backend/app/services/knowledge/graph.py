@@ -55,45 +55,6 @@ class KnowledgeGraph:
         "MENTIONS",
     ]
 
-    async def create_node(
-        self,
-        labels: list[str],
-        properties: dict[str, Any],
-    ) -> dict | None:
-        label_str = ":".join(_safe_ident(lbl, "label") for lbl in labels)
-        props_str = ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in properties)
-        query = f"CREATE (n:{label_str} {{{props_str}}}) RETURN n {{.*}} as node"
-        async with get_neo4j_manager().session() as session:
-            result = await session.run(query, **properties)
-            record = await result.single()
-            return dict(record["node"]) if record else None
-
-    async def create_relationship(
-        self,
-        from_node_query: str,
-        from_params: dict,
-        to_node_query: str,
-        to_params: dict,
-        rel_type: str,
-        rel_properties: dict[str, Any] | None = None,
-    ) -> bool:
-        rel_props = rel_properties or {}
-        rel_str = f":{_safe_ident(rel_type, 'relationship')}"
-        if rel_props:
-            props = ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in rel_props)
-            rel_str = f":{_safe_ident(rel_type, 'relationship')} {{{props}}}"
-
-        query = f"""
-        MATCH (a {{{from_node_query}}})
-        MATCH (b {{{to_node_query}}})
-        CREATE (a)-[r{rel_str}]->(b)
-        RETURN r
-        """
-        params = {**from_params, **to_params, **(rel_props or {})}
-        async with get_neo4j_manager().session() as session:
-            result = await session.run(query, **params)
-            return await result.single() is not None
-
     async def ensure_repo_node(self, repo_id: str, repo_name: str) -> None:
         repo_nid = node_id(repo_id, "Repository", repo_name)
         await self.run(
@@ -127,88 +88,6 @@ class KnowledgeGraph:
             path=file_path,
             language=language,
             lines=lines,
-            version=EXTRACTOR_VERSION,
-        )
-
-    async def ensure_function_node(
-        self,
-        repo_id: str,
-        file_path: str,
-        name: str,
-        start_line: int,
-        end_line: int,
-        language: str,
-        signature: str | None = None,
-    ) -> None:
-        fn_nid = node_id(repo_id, "Function", file_path, name)
-        file_nid = node_id(repo_id, "File", file_path)
-        await self.run(
-            """
-        MERGE (fn:Function {id: $id})
-        SET fn.repo_id = $repo_id, fn.file_path = $file_path, fn.name = $name,
-            fn.start_line = $start_line, fn.end_line = $end_line,
-            fn.language = $language, fn.signature = $signature, fn.version = $version
-        WITH fn
-        MATCH (f:File {id: $file_nid})
-        MERGE (fn)-[:PART_OF]->(f)
-        """,
-            id=fn_nid,
-            repo_id=repo_id,
-            file_path=file_path,
-            name=name,
-            start_line=start_line,
-            end_line=end_line,
-            language=language,
-            signature=signature,
-            version=EXTRACTOR_VERSION,
-            file_nid=file_nid,
-        )
-
-    async def ensure_class_node(
-        self,
-        repo_id: str,
-        file_path: str,
-        name: str,
-        start_line: int,
-        end_line: int,
-        language: str,
-    ) -> None:
-        cls_nid = node_id(repo_id, "Class", file_path, name)
-        file_nid = node_id(repo_id, "File", file_path)
-        await self.run(
-            """
-        MERGE (c:Class {id: $id})
-        SET c.repo_id = $repo_id, c.file_path = $file_path, c.name = $name,
-            c.start_line = $start_line, c.end_line = $end_line,
-            c.language = $language, c.version = $version
-        WITH c
-        MATCH (f:File {id: $file_nid})
-        MERGE (c)-[:PART_OF]->(f)
-        """,
-            id=cls_nid,
-            repo_id=repo_id,
-            file_path=file_path,
-            name=name,
-            start_line=start_line,
-            end_line=end_line,
-            language=language,
-            version=EXTRACTOR_VERSION,
-            file_nid=file_nid,
-        )
-
-    async def ensure_module_node(self, repo_id: str, name: str) -> None:
-        mod_nid = node_id(repo_id, "Module", name)
-        await self.run(
-            """
-        MERGE (m:Module {id: $id})
-        SET m.repo_id = $repo_id, m.name = $name, m.version = $version
-        WITH m
-        MATCH (r:Repository {repo_id: $repo_id})
-        MERGE (m)-[:PART_OF]->(r)
-        """,
-            id=mod_nid,
-            repo_id=repo_id,
-            name=name,
             version=EXTRACTOR_VERSION,
         )
 
@@ -263,28 +142,6 @@ class KnowledgeGraph:
         CREATE CONSTRAINT contributor_id_unique IF NOT EXISTS
         FOR (c:Contributor) REQUIRE c.id IS UNIQUE
         """
-        )
-
-    async def add_call_relationship(
-        self,
-        repo_id: str,
-        caller_file: str,
-        caller_name: str,
-        caller_start: int,
-        callee_name: str,
-    ) -> None:
-        caller_nid = node_id(repo_id, "Function", caller_file, caller_name)
-        await self.run(
-            """
-        MATCH (a:Function {id: $caller_nid})
-        MERGE (b:Function {repo_id: $repo_id, name: $callee_name})
-        MERGE (a)-[r:CALLS]->(b)
-        SET r.version = $version
-        """,
-            caller_nid=caller_nid,
-            repo_id=repo_id,
-            callee_name=callee_name,
-            version=EXTRACTOR_VERSION,
         )
 
     async def add_ownership(
@@ -415,41 +272,6 @@ class KnowledgeGraph:
 
         return {"nodes": nodes, "edges": edges}
 
-    async def list_subsystems(self, limit: int = 60) -> list[dict]:
-        """Concept-like surfaces derived from the actual source tree: directories
-        of code that contain at least a couple of files. These are the
-        meaningful "subsystems" the team has written, not the third-party
-        imports the parser also tracks. Boilerplate dirs (.github, dist,
-        node_modules) and umbrella roots (src, lib, app) are filtered out so
-        the Knowledge page surfaces real domain surface, not plumbing."""
-        return await self.run(
-            """
-        MATCH (f:File)-[:PART_OF]->(r:Repository)
-        WHERE f.language IN ['python','typescript','javascript','tsx','go','rust','java','ruby','swift','c','cpp','kotlin','scala']
-          AND NOT f.path CONTAINS 'node_modules'
-          AND NOT f.path CONTAINS '__pycache__'
-          AND NOT f.path CONTAINS '/vendor/'
-          AND NOT f.path CONTAINS '/dist/'
-          AND NOT f.path CONTAINS '/build/'
-          AND NOT f.path CONTAINS '/.next/'
-        WITH f, r, split(f.path, '/') AS parts
-        WHERE size(parts) >= 2
-        WITH parts[size(parts) - 2] AS dir, r.name AS repo, f.id AS fid
-        WHERE NOT dir IN ['', 'src', 'lib', 'app', 'pkg', 'cmd', 'internal', 'public',
-                          'test', 'tests', '__tests__', 'spec', 'specs', 'mocks',
-                          'fixtures', 'assets', 'static', 'docs', 'examples',
-                          'scripts', 'types', '@types', 'public', 'dist', 'build']
-          AND NOT dir STARTS WITH '.'
-          AND size(dir) >= 2
-        WITH dir, collect(DISTINCT repo) AS repos, count(DISTINCT fid) AS files
-        WHERE files >= 2
-        RETURN dir AS name, repos, size(repos) AS repo_count, files
-        ORDER BY files DESC, name ASC
-        LIMIT $limit
-        """,
-            limit=limit,
-        )
-
     async def get_stats(self) -> dict:
         """Counts of code-knowledge nodes across all onboarded repos. The dashboard
         hero sentence shows `concepts` as a single number — the sum of the
@@ -522,22 +344,6 @@ class KnowledgeGraph:
             id=note_id,
             title=title,
         )
-
-    async def link_note_to_entity(
-        self, note_id: str, entity_type: str, entity_params: dict
-    ) -> None:
-        # entity_type would flow from the model-controlled write_note arg if this
-        # were wired to the tool, so it must be a bare label, never interpolated raw.
-        safe_type = _safe_ident(entity_type, "label")
-        match_clause = (
-            "{" + ", ".join(f"{_safe_ident(k, 'property')}: ${k}" for k in entity_params) + "}"
-        )
-        query = f"""
-        MATCH (n:Note {{id: $note_id}})
-        MATCH (e:{safe_type} {match_clause})
-        MERGE (n)-[:KNOWS_ABOUT]->(e)
-        """
-        await self.run(query, note_id=note_id, **entity_params)
 
     async def search_graph(self, query: str, limit: int = 20) -> list[dict]:
         return await self.run(

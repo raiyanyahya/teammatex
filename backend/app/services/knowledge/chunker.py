@@ -27,15 +27,12 @@ class CodeChunker:
 
         chunks: list[CodeChunk] = []
 
-        # Try structured chunking by functions first
         func_chunks = self._chunk_by_functions(content, file_path, language, lines)
         if func_chunks:
             chunks.extend(func_chunks)
         else:
-            # Fall back to fixed-size windows
             chunks.extend(self._chunk_by_windows(lines, file_path, language))
 
-        # Add file header as metadata chunk
         header = self._extract_header(content, file_path, language, lines)
         if header:
             chunks.append(header)

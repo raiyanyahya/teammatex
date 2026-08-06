@@ -117,8 +117,6 @@ def git_pull_scheduled() -> dict:
             result = conn.execute(sa_select(AppConfig).where(AppConfig.key == "update_settings"))
             row = result.mappings().first()
             if row and row.get("value", {}).get("method") == "git_pull":
-                int(row["value"].get("frequency_minutes", 5))
-                # Check if it's time based on frequency
                 return git_pull_repos()
     except Exception:
         pass

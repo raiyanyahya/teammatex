@@ -77,7 +77,6 @@ class PeopleProfiler:
             if email in profiles:
                 profiles[email].owned_files = files
 
-        # Group owned files into modules
         for profile in profiles.values():
             modules: set[str] = set()
             for f in profile.owned_files:

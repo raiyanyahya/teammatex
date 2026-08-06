@@ -40,18 +40,6 @@ class IncrementalGraphUpdater:
         self.manifest = RepoManifest(clone_path)
         self.graph = KnowledgeGraph()
         self.parser = CodeParser()
-        self._auth: str | None = None
-
-    def _neo4j_auth(self) -> str:
-        if self._auth is None:
-            import base64
-
-            from app.config import settings
-
-            self._auth = base64.b64encode(
-                f"{settings.neo4j_user}:{settings.neo4j_password}".encode()
-            ).decode()
-        return self._auth
 
     async def full_sync(self) -> dict:
         manifest = self.manifest.scan()

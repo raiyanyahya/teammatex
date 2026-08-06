@@ -38,63 +38,6 @@ class SlackBot:
             logger.error("slack_post_error", error=str(e))
             return {"error": str(e)}
 
-    async def post_code_review(self, channel: str, review: dict, pr_url: str = "") -> dict:
-        if not self.enabled:
-            return {"skipped": True}
-
-        blocks = []
-        blocks.append(
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": f"Code Review — {review.get('repo', '')}"},
-            }
-        )
-        blocks.append(
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": review.get("summary", "")},
-            }
-        )
-
-        for issue in review.get("issues", [])[:10]:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*[{issue.get('severity', 'low').upper()}]* {issue.get('message')} — `{issue.get('file', '')}`",
-                    },
-                }
-            )
-
-        if pr_url:
-            blocks.append(
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "View PR"},
-                            "url": pr_url,
-                        }
-                    ],
-                }
-            )
-
-        session = await self._get_session()
-        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
-        try:
-            async with session.post(
-                "https://slack.com/api/chat.postMessage",
-                headers=headers,
-                json={"channel": channel, "blocks": blocks},
-                timeout=10,
-            ) as resp:
-                return await resp.json()
-        except Exception as e:
-            logger.error("slack_review_error", error=str(e))
-            return {"error": str(e)}
-
     async def answer_question(self, channel: str, user: str, question: str) -> str:
         if not self.enabled:
             return "Slack bot not enabled."
@@ -120,7 +63,6 @@ class SlackBot:
                         .scalars()
                         .all()
                     )
-                    repos[0].local_name if repos else ""
                     repo_id = str(repos[0].id) if repos else ""
             finally:
                 engine.dispose()

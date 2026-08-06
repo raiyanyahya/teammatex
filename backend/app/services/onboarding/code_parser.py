@@ -110,7 +110,6 @@ class CodeParser:
         if tree_sitter_java:
             self._parsers["java"] = _make_parser(tree_sitter_java.language)
 
-        # Clean up None parser entries for failed imports
         failed = [k for k, v in self._parsers.items() if v is None]
         for k in failed:
             logger.warning(f"tree_sitter_{k}_parser_failed")

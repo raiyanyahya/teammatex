@@ -58,18 +58,6 @@ def classify_query_intent(query: str) -> str:
     return best if scores[best] > 0 else "conceptual"
 
 
-def reciprocal_rank_fusion(result_sets: list[list[dict]], k: int = 60) -> list[dict]:
-    fused: dict[str, dict] = {}
-    for result_set in result_sets:
-        for rank, item in enumerate(result_set):
-            doc_id = item.get("file_path", item.get("id", str(rank)))
-            if doc_id not in fused:
-                fused[doc_id] = item.copy()
-                fused[doc_id]["rrf_score"] = 0.0
-            fused[doc_id]["rrf_score"] += 1.0 / (k + rank + 1)
-    return sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
-
-
 class RAGPipeline:
     def __init__(self):
         self.embedder = EmbeddingService()

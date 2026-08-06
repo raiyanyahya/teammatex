@@ -13,14 +13,12 @@ from app.services.agent.proactive_extras import (
     GitHygieneAutomation,
     SprintRetrospectiveAssistant,
 )
-from app.services.agent.self_extension import SelfExtension
 
 router = APIRouter(prefix="/features", tags=["features"])
 standup = StandupGenerator()
 doc_gen = DocumentationGenerator()
 release_gen = ReleaseNotesGenerator()
 test_gen = TestGenerator()
-self_ext = SelfExtension()
 retro = SprintRetrospectiveAssistant()
 hygiene = GitHygieneAutomation()
 
@@ -52,10 +50,6 @@ class TestGenRequest(BaseModel):
 class TestGapAnalysisRequest(BaseModel):
     code_summary: str
     existing_tests: list[str] = []
-
-
-class SelfExtensionScanRequest(BaseModel):
-    clone_path: str
 
 
 # ─── Standup ──────────────────────────────────────────

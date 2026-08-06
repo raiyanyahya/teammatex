@@ -1,23 +1,10 @@
 import tomllib
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 from structlog import get_logger
 
 logger = get_logger(__name__)
-
-
-class ExtensionPoint(str, Enum):
-    PROVIDER = "provider"
-    TOOL = "tool"
-    PARSER = "parser"
-    LLM = "llm"
-    WORKFLOW = "workflow"
-    KNOWLEDGE = "knowledge"
-    UI = "ui"
-    EVENT = "event"
-    GUARDRAIL = "guardrail"
 
 
 @dataclass

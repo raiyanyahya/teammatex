@@ -1,4 +1,3 @@
-from collections.abc import AsyncIterator
 from typing import Any
 
 from litellm import acompletion, completion_cost
@@ -92,7 +91,6 @@ class LLMProvider:
             "ollama": (settings.ollama_base_url, settings.ollama_model),
         }
 
-        # Check DB config first for any provider
         db_cfg = await cls._get_db_config()
         db_provider = db_cfg.get("provider") if db_cfg else None
         db_key = db_cfg.get("api_key") if db_cfg else None
@@ -185,37 +183,6 @@ class LLMProvider:
                 last_error = e
                 continue
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
-
-    @classmethod
-    async def chat_stream(
-        cls,
-        messages: list[dict],
-        temperature: float = 0.2,
-        max_tokens: int = 4096,
-    ) -> AsyncIterator[str]:
-        providers = await cls._get_available_providers()
-        last_error = None
-        for provider, model, api_key in providers:
-            actual_model = cls._get_model_name(provider, model)
-            try:
-                response = await acompletion(
-                    model=actual_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    api_key=api_key,
-                    stream=True,
-                )
-                async for chunk in response:
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        yield delta.content
-                return
-            except Exception as e:
-                logger.warning("llm_stream_failed", provider=provider, error=str(e))
-                last_error = e
-                continue
-        raise RuntimeError(f"All streaming providers failed: {last_error}")
 
     @classmethod
     async def simple_prompt(

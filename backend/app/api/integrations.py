@@ -25,15 +25,6 @@ class IntegrationConfig(BaseModel):
     webhook_secret: str | None = None
 
 
-class IntegrationStatus(BaseModel):
-    provider: str
-    enabled: bool
-    connected: bool
-    scm: bool
-    pm: bool
-    chat: bool
-
-
 # ─── CRUD ────────────────────────────────────────────────
 
 

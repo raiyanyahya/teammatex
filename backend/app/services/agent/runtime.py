@@ -809,59 +809,6 @@ class AgentRuntime:
         )
         return {"pr_number": pr.number, "title": pr.title, "url": pr.url}
 
-    async def _tool_create_pr_with_changes(self, args: dict, ctx: AgentContext) -> dict:
-        import pygit2
-
-        repo_name = args["repo_name"]
-        branch = args["branch"]
-        files = args.get("files", {})
-        commit_msg = args.get("commit_message", "Update")
-        repo_path = f"/data/repos/{repo_name}"
-        loop = asyncio.get_running_loop()
-
-        def _do():
-            try:
-                repo = pygit2.Repository(repo_path)
-            except Exception:
-                return {"error": f"Repo not found at {repo_path}"}
-
-            try:
-                base = repo.head.target
-                repo.branches.local.create(branch, repo[base])
-                repo.checkout(f"refs/heads/{branch}")
-            except pygit2.errors.ExistsError:
-                repo.checkout(f"refs/heads/{branch}")
-            except Exception as e:
-                return {"error": f"Branch failed: {e}"}
-
-            from pathlib import Path as _P
-
-            written = []
-            for fpath, content in files.items():
-                abs_path = _P(repo_path) / fpath
-                abs_path.parent.mkdir(parents=True, exist_ok=True)
-                abs_path.write_text(content)
-                written.append(fpath)
-
-            repo.index.add_all()
-            repo.index.write()
-            tree = repo.index.write_tree()
-            sig = pygit2.Signature("TeammateX", "teammatex@local")
-            oid = repo.create_commit(f"refs/heads/{branch}", sig, sig, commit_msg, tree, [base])
-
-            return {
-                "branch": branch,
-                "commit": str(oid)[:8],
-                "files": written,
-                "repo": repo_name,
-            }
-
-        result = await loop.run_in_executor(None, _do)
-        if "commit" in result:
-            ctx.branch = result["branch"]
-            ctx.files_modified = result["files"]
-        return result
-
     async def _tool_get_diff(self, args: dict, ctx: AgentContext) -> dict:
         repo_path = _resolve_repo_path(ctx, args)
         if not repo_path:

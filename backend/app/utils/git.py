@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 import pygit2
 
@@ -50,20 +49,6 @@ def clone_or_pull(
     return repo
 
 
-def read_file_from_bare(repo_path: str, file_path: str, ref: str = "HEAD") -> str | None:
-    repo = pygit2.Repository(repo_path)
-    try:
-        commit = repo.revparse_single(ref)
-        if isinstance(commit, pygit2.Tag):
-            commit = commit.peel(pygit2.Commit)
-        tree = commit.tree
-        entry = tree[file_path]
-        blob = repo[entry.id]
-        return blob.data.decode("utf-8", errors="replace")
-    except Exception:
-        return None
-
-
 def _fetch_and_reset(
     repo: pygit2.Repository, branch: str, bare: bool = False, callbacks=None
 ) -> None:
@@ -94,7 +79,3 @@ def create_branch(repo_path: str, branch_name: str, base: str = "main") -> str:
     repo.branches.local.create(branch_name, repo[base_oid])
     repo.checkout(branch_ref)
     return branch_ref
-
-
-def get_repo_path(clone_root: str, local_name: str) -> str:
-    return str(Path(clone_root) / local_name)

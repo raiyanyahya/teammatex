@@ -21,7 +21,6 @@ class DigestGenerator:
             }
 
             with engine.connect() as conn:
-                # Audit activity
                 result = conn.execute(
                     text(
                         "SELECT action, count(*) FROM audit_log WHERE completed_at > :since GROUP BY action ORDER BY count DESC LIMIT 10"
@@ -32,7 +31,6 @@ class DigestGenerator:
                 if actions:
                     digest["sections"].append({"title": "Actions This Week", "data": actions})
 
-                # Repo onboarding status
                 result = conn.execute(
                     text(
                         "SELECT r.local_name, COUNT(ros.stage) AS completed, "
@@ -47,7 +45,6 @@ class DigestGenerator:
                 if repos_data:
                     digest["sections"].append({"title": "Repo Status", "data": repos_data})
 
-                # Total cost
                 result = conn.execute(
                     text(
                         "SELECT coalesce(sum(cost_cents), 0), coalesce(sum(tokens_in + tokens_out), 0) "
@@ -67,7 +64,6 @@ class DigestGenerator:
                         }
                     )
 
-                # Notes created recently
                 result = conn.execute(
                     text(
                         "SELECT title, substr(content, 1, 200) AS preview FROM notes WHERE created_at > :since ORDER BY created_at DESC LIMIT 10"

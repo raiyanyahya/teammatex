@@ -37,7 +37,6 @@ def extract_sources(invocations: list[dict]) -> list[dict]:
         args = inv.get("args") or {}
         data = _unwrap(inv.get("result"))
 
-        # Only process if the invocation succeeded (data is not None)
         if data is None:
             continue
 
